@@ -152,3 +152,42 @@ def test_client_is_configured_without_package_retries_or_delay() -> None:
 )  # fmt: skip
 def test_split_version(raw: str, expected: tuple[str, int | None]) -> None:
     assert split_version(raw) == expected
+
+
+# --- guards for our reliance on the arxiv package's private `_session` attribute ---------
+
+
+def test_arxiv_package_still_has_the_private_session_we_replace() -> None:
+    """If an `arxiv` upgrade renames/removes `Client._session`, fail here with a clear message
+    (ArxivClient would otherwise silently lose its request timeout)."""
+    import arxiv
+
+    assert isinstance(getattr(arxiv.Client(), "_session", None), requests.Session), (
+        "arxiv.Client no longer has a `_session` requests.Session: update ArxivClient, "
+        "which swaps it to add a timeout"
+    )
+
+
+def test_package_requests_go_through_our_session_with_a_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """End to end: the package's HTTP call must reach our session and carry a timeout."""
+    from app.sources.arxiv import REQUEST_TIMEOUT_S
+
+    seen: dict[str, object] = {}
+
+    def fake_request(
+        self: requests.Session, method: str, url: str, **kwargs: object
+    ) -> requests.Response:
+        seen.update(kwargs)
+        resp = requests.Response()
+        resp.status_code = 200
+        resp._content = _feed(1, 1, 1)
+        return resp
+
+    monkeypatch.setattr(
+        requests.Session, "request", fake_request
+    )  # base class: catches any session
+    client = ArxivClient(limiter=CountingLimiter(), sleep=lambda s: None)  # default session
+    assert client.get_paper("2601.00001") is not None
+    assert seen.get("timeout") == REQUEST_TIMEOUT_S
