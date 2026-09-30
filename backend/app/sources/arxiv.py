@@ -58,6 +58,20 @@ class _TimeoutSession(requests.Session):
         return super().request(method, url, **kwargs)
 
 
+_ID_RE = re.compile(r"^(\d{4}\.\d{4,5}|[a-z-]+(\.[A-Z]{2})?/\d{7})(v\d+)?$")
+
+
+def validate_arxiv_id(raw: str) -> str:
+    """Return the id without version ('1706.03762v5' -> '1706.03762'), or raise ValueError.
+
+    Ids end up inside URLs and queries, so anything unexpected is rejected up front.
+    """
+    raw = raw.strip()
+    if not _ID_RE.match(raw):
+        raise ValueError(f"not a valid arXiv id: {raw!r}")
+    return split_version(raw)[0]
+
+
 def split_version(arxiv_id: str) -> tuple[str, int | None]:
     """'1706.03762v5' -> ('1706.03762', 5); '1706.03762' -> ('1706.03762', None)."""
     m = _VERSION_RE.match(arxiv_id.strip())
