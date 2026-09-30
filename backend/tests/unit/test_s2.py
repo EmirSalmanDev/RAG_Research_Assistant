@@ -38,6 +38,7 @@ def test_paper_parses_counts_and_arxiv_references() -> None:
     result = client.paper("2601.00001")
     assert isinstance(result, S2Paper)
     assert result.citation_count == 123 and result.references == ["2001.00001"]
+    assert result.references_total == 3  # all listed references, even without an arXiv id
     assert seen[0].url.path == "/graph/v1/paper/arXiv:2601.00001"
     assert seen[0].url.params["fields"] == "citationCount,references.externalIds"
     assert limiter.slots == 1

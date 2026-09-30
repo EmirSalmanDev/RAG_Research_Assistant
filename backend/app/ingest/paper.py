@@ -173,7 +173,13 @@ def ingest_one(session: Session, clients: Clients, raw_arxiv_id: str) -> IngestR
             .where(Paper.arxiv_id == arxiv_id)
             .values(citation_count=result.citation_count)
         )
-        counts["citations"] = _upsert_citations(session, arxiv_id, result.references)
+        stored = _upsert_citations(session, arxiv_id, result.references)
+        counts["citations"] = stored
+        # Only set when S2 answered: absent keys mean "unknown", 0 would mean "no references".
+        counts["references_total"] = result.references_total
+        counts["references_stored"] = stored
+        # References S2 lists without an arXiv id can never join `papers`, so they are not stored.
+        counts["references_dropped_no_arxiv_id"] = result.references_total - len(result.references)
 
     optional("s2", s2)
 

@@ -13,7 +13,7 @@ import logging
 from typing import Any
 
 import httpx
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 
 from app.config import get_settings
 from app.sources.http import Limiter, RetryableError, make_client, send
@@ -32,6 +32,14 @@ class S2Paper(BaseModel):
     citation_count: int | None
     references: list[str]  # arXiv ids of cited papers (references without an arXiv id are skipped)
     citations: list[str] = []  # arXiv ids of citing papers, only when requested
+    # How many references S2 listed in total, including ones without an arXiv id.
+    references_total: int = -1  # -1 = not given: filled in below from `references`
+
+    @model_validator(mode="after")
+    def _default_total(self) -> "S2Paper":
+        if self.references_total < 0:
+            self.references_total = len(self.references)
+        return self
 
 
 class S2Unavailable(BaseModel):
@@ -58,6 +66,7 @@ def _parse(arxiv_id: str, data: dict[str, Any]) -> S2Paper:
         arxiv_id=arxiv_id,
         citation_count=data.get("citationCount"),
         references=_arxiv_ids(data.get("references")),
+        references_total=len(data.get("references") or []),
         citations=_arxiv_ids(data.get("citations")),
     )
 

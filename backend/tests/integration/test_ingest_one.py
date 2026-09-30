@@ -169,3 +169,25 @@ def test_invalid_id_is_rejected_before_any_work(migrated_session: Session) -> No
 def test_version_suffix_is_stripped(migrated_session: Session) -> None:
     result = ingest_one(migrated_session, _clients(), f"{ID}v3")
     assert result.arxiv_id == ID
+
+
+def test_reference_counts_are_recorded_in_the_run(migrated_session: Session) -> None:
+    # S2 lists 6 references; 3 have an arXiv id (one of them twice) and 3 do not.
+    s2 = S2Paper(
+        arxiv_id=ID,
+        citation_count=50,
+        references=["2001.00001", "2001.00002", "2001.00002"],
+        references_total=6,
+    )
+    result = ingest_one(migrated_session, _clients(s2=s2), ID)
+    expected = {"references_total": 6, "references_stored": 2, "references_dropped_no_arxiv_id": 3}
+    assert {k: result.counts[k] for k in expected} == expected
+    run = migrated_session.scalars(select(IngestRun)).one()
+    assert {k: run.counts[k] for k in expected} == expected  # persisted, not just returned
+    assert result.counts["citations"] == 2  # existing key unchanged
+
+
+def test_reference_counts_are_absent_when_s2_is_unavailable(migrated_session: Session) -> None:
+    clients = _clients(s2=S2Unavailable(arxiv_id=ID, reason="HTTP 429"))
+    result = ingest_one(migrated_session, clients, ID)
+    assert not any(k.startswith("references_") for k in result.counts)
