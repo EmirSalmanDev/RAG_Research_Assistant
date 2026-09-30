@@ -47,5 +47,5 @@ testpaths = ["tests"]
 asyncio_mode = "auto"
 # Tests must pass with the network OFF: real outbound calls raise, only the local
 # stack (Postgres/Redis) is reachable, and cassettes are replayed, never recorded.
-addopts = "--block-network --allowed-hosts=localhost,127.0.0.1 --record-mode=none"
+addopts = "--block-network --allowed-hosts=localhost,127.0.0.1,::1 --record-mode=none"
 markers = ["integration: needs the local Postgres/Redis from `make up` (service containers in CI)"]
