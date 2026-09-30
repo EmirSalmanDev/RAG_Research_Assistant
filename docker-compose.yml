@@ -1,0 +1,121 @@
+# Memory note (8 GB machine): the frontend is in the "frontend" profile, so
+# `make up` skips it. Run it natively with `cd frontend && pnpm dev`, or
+# start it in compose with `docker compose --profile frontend up -d frontend`.
+
+x-backend: &backend
+  build: ./backend
+  env_file:
+    - path: .env
+      required: false
+  environment: &backend-env
+    # Inside compose the stores are reached by service name, not localhost.
+    DATABASE_URL: postgresql+psycopg://copilot:copilot@postgres:5432/copilot
+    QDRANT_URL: http://qdrant:6333
+    REDIS_URL: redis://redis:6379/0
+  depends_on: &stores-healthy
+    postgres:
+      condition: service_healthy
+    qdrant:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: copilot
+      POSTGRES_PASSWORD: copilot
+      POSTGRES_DB: copilot
+    ports: ["5432:5432"]
+    volumes: [postgres_data:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U copilot -d copilot"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  qdrant:
+    image: qdrant/qdrant
+    ports: ["6333:6333"]
+    volumes: [qdrant_data:/qdrant/storage]
+    healthcheck:
+      # The image has no curl; bash's /dev/tcp opens a socket to send a raw HTTP request.
+      test:
+        - CMD
+        - bash
+        - -c
+        - >-
+          exec 3<>/dev/tcp/127.0.0.1/6333 &&
+          printf 'GET /readyz HTTP/1.0\r\n\r\n' >&3 &&
+          head -n1 <&3 | grep -q '200'
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7
+    ports: ["6379:6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    <<: *backend
+    ports: ["8000:8000"]
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)"
+      interval: 10s
+      timeout: 5s
+      retries: 6
+
+  worker:
+    <<: *backend
+    command: celery -A app.worker.celery_app.celery_app worker --concurrency=1 --loglevel=info
+    healthcheck:
+      # `inspect ping` is heavy-ish, so check every 30s to save RAM/CPU.
+      test: ["CMD-SHELL", "celery -A app.worker.celery_app.celery_app inspect ping -d celery@$$HOSTNAME"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  beat:
+    <<: *backend
+    command: celery -A app.worker.celery_app.celery_app beat --loglevel=info
+    healthcheck:
+      # Beat answers no remote-control pings, and the slim image has no pgrep:
+      # healthy while PID 1 (the container's command) is still the beat process.
+      test:
+        - CMD
+        - python
+        - -c
+        - "import sys; sys.exit(0 if b'beat' in open('/proc/1/cmdline','rb').read() else 1)"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  frontend:
+    profiles: ["frontend"]
+    build: ./frontend
+    ports: ["3000:3000"]
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://localhost:3000').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+volumes:
+  postgres_data:
+  qdrant_data:
