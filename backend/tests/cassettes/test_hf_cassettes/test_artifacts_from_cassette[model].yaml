@@ -1,0 +1,177 @@
+interactions:
+- request:
+    body: ''
+    headers:
+      accept:
+      - '*/*'
+      accept-encoding:
+      - gzip, deflate
+      connection:
+      - keep-alive
+      host:
+      - huggingface.co
+      user-agent:
+      - research-copilot/0.1 (personal research tool)
+    method: GET
+    uri: https://huggingface.co/api/models?filter=arxiv%3A1706.03762&limit=100
+  response:
+    body:
+      string: '[{"_id": "6641487429be04778b9180f0", "id": "google/paligemma-3b-pt-224",
+        "likes": 604, "trendingScore": 7, "private": false, "downloads": 271692, "tags":
+        ["transformers", "safetensors", "paligemma", "image-text-to-text", "arxiv:2310.09199",
+        "arxiv:2303.15343", "arxiv:2403.08295", "arxiv:1706.03762", "arxiv:2010.11929",
+        "arxiv:2209.06794", "arxiv:2209.04372", "arxiv:2103.01913", "arxiv:2205.12522",
+        "arxiv:2110.11624", "arxiv:2108.03353", "arxiv:2010.04295", "arxiv:2401.06209",
+        "arxiv:2305.10355", "arxiv:2203.10244", "arxiv:1810.12440", "arxiv:1905.13648",
+        "arxiv:1608.00272", "arxiv:1908.04913", "arxiv:2407.07726", "license:gemma",
+        "text-generation-inference", "endpoints_compatible", "region:us"], "pipeline_tag":
+        "image-text-to-text", "library_name": "transformers", "createdAt": "2024-05-12T22:53:40.000Z",
+        "modelId": "google/paligemma-3b-pt-224"}, {"_id": "68f031350960759d98bbdcce",
+        "id": "nvidia/multitalker-parakeet-streaming-0.6b-v1", "likes": 136, "trendingScore":
+        4, "private": false, "downloads": 775, "tags": ["nemo", "speaker-diarization",
+        "speech-recognition", "multitalker-ASR", "multispeaker-ASR", "speech", "audio",
+        "FastConformer", "RNNT", "Conformer", "NEST", "pytorch", "NeMo", "automatic-speech-recognition",
+        "dataset:AMI", "dataset:NOTSOFAR1", "dataset:Fisher", "dataset:MMLPC", "dataset:librispeech_train_clean_100",
+        "dataset:librispeech_train_clean_360", "dataset:librispeech_train_other_500",
+        "dataset:WSJ", "dataset:SWBD", "dataset:europarl_dataset", "dataset:NSC1",
+        "dataset:NSC6", "dataset:VCTK", "dataset:VoxPopuli", "dataset:Multilingual_LibriSpeech_2000hrs",
+        "dataset:Common_Voice", "dataset:People_Speech_12k_hrs", "dataset:SPGI", "dataset:MOSEL",
+        "dataset:YTC", "arxiv:2506.22646", "arxiv:2408.13106", "arxiv:2305.05084",
+        "arxiv:2409.06656", "arxiv:2507.18446", "arxiv:1706.03762", "arxiv:2310.12371",
+        "license:other", "model-index", "region:us"], "pipeline_tag": "automatic-speech-recognition",
+        "library_name": "nemo", "createdAt": "2025-10-15T23:41:41.000Z", "modelId":
+        "nvidia/multitalker-parakeet-streaming-0.6b-v1"}, {"_id": "673f8718d2dba4a5fb761a4e",
+        "id": "google/paligemma2-3b-mix-224", "likes": 61, "trendingScore": 2, "private":
+        false, "downloads": 20676, "tags": ["transformers", "safetensors", "paligemma",
+        "image-text-to-text", "arxiv:2407.07726", "arxiv:2408.00118", "arxiv:2310.09199",
+        "arxiv:2303.15343", "arxiv:1706.03762", "arxiv:2010.11929", "arxiv:2209.06794",
+        "arxiv:2209.04372", "arxiv:2103.01913", "arxiv:1908.04913", "arxiv:1906.02467",
+        "arxiv:2203.10244", "arxiv:2205.12522", "arxiv:2104.12756", "arxiv:1608.00272",
+        "arxiv:1511.02283", "arxiv:1905.13648", "arxiv:2110.11624", "arxiv:2108.03353",
+        "arxiv:1810.12440", "arxiv:1904.03493", "arxiv:2010.04295", "arxiv:1511.09207",
+        "arxiv:2412.03555", "license:gemma", "text-generation-inference", "endpoints_compatible",
+        "region:us"], "pipeline_tag": "image-text-to-text", "library_name": "transformers",
+        "createdAt": "2024-11-21T19:16:40.000Z", "modelId": "google/paligemma2-3b-mix-224"},
+        {"_id": "6757424294b6d39dce5ba358", "id": "nvidia/diar_sortformer_4spk-v1",
+        "likes": 155, "trendingScore": 2, "private": false, "downloads": 106569, "tags":
+        ["nemo", "safetensors", "sortformer", "speaker-diarization", "speaker-recognition",
+        "speech", "audio", "Transformer", "FastConformer", "Conformer", "NEST", "pytorch",
+        "NeMo", "automatic-speech-recognition", "dataset:fisher_english", "dataset:NIST_SRE_2004-2010",
+        "dataset:librispeech", "dataset:ami_meeting_corpus", "dataset:voxconverse_v0.3",
+        "dataset:icsi", "dataset:aishell4", "dataset:dihard_challenge-3", "dataset:NIST_SRE_2000-Disc8_split1",
+        "arxiv:2409.06656", "arxiv:2408.13106", "arxiv:2305.05084", "arxiv:2310.12371",
+        "arxiv:1706.03762", "license:cc-by-nc-4.0", "model-index", "region:us"], "pipeline_tag":
+        "automatic-speech-recognition", "library_name": "nemo", "createdAt": "2024-12-09T19:17:22.000Z",
+        "modelId": "nvidia/diar_sortformer_4spk-v1"}, {"_id": "685d6fd48bee606d2075d852",
+        "id": "nvidia/canary-qwen-2.5b", "likes": 465, "trendingScore": 2, "private":
+        false, "downloads": 40934, "tags": ["nemo", "safetensors", "automatic-speech-recognition",
+        "speech", "audio", "Transformer", "FastConformer", "Conformer", "pytorch",
+        "NeMo", "Qwen", "hf-asr-leaderboard", "en", "dataset:Granary", "dataset:YTC",
+        "dataset:Yodas2", "dataset:LibriLight", "dataset:librispeech_asr", "dataset:fisher_corpus",
+        "dataset:Switchboard-1", "dataset:WSJ-0", "dataset:WSJ-1", "dataset:National-Singapore-Corpus-Part-1",
+        "dataset:National-Singapore-Corpus-Part-6", "dataset:vctk", "dataset:voxpopuli",
+        "dataset:europarl", "dataset:multilingual_librispeech", "dataset:fleurs",
+        "dataset:mozilla-foundation/common_voice_8_0", "dataset:MLCommons/peoples_speech",
+        "arxiv:1706.03762", "arxiv:2503.05931", "arxiv:2505.13404", "arxiv:2310.09424",
+        "arxiv:2104.02821", "base_model:Qwen/Qwen3-1.7B", "base_model:finetune:Qwen/Qwen3-1.7B",
+        "license:cc-by-4.0", "model-index", "eval-results", "region:us"], "pipeline_tag":
+        "automatic-speech-recognition", "library_name": "nemo", "createdAt": "2025-06-26T16:05:40.000Z",
+        "modelId": "nvidia/canary-qwen-2.5b"}, {"_id": "6890b6f154a8b9ff771a29c9",
+        "id": "nvidia/canary-1b-v2", "likes": 425, "trendingScore": 2, "private":
+        false, "downloads": 61791, "tags": ["nemo", "safetensors", "canary", "automatic-speech-recognition",
+        "automatic-speech-translation", "speech", "audio", "Transformer", "FastConformer",
+        "Conformer", "pytorch", "NeMo", "hf-asr-leaderboard", "Transformers", "bg",
+        "hr", "cs", "da", "nl", "en", "et", "fi", "fr", "de", "el", "hu", "it", "lv",
+        "lt", "mt", "pl", "pt", "ro", "sk", "sl", "es", "sv", "ru", "uk", "dataset:nvidia/Granary",
+        "dataset:nvidia/nemo-asr-set-3.0", "arxiv:2509.14128", "arxiv:2505.13404",
+        "arxiv:2305.05084", "arxiv:1706.03762", "arxiv:2410.01036", "arxiv:2406.00899",
+        "arxiv:2205.12446", "arxiv:2012.03411", "arxiv:2007.10310", "arxiv:2005.08072",
+        "arxiv:1510.08484", "license:cc-by-4.0", "model-index", "eval-results", "deploy:azure",
+        "region:us"], "pipeline_tag": "automatic-speech-recognition", "library_name":
+        "nemo", "createdAt": "2025-08-04T13:34:41.000Z", "modelId": "nvidia/canary-1b-v2"},
+        {"_id": "62bc7b518a8e5b5442e8308b", "id": "keras-io/denoising-diffusion-implicit-models",
+        "likes": 12, "trendingScore": 1, "private": false, "downloads": 36, "tags":
+        ["tf-keras", "generative", "denoising", "diffusion", "ddim", "ddpm", "unconditional-image-generation",
+        "arxiv:2010.02502", "arxiv:1505.04597", "arxiv:2006.11239", "arxiv:1706.03762",
+        "arxiv:1711.05101", "region:us"], "pipeline_tag": "unconditional-image-generation",
+        "library_name": "tf-keras", "createdAt": "2022-06-29T16:18:25.000Z", "modelId":
+        "keras-io/denoising-diffusion-implicit-models"}, {"_id": "6840ae27d4e16ff5f93d9dde",
+        "id": "nvidia/diar_streaming_sortformer_4spk-v2", "likes": 145, "trendingScore":
+        1, "private": false, "downloads": 38034, "tags": ["nemo", "gguf", "speaker-diarization",
+        "speaker-recognition", "speech", "audio", "Transformer", "FastConformer",
+        "Conformer", "NEST", "pytorch", "NeMo", "automatic-speech-recognition", "dataset:fisher_english",
+        "dataset:NIST_SRE_2004-2010", "dataset:librispeech", "dataset:ami_meeting_corpus",
+        "dataset:voxconverse_v0.3", "dataset:icsi", "dataset:aishell4", "dataset:dihard_challenge-3-dev",
+        "dataset:NIST_SRE_2000-Disc8_split1", "dataset:Alimeeting-train", "dataset:DiPCo",
+        "arxiv:2409.06656", "arxiv:2507.18446", "arxiv:2408.13106", "arxiv:2305.05084",
+        "arxiv:2310.12371", "arxiv:1706.03762", "license:cc-by-4.0", "model-index",
+        "region:us"], "pipeline_tag": "automatic-speech-recognition", "library_name":
+        "nemo", "createdAt": "2025-06-04T20:35:51.000Z", "modelId": "nvidia/diar_streaming_sortformer_4spk-v2"},
+        {"_id": "6ab06dc2023e8bf73e6af973", "id": "mpnikhil/dev-0.4b", "likes": 5,
+        "trendingScore": 1, "private": false, "downloads": 136, "tags": ["transformers",
+        "safetensors", "modernbert", "fill-mask", "decision-model", "routing", "classification",
+        "verification", "brier-score", "calibration", "bidirectional", "text-classification",
+        "en", "dataset:PolyAI/banking77", "dataset:google/boolq", "dataset:code_search_net",
+        "dataset:yelp_review_full", "arxiv:1706.03762", "arxiv:2412.13663", "arxiv:2311.01079",
+        "arxiv:1706.04599", "license:apache-2.0", "model-index", "endpoints_compatible",
+        "region:us"], "pipeline_tag": "text-classification", "library_name": "transformers",
+        "createdAt": "2026-09-20T23:35:30.000Z", "modelId": "mpnikhil/dev-0.4b"},
+        {"_id": "621ffdc036468d709f1757e6", "id": "HamidRezaAttar/gpt2-product-description-generator",
+        "likes": 14, "trendingScore": 0, "private": false, "downloads": 135, "tags":
+        ["transformers", "pytorch", "gpt2", "text-generation", "en", "arxiv:1706.03762",
+        "license:apache-2.0", "text-generation-inference", "endpoints_compatible",
+        "region:us"], "pipeline_tag": "text-generation", "library_name": "transformers",
+        "createdAt": "2022-03-02T23:29:04.000Z", "modelId": "HamidRezaAttar/gpt2-product-description-generator"}]'
+    headers:
+      access-control-allow-origin:
+      - https://huggingface.co
+      access-control-expose-headers:
+      - X-Repo-Commit,X-Request-Id,X-Error-Code,X-Error-Message,X-Total-Count,ETag,Link,Accept-Ranges,Content-Range,X-Linked-Size,X-Linked-ETag,X-Xet-Hash
+      access-control-max-age:
+      - '86400'
+      alt-svc:
+      - h3=":443"; ma=86400
+      connection:
+      - keep-alive
+      content-type:
+      - application/json; charset=utf-8
+      cross-origin-opener-policy:
+      - same-origin
+      date:
+      - Wed, 30 Sep 2026 12:35:41 GMT
+      etag:
+      - W/"11fc2-dNQN3DKdvAPryYL/pK1gs8Ltgv4"
+      link:
+      - <https://huggingface.co/api/models?filter=arxiv%3A1706.03762&limit=100&cursor=eyIkb3IiOlt7InRyZW5kaW5nU2NvcmUiOjAsIl9pZCI6eyIkZ3QiOiI2NjQxNGJmZTVmZWFkYmM3MzlmN2EyM2YifX0seyJ0cmVuZGluZ1Njb3JlIjp7IiRsdCI6MH19LHsidHJlbmRpbmdTY29yZSI6bnVsbH1dLCJzZWFyY2hTZXF1ZW5jZVRva2VuIjoiQ0lXenZBRWFDU0VBQUFBQUFBQUFBQm9PV2d4bVFVditYK3JieHpuM29qOGlEbG9NWmtGTC9sL3EyOGM1OTZJLyJ9>;
+        rel="next"
+      ratelimit:
+      - '"api";r=497;t=7'
+      ratelimit-policy:
+      - '"fixed window";"api";q=500;w=300'
+      referrer-policy:
+      - strict-origin-when-cross-origin
+      server-timing:
+      - atlas1-0;dur=14.603097000159323
+      strict-transport-security:
+      - max-age=31536000
+      transfer-encoding:
+      - chunked
+      vary:
+      - Origin
+      - Accept-Encoding
+      via:
+      - 1.1 6beb13ce69fbab32474913c21e4833e6.cloudfront.net (CloudFront)
+      x-amz-cf-id:
+      - umAcL9aye929oKPpR28jf2R9dgGJ1roYnJW8zxgsZIpdpy8aBlAMJw==
+      x-amz-cf-pop:
+      - IST52-P2
+      x-cache:
+      - Miss from cloudfront
+      x-powered-by:
+      - huggingface-moon
+      x-request-id:
+      - Root=1-6abd021d-00aea862107f31a16e874f28
+    status:
+      code: 200
+      message: OK
+version: 1

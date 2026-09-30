@@ -1,0 +1,86 @@
+interactions:
+- request:
+    body: ''
+    headers:
+      accept:
+      - '*/*'
+      accept-encoding:
+      - gzip, deflate
+      connection:
+      - keep-alive
+      host:
+      - huggingface.co
+      user-agent:
+      - research-copilot/0.1 (personal research tool)
+    method: GET
+    uri: https://huggingface.co/api/papers/1706.03762
+  response:
+    body:
+      string: '{"id": "1706.03762", "publishedAt": "2017-06-12T17:57:34.000Z", "title":
+        "Attention Is All You Need", "summary": "The dominant sequence transduction
+        models are based on complex recurrent or\nconvolutional neural networks in
+        an encoder-decoder configuration. The best\nperforming models also connect
+        the encoder and decoder through an attention\nmechanism. We propose a new
+        simple network architecture, the Transformer, based\nsolely on attention mechanisms,
+        dispensing with recurrence and convolutions\nentirely. Experiments on two
+        machine translation tasks show these models to be\nsuperior in quality while
+        being more parallelizable and requiring significantly\nless time to train.
+        Our model achieves 28.4 BLEU on the WMT 2014\nEnglish-to-German translation
+        task, improving over the existing best results,\nincluding ensembles by over
+        2 BLEU. On the WMT 2014 English-to-French\ntranslation task, our model establishes
+        a new single-model state-of-the-art\nBLEU score of 41.8 after training for
+        3.5 days on eight GPUs, a small fraction\nof the training costs of the best
+        models from the literature. We show that the\nTransformer generalizes well
+        to other tasks by applying it successfully to\nEnglish constituency parsing
+        both with large and limited training data.", "upvotes": 144, "authors": [{"name":
+        "Ashish Vaswani"}, {"name": "Noam Shazeer"}, {"name": "Niki Parmar"}, {"name":
+        "Jakob Uszkoreit"}, {"name": "Llion Jones"}, {"name": "Aidan N. Gomez"}, {"name":
+        "Lukasz Kaiser"}, {"name": "Illia Polosukhin"}]}'
+    headers:
+      access-control-allow-origin:
+      - https://huggingface.co
+      access-control-expose-headers:
+      - X-Repo-Commit,X-Request-Id,X-Error-Code,X-Error-Message,X-Total-Count,ETag,Link,Accept-Ranges,Content-Range,X-Linked-Size,X-Linked-ETag,X-Xet-Hash
+      access-control-max-age:
+      - '86400'
+      alt-svc:
+      - h3=":443"; ma=86400
+      connection:
+      - keep-alive
+      content-type:
+      - application/json; charset=utf-8
+      cross-origin-opener-policy:
+      - same-origin
+      date:
+      - Wed, 30 Sep 2026 12:35:39 GMT
+      etag:
+      - W/"209a-CqN6Q+kSukTHdYqFSUBLLSlLMzI"
+      ratelimit:
+      - '"api";r=498;t=9'
+      ratelimit-policy:
+      - '"fixed window";"api";q=500;w=300'
+      referrer-policy:
+      - strict-origin-when-cross-origin
+      strict-transport-security:
+      - max-age=31536000
+      transfer-encoding:
+      - chunked
+      vary:
+      - Origin
+      - Accept-Encoding
+      via:
+      - 1.1 454edcf47fd7d3a298018c725a29604a.cloudfront.net (CloudFront)
+      x-amz-cf-id:
+      - 8Scx3Dd5YDc89uY4w_24n5_NpVooDAQ4b9r0iCUTSI9JeLWXbmyQ2Q==
+      x-amz-cf-pop:
+      - IST52-P2
+      x-cache:
+      - Miss from cloudfront
+      x-powered-by:
+      - huggingface-moon
+      x-request-id:
+      - Root=1-6abd021b-436666e912b0b9f8490a9244
+    status:
+      code: 200
+      message: OK
+version: 1

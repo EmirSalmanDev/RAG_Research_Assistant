@@ -1,0 +1,197 @@
+interactions:
+- request:
+    body: ''
+    headers:
+      accept:
+      - '*/*'
+      accept-encoding:
+      - gzip, deflate
+      connection:
+      - keep-alive
+      host:
+      - api.semanticscholar.org
+      user-agent:
+      - research-copilot/0.1 (personal research tool)
+    method: GET
+    uri: https://api.semanticscholar.org/graph/v1/paper/arXiv:1706.03762?fields=citationCount%2Creferences.externalIds
+  response:
+    body:
+      string: '{"message": "Too Many Requests. Please wait and try again or apply
+        for a key for higher rate limits. https://www.semanticscholar.org/product/api#api-key-form",
+        "code": "429"}'
+    headers:
+      connection:
+      - keep-alive
+      content-type:
+      - application/json
+      date:
+      - Wed, 30 Sep 2026 12:36:59 GMT
+      via:
+      - 1.1 78cdb4616f79c3d5c19fd7815948ae1a.cloudfront.net (CloudFront)
+      x-amz-apigw-id:
+      - Eg1Q5EbvPHcEDtQ=
+      x-amz-cf-id:
+      - 228gXd_MVPAseERLs6896YCcGeeHe5FYP5LRArfevJxYGeeBwROv3A==
+      x-amz-cf-pop:
+      - IST50-P1
+      x-amzn-errortype:
+      - TooManyRequestsException
+      x-amzn-requestid:
+      - e490f59c-5a2c-4458-a4ed-aff9e5526b7a
+      x-cache:
+      - Error from cloudfront
+    status:
+      code: 429
+      message: ''
+- request:
+    body: ''
+    headers:
+      accept:
+      - '*/*'
+      accept-encoding:
+      - gzip, deflate
+      connection:
+      - keep-alive
+      host:
+      - api.semanticscholar.org
+      user-agent:
+      - research-copilot/0.1 (personal research tool)
+    method: GET
+    uri: https://api.semanticscholar.org/graph/v1/paper/arXiv:1706.03762?fields=citationCount%2Creferences.externalIds
+  response:
+    body:
+      string: '{"paperId": "204e3073870fae3d05bcbc2f6a8e263d9b72e776", "title": "Attention
+        is All you Need", "citationCount": 194461, "openAccessPdf": {"url": "", "status":
+        null, "license": null, "disclaimer": "Notice: Paper or abstract available
+        at https://arxiv.org/abs/1706.03762, which is subject to the license by the
+        author or copyright owner provided with this content. Please go to the source
+        to verify the license and copyright information for your use."}, "authors":
+        [{"authorId": "40348417", "name": "Ashish Vaswani"}, {"authorId": "1846258",
+        "name": "Noam Shazeer"}, {"authorId": "3877127", "name": "Niki Parmar"}, {"authorId":
+        "39328010", "name": "Jakob Uszkoreit"}, {"authorId": "145024664", "name":
+        "Llion Jones"}, {"authorId": "19177000", "name": "Aidan N. Gomez"}, {"authorId":
+        "40527594", "name": "Lukasz Kaiser"}, {"authorId": "3443442", "name": "I.
+        Polosukhin"}], "references": [{"paperId": "032274e57f7d8b456bd255fe76b909b2c1d7458e",
+        "externalIds": {"DBLP": "conf/iclr/PaulusXS18", "MAG": "2612675303", "ArXiv":
+        "1705.04304", "CorpusId": 21850704}}, {"paperId": "43428880d75b3a14257c3ee9bda054e61eb869c0",
+        "externalIds": {"MAG": "2950686565", "DBLP": "journals/corr/GehringAGYD17",
+        "ArXiv": "1705.03122", "CorpusId": 3648736}}, {"paperId": "4550a4c714920ef57d19878e31c9ebae37b049b2",
+        "externalIds": {"MAG": "2952564229", "DBLP": "journals/corr/BritzGLL17", "ACL":
+        "D17-1151", "ArXiv": "1703.03906", "DOI": "10.18653/v1/D17-1151", "CorpusId":
+        2201909}}, {"paperId": "204a4a70428f3938d2c538a4d74c7ae0416306d8", "externalIds":
+        {"DBLP": "conf/iclr/LinFSYXZB17", "ArXiv": "1703.03130", "MAG": "2963386218",
+        "CorpusId": 15280949}}, {"paperId": "79baf48bd560060549998d7b61751286de062e2a",
+        "externalIds": {"MAG": "2963385194", "ArXiv": "1703.10722", "DBLP": "conf/iclr/KuchaievG17",
+        "CorpusId": 3570621}}, {"paperId": "13d9323a8716131911bfda048a40e2cde1a76a46",
+        "externalIds": {"MAG": "2949847915", "DBLP": "conf/iclr/KimDHR17", "ArXiv":
+        "1702.00887", "CorpusId": 6961760}}, {"paperId": "510e26733aaff585d65701b9f1be7ca9d5afc586",
+        "externalIds": {"DBLP": "journals/corr/ShazeerMMDLHD17", "MAG": "2952339051",
+        "ArXiv": "1701.06538", "CorpusId": 12462234}}, {"paperId": "98445f4172659ec5e891e031d8202c102135c644",
+        "externalIds": {"DBLP": "journals/corr/KalchbrennerESO16", "ArXiv": "1610.10099",
+        "MAG": "2540404261", "CorpusId": 13895969}}, {"paperId": "735d547fc75e0772d2a78c46a1cc5fad7da1474c",
+        "externalIds": {"DBLP": "journals/corr/KaiserB16", "ArXiv": "1610.08613",
+        "MAG": "2545625743", "CorpusId": 11250862}}, {"paperId": "5b6ec746d309b165f9f9def873a2375b6fb40f3d",
+        "externalIds": {"DBLP": "conf/cvpr/Chollet17", "MAG": "2951583185", "ArXiv":
+        "1610.02357", "DOI": "10.1109/CVPR.2017.195", "CorpusId": 2375110}}, {"paperId":
+        "c6850869aa5e78a107c378d2e8bfa39633158c0c", "externalIds": {"ArXiv": "1609.08144",
+        "MAG": "2525778437", "DBLP": "journals/corr/WuSCLNMKCGMKSJL16", "CorpusId":
+        3603249}}, {"paperId": "63e39cdf1ad884da6bc69096bb3413b5b1100559", "externalIds":
+        {"DBLP": "journals/corr/PressW16", "MAG": "2952166390", "ArXiv": "1608.05859",
+        "ACL": "E17-2025", "DOI": "10.18653/V1/E17-2025", "CorpusId": 836219}}, {"paperId":
+        "97fb4e3d45bb098e27e0071448b6152217bd35a5", "externalIds": {"MAG": "3037932933",
+        "ArXiv": "1607.06450", "DBLP": "journals/corr/BaKH16", "CorpusId": 8236317}},
+        {"paperId": "b60abe57bc195616063be10638c6437358c81d1e", "externalIds": {"DBLP":
+        "journals/tacl/ZhouCWLX16", "MAG": "2963991316", "ArXiv": "1606.04199", "ACL":
+        "Q16-1027", "DOI": "10.1162/tacl_a_00105", "CorpusId": 8586038}}, {"paperId":
+        "2f2d8f8072e5cc9b296fad551f65f183bdbff7aa", "externalIds": {"ArXiv": "1602.02410",
+        "DBLP": "journals/corr/JozefowiczVSSW16", "MAG": "2259472270", "CorpusId":
+        260422}}, {"paperId": "7345843e87c81e24e42264859b214d26042f8d51", "externalIds":
+        {"MAG": "2950911365", "DBLP": "journals/corr/DyerKBS16", "ACL": "N16-1024",
+        "ArXiv": "1602.07776", "DOI": "10.18653/v1/N16-1024", "CorpusId": 1949831}},
+        {"paperId": "13fe71da009484f240c46f14d9330e932f8de210", "externalIds": {"DBLP":
+        "conf/emnlp/0001DL16", "MAG": "2267186426", "ACL": "D16-1053", "ArXiv": "1601.06733",
+        "DOI": "10.18653/v1/D16-1053", "CorpusId": 6506243}}, {"paperId": "2c03df8b48bf3fa39054345bafabfeff15bfd11d",
+        "externalIds": {"DBLP": "conf/cvpr/HeZRS16", "MAG": "2949650786", "ArXiv":
+        "1512.03385", "DOI": "10.1109/cvpr.2016.90", "CorpusId": 206594692}}, {"paperId":
+        "23ffaa0fe06eae05817f527a47ac3291077f9e58", "externalIds": {"MAG": "2183341477",
+        "DBLP": "journals/corr/SzegedyVISW15", "ArXiv": "1512.00567", "DOI": "10.1109/CVPR.2016.308",
+        "CorpusId": 206593880}}, {"paperId": "5e4eb58d5b47ac1c73f4cf189497170e75ae6237",
+        "externalIds": {"MAG": "2173051530", "DBLP": "journals/corr/KaiserS15", "ArXiv":
+        "1511.08228", "CorpusId": 2009318}}, {"paperId": "d76c07211479e233f7c6a6f32d5346c983c5598f",
+        "externalIds": {"MAG": "2949693738", "ArXiv": "1511.06114", "DBLP": "journals/corr/LuongLSVK15",
+        "CorpusId": 6954272}}, {"paperId": "1518039b5001f1836565215eb047526b3ac7f462",
+        "externalIds": {"DBLP": "conf/acl/SennrichHB16a", "ACL": "P16-1162", "MAG":
+        "1816313093", "ArXiv": "1508.07909", "DOI": "10.18653/v1/P16-1162", "CorpusId":
+        1114678}}, {"paperId": "93499a7c7f699b6630a86fad964536f9423bb6d0", "externalIds":
+        {"DBLP": "journals/corr/LuongPM15", "MAG": "1902237438", "ArXiv": "1508.04025",
+        "ACL": "D15-1166", "DOI": "10.18653/v1/D15-1166", "CorpusId": 1998416}}, {"paperId":
+        "4f10b9f47c5bb6b54dd4f5ca8d9fa2c0bbd7ec5e", "externalIds": {"MAG": "2951008357",
+        "DBLP": "conf/nips/SukhbaatarSWF15", "CorpusId": 1399322}}, {"paperId": "47570e7f63e296f224a0e7f9a0d08b0de3cbaf40",
+        "externalIds": {"DBLP": "conf/nips/VinyalsKKPSH15", "MAG": "2951648188", "ArXiv":
+        "1412.7449", "CorpusId": 14223}}, {"paperId": "a6cb366736791bcccc5c8639de5a8f9636bf87e8",
+        "externalIds": {"MAG": "1522301498", "DBLP": "journals/corr/KingmaB14", "ArXiv":
+        "1412.6980", "CorpusId": 6628106}}, {"paperId": "ac3ee98020251797c2b401e1389461df88e52e62",
+        "externalIds": {"MAG": "1924770834", "DBLP": "journals/corr/ChungGCB14", "ArXiv":
+        "1412.3555", "CorpusId": 5201925}}, {"paperId": "cea967b59209c6be22829699f05b8b1ac4dc092d",
+        "externalIds": {"MAG": "2949888546", "ArXiv": "1409.3215", "DBLP": "journals/corr/SutskeverVL14",
+        "CorpusId": 7961699}}, {"paperId": "fa72afa9b2cbc8f0d7b05d52548906610ffbb9c5",
+        "externalIds": {"MAG": "2964308564", "ArXiv": "1409.0473", "DBLP": "journals/corr/BahdanauCB14",
+        "CorpusId": 11212020}}, {"paperId": "0b544dfe355a5070b60986319a3f51fb45d1348e",
+        "externalIds": {"MAG": "2950635152", "DBLP": "conf/emnlp/ChoMGBBSB14", "ArXiv":
+        "1406.1078", "ACL": "D14-1179", "DOI": "10.3115/v1/D14-1179", "CorpusId":
+        5590763}}, {"paperId": "6471fd1cbc081fb3b7b5b14d6ab9eaaba02b5c17", "externalIds":
+        {"DBLP": "journals/corr/Graves13", "ArXiv": "1308.0850", "MAG": "1810943226",
+        "CorpusId": 1697424}}, {"paperId": "174bbdb96252454cbb40a9c4e53335996235a008",
+        "externalIds": {"MAG": "2126433015", "ACL": "P13-1043", "DBLP": "conf/acl/ZhuZCZZ13",
+        "CorpusId": 10361562}}, {"paperId": "5bfd8d40bc071fffaf93685a46974b122ee4239d",
+        "externalIds": {"DBLP": "conf/emnlp/HuangH09", "ACL": "D09-1087", "MAG": "2113691817",
+        "DOI": "10.3115/1699571.1699621", "CorpusId": 447315}}, {"paperId": "f52de7242e574b70410ca6fb70b79c811919fc00",
+        "externalIds": {"MAG": "2139621418", "DBLP": "conf/acl/PetrovBTK06", "ACL":
+        "P06-1055", "DOI": "10.3115/1220175.1220230", "CorpusId": 6684426}}, {"paperId":
+        "78a9513e70f596077179101f6cb6eadc51602039", "externalIds": {"MAG": "2163568299",
+        "DBLP": "conf/naacl/McCloskyCJ06", "ACL": "N06-1020", "DOI": "10.3115/1220835.1220855",
+        "CorpusId": 628455}}, {"paperId": "2e9d221c206e9503ceb452302d68d10e293f2a10",
+        "externalIds": {"DBLP": "journals/neco/HochreiterS97", "MAG": "2064675550",
+        "DOI": "10.1162/neco.1997.9.8.1735", "CorpusId": 1915014, "PubMed": "9377276"}},
+        {"paperId": "0b44fcbeea9415d400c5f5789d6b892b6f98daff", "externalIds": {"MAG":
+        "2343954916", "DBLP": "journals/coling/MarcusSM94", "ACL": "J93-2004", "CorpusId":
+        252796}}, {"paperId": null, "externalIds": null}, {"paperId": "34f25a8704614163c4095b3ee2fc969b60de4698",
+        "externalIds": {"DBLP": "journals/jmlr/SrivastavaHKSS14", "MAG": "2095705004",
+        "DOI": "10.5555/2627435.2670313", "CorpusId": 6844431}}, {"paperId": "2e5f2b57f4c476dd69dc22ccdf547e48f40a994c",
+        "externalIds": {"MAG": "1525783482", "CorpusId": 17278462}}, {"paperId": null,
+        "externalIds": null}]}
+
+        '
+    headers:
+      access-control-allow-origin:
+      - '*'
+      connection:
+      - keep-alive
+      content-type:
+      - application/json
+      date:
+      - Wed, 30 Sep 2026 12:37:01 GMT
+      via:
+      - 1.1 78cdb4616f79c3d5c19fd7815948ae1a.cloudfront.net (CloudFront)
+      x-amz-apigw-id:
+      - Eg1RPHd2vHcEfwQ=
+      x-amz-cf-id:
+      - JNC3fFkNxOOoYVjprW1Tfn0rhPR3neQFmUUTvySneySKTxP3mXEM9A==
+      x-amz-cf-pop:
+      - IST50-P1
+      x-amzn-remapped-connection:
+      - keep-alive
+      x-amzn-remapped-content-length:
+      - '8311'
+      x-amzn-remapped-date:
+      - Wed, 30 Sep 2026 12:37:01 GMT
+      x-amzn-remapped-server:
+      - gunicorn
+      x-amzn-requestid:
+      - d90fffd0-fd27-48b2-9bd7-acc5777be3fe
+      x-cache:
+      - Miss from cloudfront
+    status:
+      code: 200
+      message: OK
+version: 1
