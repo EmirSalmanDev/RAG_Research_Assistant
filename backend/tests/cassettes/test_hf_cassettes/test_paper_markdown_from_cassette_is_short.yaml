@@ -1,0 +1,59 @@
+interactions:
+- request:
+    body: ''
+    headers:
+      accept:
+      - '*/*'
+      accept-encoding:
+      - gzip, deflate
+      connection:
+      - keep-alive
+      host:
+      - huggingface.co
+      user-agent:
+      - research-copilot/0.1 (personal research tool)
+    method: GET
+    uri: https://huggingface.co/papers/1706.03762.md
+  response:
+    body:
+      string: '# Invented paper
+
+
+        This body replaces the real full text in the cassette.
+
+        '
+    headers:
+      alt-svc:
+      - h3=":443"; ma=86400
+      connection:
+      - keep-alive
+      content-type:
+      - text/markdown; charset=utf-8
+      cross-origin-opener-policy:
+      - same-origin
+      date:
+      - Wed, 30 Sep 2026 12:35:40 GMT
+      ratelimit:
+      - '"pages";r=99;t=8'
+      ratelimit-policy:
+      - '"fixed window";"pages";q=100;w=300'
+      referrer-policy:
+      - strict-origin-when-cross-origin
+      strict-transport-security:
+      - max-age=31536000
+      via:
+      - 1.1 9db2127f9c4e0a99e18f8cda7d0645a0.cloudfront.net (CloudFront)
+      x-amz-cf-id:
+      - BQhf1uqeK7q2lu4D81PAbFWXkMxxshjN4TLBMyAeizlbl9M2pNOU9Q==
+      x-amz-cf-pop:
+      - IST52-P2
+      x-cache:
+      - Miss from cloudfront
+      x-powered-by:
+      - huggingface-moon
+      x-request-id:
+      - Root=1-6abd021c-64706cab16a77210698dcd23
+    status:
+      code: 200
+      message: OK
+version: 1

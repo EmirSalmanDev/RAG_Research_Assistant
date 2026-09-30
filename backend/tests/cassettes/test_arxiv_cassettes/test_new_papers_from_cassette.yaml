@@ -1,0 +1,188 @@
+interactions:
+- request:
+    body: null
+    headers:
+      Accept:
+      - '*/*'
+      Accept-Encoding:
+      - gzip, deflate
+      Connection:
+      - keep-alive
+      user-agent:
+      - arxiv.py/4.0.1
+    method: GET
+    uri: https://export.arxiv.org/api/query?max_results=5&search_query=cat%3Acs.CL+AND+submittedDate%3A%5B202609280000+TO+202609290000%5D&sortBy=submittedDate&sortOrder=descending&start=0
+  response:
+    body:
+      string: "<?xml version='1.0' encoding='UTF-8'?>\n<feed xmlns:opensearch=\"http://a9.com/-/spec/opensearch/1.1/\"
+        xmlns:arxiv=\"http://arxiv.org/schemas/atom\" xmlns=\"http://www.w3.org/2005/Atom\">\n
+        \ <id>https://arxiv.org/api/lmqrDTw/HLKj3+0KDF/bZvCCrCQ</id>\n  <title>arXiv
+        Query: search_query=cat:cs.CL AND submittedDate:\"202609280000 TO 202609290000\"&amp;id_list=&amp;start=0&amp;max_results=5</title>\n
+        \ <updated>2026-09-30T12:36:49Z</updated>\n  <link href=\"https://arxiv.org/api/query?search_query=cat:cs.CL+AND+submittedDate:%22202609280000+TO+202609290000%22&amp;start=0&amp;max_results=5&amp;id_list=\"
+        type=\"application/atom+xml\"/>\n  <opensearch:itemsPerPage>5</opensearch:itemsPerPage>\n
+        \ <opensearch:totalResults>192</opensearch:totalResults>\n  <opensearch:startIndex>0</opensearch:startIndex>\n
+        \ <entry>\n    <id>http://arxiv.org/abs/2609.36399v1</id>\n    <title>Calibrated
+        to Whom? Persona and Language Effects on Cultural Values in JEV</title>\n
+        \   <updated>2026-09-28T23:53:31Z</updated>\n    <link href=\"https://arxiv.org/abs/2609.36399v1\"
+        rel=\"alternate\" type=\"text/html\"/>\n    <link href=\"https://arxiv.org/pdf/2609.36399v1\"
+        rel=\"related\" type=\"application/pdf\" title=\"pdf\"/>\n    <summary>Decision-only
+        language models return a probability for every answer option instead of generating
+        text, which makes them attractive as survey respondents and as judges. We
+        audit the cultural values of one such model, TypeSafe's JEV, with the Values
+        Survey Module 2013. We asked it the 24 items as 12 matched Saudi and 12 matched
+        American personas and without a persona, in English and Arabic, under eight
+        ways of formulating the request (288,000 answers). JEV's answers were highly
+        repeatable (ICC 0.997), and without a persona they resembled those of its
+        own American personas. When the persona was Saudi rather than American, the
+        answers moved in the direction of the human Saudi-US difference, reproducing
+        87% of its size in English but 62% in Arabic, with long-term orientation reversed.
+        A language cross shows that the smaller difference in Arabic comes from the
+        language of the items, not from the language of the persona description. Age
+        shifted the profiles about as much as nationality, gender shifted them more
+        for Saudi than for American personas, and JEV was less confident in Arabic
+        and for Saudi personas. These patterns held in every request design, although
+        the model never generates text.</summary>\n    <category term=\"cs.CL\" scheme=\"http://arxiv.org/schemas/atom\"/>\n
+        \   <category term=\"cs.AI\" scheme=\"http://arxiv.org/schemas/atom\"/>\n
+        \   <published>2026-09-28T23:53:31Z</published>\n    <arxiv:primary_category
+        term=\"cs.CL\"/>\n    <author>\n      <name>Bushra Asseri</name>\n    </author>\n
+        \   <author>\n      <name>Abdulaziz Asseri</name>\n    </author>\n  </entry>\n
+        \ <entry>\n    <id>http://arxiv.org/abs/2609.36372v1</id>\n    <title>TTMark:
+        Pairwise Distortion-Free Watermarking Beyond Single-Token Entropy</title>\n
+        \   <updated>2026-09-28T23:04:53Z</updated>\n    <link href=\"https://arxiv.org/abs/2609.36372v1\"
+        rel=\"alternate\" type=\"text/html\"/>\n    <link href=\"https://arxiv.org/pdf/2609.36372v1\"
+        rel=\"related\" type=\"application/pdf\" title=\"pdf\"/>\n    <summary>Distortion-free
+        watermarking enables reliable attribution of machine-generated text while
+        preserving output distribution. However, existing methods operate independently
+        on each generated token, making their detection capability fundamentally constrained
+        by the entropy of the next-token distribution. We present Tandem Token WaterMark
+        (TTMARK), a general pairwise watermarking framework that extends distortion-free
+        watermarking from individual tokens to adjacent token pairs. By watermarking
+        the joint distribution of consecutive tokens, TTMARK enlarges the effective
+        watermarking alphabet from V to $V^2$, allowing the detector to exploit both
+        token entropy and conditional entropy while preserving distortion-freeness
+        over the joint distribution. We further introduce a branch-isolating concatenated
+        tandem generation algorithm that efficiently constructs the joint distribution
+        in a single forward pass. Theoretically, we show that pairwise watermarking
+        achieves better expected detection strength in low-entropy regimes. Extensive
+        experiments across multiple language models, datasets, and three representative
+        distortion-free watermarking schemes demonstrate that TTMARK consistently
+        improves detectability without degrading generation quality, while also improving
+        robustness to edits and substantially enhancing localized watermark detection.</summary>\n
+        \   <category term=\"cs.CR\" scheme=\"http://arxiv.org/schemas/atom\"/>\n
+        \   <category term=\"cs.CL\" scheme=\"http://arxiv.org/schemas/atom\"/>\n
+        \   <published>2026-09-28T23:04:53Z</published>\n    <arxiv:primary_category
+        term=\"cs.CR\"/>\n    <author>\n      <name>Ruibo Chen</name>\n    </author>\n
+        \   <author>\n      <name>Zhengmian Hu</name>\n    </author>\n    <author>\n
+        \     <name>Donghang Lu</name>\n    </author>\n    <author>\n      <name>Xuehao
+        Cui</name>\n    </author>\n    <author>\n      <name>Georgios Milis</name>\n
+        \   </author>\n    <author>\n      <name>Yihan Wu</name>\n    </author>\n
+        \   <author>\n      <name>Jian Du</name>\n    </author>\n    <author>\n      <name>Heng
+        Huang</name>\n    </author>\n  </entry>\n  <entry>\n    <id>http://arxiv.org/abs/2609.36344v1</id>\n
+        \   <title>DeepRewind: Predicting and Repairing Premature Commitments in Deep
+        Research Agents</title>\n    <updated>2026-09-28T22:27:33Z</updated>\n    <link
+        href=\"https://arxiv.org/abs/2609.36344v1\" rel=\"alternate\" type=\"text/html\"/>\n
+        \   <link href=\"https://arxiv.org/pdf/2609.36344v1\" rel=\"related\" type=\"application/pdf\"
+        title=\"pdf\"/>\n    <summary>Deep-research agents conduct long-horizon investigations
+        through iterative search, evidence evaluation, belief revision, and synthesis.
+        However, they may commit to claims before sufficient evidence is available,
+        causing later reasoning to reinforce an incorrect interpretation. We introduce
+        DeepRewind, an additive control layer for reversible deep research that represents
+        the agent's evolving epistemic state as a typed graph of sources, evidence,
+        claims, hypotheses, assumptions, commitments, plans, and drafts. Before accepting
+        an intermediate conclusion, a prompt-based world model predicts its impact
+        and estimates reversibility based on hypothesis narrowing, information loss,
+        recovery cost, and contradiction-trigger coverage. A binary controller blocks
+        risky commitments, while a consistency monitor performs dependency-aware rollback
+        when later evidence invalidates them. Across DRBench and LiveDRBench, DeepRewind
+        improves insight recall by 3.6 percentage points and reduces premature commitments
+        by 59.1% relative to Open Deep Research.</summary>\n    <category term=\"cs.CL\"
+        scheme=\"http://arxiv.org/schemas/atom\"/>\n    <published>2026-09-28T22:27:33Z</published>\n
+        \   <arxiv:primary_category term=\"cs.CL\"/>\n    <author>\n      <name>Amirhossein
+        Abaskohi</name>\n    </author>\n    <author>\n      <name>Amirhossein Dabiriaghdam</name>\n
+        \   </author>\n    <author>\n      <name>Lele Wang</name>\n    </author>\n
+        \   <author>\n      <name>Peter West</name>\n    </author>\n    <author>\n
+        \     <name>Giuseppe Carenini</name>\n    </author>\n  </entry>\n  <entry>\n
+        \   <id>http://arxiv.org/abs/2609.36316v1</id>\n    <title>Training LLMs to
+        Verbalize Evaluation Awareness</title>\n    <updated>2026-09-28T21:48:48Z</updated>\n
+        \   <link href=\"https://arxiv.org/abs/2609.36316v1\" rel=\"alternate\" type=\"text/html\"/>\n
+        \   <link href=\"https://arxiv.org/pdf/2609.36316v1\" rel=\"related\" type=\"application/pdf\"
+        title=\"pdf\"/>\n    <summary>Evaluation awareness (EA) can cause large language
+        models (LLMs) to behave differently during audits than in deployment, yet
+        measuring and accounting for EA remains challenging. We introduce verbalization
+        training (VT), a method for making LLMs less reticent about verbalizing evaluation
+        awareness while avoiding to supervise the latent belief itself. VT uses a
+        model's spontaneous verbalizations as evidence that awareness is present and
+        truncates each rollout immediately before the verbalization, producing training
+        prefixes at which the model is presumed to be aware. The model is then trained
+        with an RL objective designed to increase verbalization in a calibrated way.
+        Across Qwen3.6-35B-A3B, Kimi K2.6, and Inkling, VT increases verbalized EA
+        by 2.4-2.9 times and transfers to held-out agentic settings, while measured
+        latent EA and behavior remain largely stable. In a causal experiment, we independently
+        implant meta-knowledge about evaluations through synthetic-document fine-tuning
+        and show that VT-induced verbalizations reflect the richer knowledge acquired
+        by the model.</summary>\n    <category term=\"cs.CL\" scheme=\"http://arxiv.org/schemas/atom\"/>\n
+        \   <category term=\"cs.AI\" scheme=\"http://arxiv.org/schemas/atom\"/>\n
+        \   <category term=\"cs.LG\" scheme=\"http://arxiv.org/schemas/atom\"/>\n
+        \   <published>2026-09-28T21:48:48Z</published>\n    <arxiv:primary_category
+        term=\"cs.CL\"/>\n    <author>\n      <name>Usman Anwar</name>\n    </author>\n
+        \   <author>\n      <name>Sahar Abdelnabi</name>\n    </author>\n    <author>\n
+        \     <name>David Krueger</name>\n    </author>\n  </entry>\n  <entry>\n    <id>http://arxiv.org/abs/2609.36314v1</id>\n
+        \   <title>Fractional State Space Transition for Long Sequence Modeling</title>\n
+        \   <updated>2026-09-28T21:48:14Z</updated>\n    <link href=\"https://arxiv.org/abs/2609.36314v1\"
+        rel=\"alternate\" type=\"text/html\"/>\n    <link href=\"https://arxiv.org/pdf/2609.36314v1\"
+        rel=\"related\" type=\"application/pdf\" title=\"pdf\"/>\n    <summary>State
+        Space Models (SSMs) compress sequence history into a bounded recurrent state,
+        making the resulting memory law a central architectural choice for long-context
+        performance. Most modern SSMs rely on ODE-based dynamics that lead to exponential
+        forgetting, limiting their ability to retain information over broad temporal
+        ranges. We introduce FRAC, a selective SSM architecture derived from fractional
+        dynamics that replaces this exponential decay with power-law long memory.
+        To make fractional dynamics practical, FRAC approximates the heavy-tailed
+        target kernel with a finite-state, log-spaced sum of exponential modes. This
+        construction turns fractional memory into an efficient recurrent module with
+        parallel training and prefill, while retaining bounded-state autoregressive
+        decoding. Extensive experiments, including 1.3B-parameter language modeling,
+        demonstrate that FRAC consistently improves long-context performance over
+        state-of-the-art SSM baselines while staying competitive on short-context.
+        These results show that fractional dynamics provide a practical and effective
+        prior for long-context SSMs.</summary>\n    <category term=\"cs.LG\" scheme=\"http://arxiv.org/schemas/atom\"/>\n
+        \   <category term=\"cs.CL\" scheme=\"http://arxiv.org/schemas/atom\"/>\n
+        \   <published>2026-09-28T21:48:14Z</published>\n    <arxiv:comment>NeurIPS
+        2026 (Oral)</arxiv:comment>\n    <arxiv:primary_category term=\"cs.LG\"/>\n
+        \   <author>\n      <name>Ivan Kobyzev</name>\n    </author>\n    <author>\n
+        \     <name>Abbas Ghaddar</name>\n    </author>\n    <author>\n      <name>Ali
+        Nasiri-Sarvi</name>\n    </author>\n    <author>\n      <name>Lifeng Shang</name>\n
+        \   </author>\n    <author>\n      <name>Yufei Cui</name>\n    </author>\n
+        \ </entry>\n</feed>\n"
+    headers:
+      Accept-Ranges:
+      - bytes
+      Age:
+      - '0'
+      Connection:
+      - keep-alive
+      Date:
+      - Wed, 30 Sep 2026 12:36:50 GMT
+      Strict-Transport-Security:
+      - max-age=300
+      X-Cache:
+      - MISS, MISS, MISS
+      X-Cache-Hits:
+      - 0, 0, 0
+      X-Served-By:
+      - cache-lga-kjfk8660077-LGA, cache-lga-kjfk8660077-LGA, cache-lga-kjfk8660077-LGA,
+        cache-fra-etou8220030-FRA
+      X-Timer:
+      - S1790771810.623813,VS0,VE441
+      content-type:
+      - application/atom+xml; charset=utf-8
+      server:
+      - Google Frontend
+      via:
+      - 1.1 google, 1.1 varnish, 1.1 varnish, 1.1 varnish
+      x-cloud-trace-context:
+      - 603347abc92c79ff44c7f5c5c7486d89
+    status:
+      code: 200
+      message: OK
+version: 1

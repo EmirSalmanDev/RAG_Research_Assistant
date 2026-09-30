@@ -1,0 +1,82 @@
+interactions:
+- request:
+    body: ''
+    headers:
+      accept:
+      - application/vnd.github+json
+      accept-encoding:
+      - gzip, deflate
+      connection:
+      - keep-alive
+      host:
+      - api.github.com
+      user-agent:
+      - research-copilot/0.1 (personal research tool)
+      x-github-api-version:
+      - '2022-11-28'
+    method: GET
+    uri: https://api.github.com/repos/tensorflow/tensor2tensor
+  response:
+    body:
+      string: '{"id":94460704,"node_id":"MDEwOlJlcG9zaXRvcnk5NDQ2MDcwNA==","name":"tensor2tensor","full_name":"tensorflow/tensor2tensor","private":false,"owner":{"login":"tensorflow","id":15658638,"node_id":"MDEyOk9yZ2FuaXphdGlvbjE1NjU4NjM4","avatar_url":"https://avatars.githubusercontent.com/u/15658638?v=4","gravatar_id":"","url":"https://api.github.com/users/tensorflow","html_url":"https://github.com/tensorflow","followers_url":"https://api.github.com/users/tensorflow/followers","following_url":"https://api.github.com/users/tensorflow/following{/other_user}","gists_url":"https://api.github.com/users/tensorflow/gists{/gist_id}","starred_url":"https://api.github.com/users/tensorflow/starred{/owner}{/repo}","subscriptions_url":"https://api.github.com/users/tensorflow/subscriptions","organizations_url":"https://api.github.com/users/tensorflow/orgs","repos_url":"https://api.github.com/users/tensorflow/repos","events_url":"https://api.github.com/users/tensorflow/events{/privacy}","received_events_url":"https://api.github.com/users/tensorflow/received_events","type":"Organization","user_view_type":"public","site_admin":false},"html_url":"https://github.com/tensorflow/tensor2tensor","description":"Library
+        of deep learning models and datasets designed to make deep learning more accessible
+        and accelerate ML research.","fork":false,"url":"https://api.github.com/repos/tensorflow/tensor2tensor","forks_url":"https://api.github.com/repos/tensorflow/tensor2tensor/forks","keys_url":"https://api.github.com/repos/tensorflow/tensor2tensor/keys{/key_id}","collaborators_url":"https://api.github.com/repos/tensorflow/tensor2tensor/collaborators{/collaborator}","teams_url":"https://api.github.com/repos/tensorflow/tensor2tensor/teams","hooks_url":"https://api.github.com/repos/tensorflow/tensor2tensor/hooks","issue_events_url":"https://api.github.com/repos/tensorflow/tensor2tensor/issues/events{/number}","events_url":"https://api.github.com/repos/tensorflow/tensor2tensor/events","assignees_url":"https://api.github.com/repos/tensorflow/tensor2tensor/assignees{/user}","branches_url":"https://api.github.com/repos/tensorflow/tensor2tensor/branches{/branch}","tags_url":"https://api.github.com/repos/tensorflow/tensor2tensor/tags","blobs_url":"https://api.github.com/repos/tensorflow/tensor2tensor/git/blobs{/sha}","git_tags_url":"https://api.github.com/repos/tensorflow/tensor2tensor/git/tags{/sha}","git_refs_url":"https://api.github.com/repos/tensorflow/tensor2tensor/git/refs{/sha}","trees_url":"https://api.github.com/repos/tensorflow/tensor2tensor/git/trees{/sha}","statuses_url":"https://api.github.com/repos/tensorflow/tensor2tensor/statuses/{sha}","languages_url":"https://api.github.com/repos/tensorflow/tensor2tensor/languages","stargazers_url":"https://api.github.com/repos/tensorflow/tensor2tensor/stargazers","contributors_url":"https://api.github.com/repos/tensorflow/tensor2tensor/contributors","subscribers_url":"https://api.github.com/repos/tensorflow/tensor2tensor/subscribers","subscription_url":"https://api.github.com/repos/tensorflow/tensor2tensor/subscription","commits_url":"https://api.github.com/repos/tensorflow/tensor2tensor/commits{/sha}","git_commits_url":"https://api.github.com/repos/tensorflow/tensor2tensor/git/commits{/sha}","comments_url":"https://api.github.com/repos/tensorflow/tensor2tensor/comments{/number}","issue_comment_url":"https://api.github.com/repos/tensorflow/tensor2tensor/issues/comments{/number}","contents_url":"https://api.github.com/repos/tensorflow/tensor2tensor/contents/{+path}","compare_url":"https://api.github.com/repos/tensorflow/tensor2tensor/compare/{base}...{head}","merges_url":"https://api.github.com/repos/tensorflow/tensor2tensor/merges","archive_url":"https://api.github.com/repos/tensorflow/tensor2tensor/{archive_format}{/ref}","downloads_url":"https://api.github.com/repos/tensorflow/tensor2tensor/downloads","issues_url":"https://api.github.com/repos/tensorflow/tensor2tensor/issues{/number}","pulls_url":"https://api.github.com/repos/tensorflow/tensor2tensor/pulls{/number}","milestones_url":"https://api.github.com/repos/tensorflow/tensor2tensor/milestones{/number}","notifications_url":"https://api.github.com/repos/tensorflow/tensor2tensor/notifications{?since,all,participating}","labels_url":"https://api.github.com/repos/tensorflow/tensor2tensor/labels{/name}","releases_url":"https://api.github.com/repos/tensorflow/tensor2tensor/releases{/id}","deployments_url":"https://api.github.com/repos/tensorflow/tensor2tensor/deployments","created_at":"2017-06-15T16:57:39Z","updated_at":"2026-09-30T04:29:13Z","pushed_at":"2023-06-02T18:55:09Z","git_url":"git://github.com/tensorflow/tensor2tensor.git","ssh_url":"git@github.com:tensorflow/tensor2tensor.git","clone_url":"https://github.com/tensorflow/tensor2tensor.git","svn_url":"https://github.com/tensorflow/tensor2tensor","homepage":"","size":17508,"stargazers_count":17472,"watchers_count":17472,"language":"Python","has_issues":true,"has_projects":false,"has_downloads":false,"has_wiki":false,"has_pages":true,"has_discussions":false,"forks_count":3797,"mirror_url":null,"archived":true,"disabled":false,"open_issues_count":589,"license":{"key":"apache-2.0","name":"Apache
+        License 2.0","spdx_id":"Apache-2.0","url":"https://api.github.com/licenses/apache-2.0","node_id":"MDc6TGljZW5zZTI="},"allow_forking":true,"is_template":false,"web_commit_signoff_required":false,"has_pull_requests":true,"pull_request_creation_policy":"all","topics":["deep-learning","machine-learning","machine-translation","reinforcement-learning","tpu"],"visibility":"public","forks":3797,"open_issues":589,"watchers":17472,"default_branch":"master","temp_clone_token":null,"custom_properties":{"ai_agent_config_bypass":"false","ghss-action-scanning-disabled":"false","ghss-action-scanning-optin":"false","requires_action_scanning":"true","requires_two_party_review":"false"},"organization":{"login":"tensorflow","id":15658638,"node_id":"MDEyOk9yZ2FuaXphdGlvbjE1NjU4NjM4","avatar_url":"https://avatars.githubusercontent.com/u/15658638?v=4","gravatar_id":"","url":"https://api.github.com/users/tensorflow","html_url":"https://github.com/tensorflow","followers_url":"https://api.github.com/users/tensorflow/followers","following_url":"https://api.github.com/users/tensorflow/following{/other_user}","gists_url":"https://api.github.com/users/tensorflow/gists{/gist_id}","starred_url":"https://api.github.com/users/tensorflow/starred{/owner}{/repo}","subscriptions_url":"https://api.github.com/users/tensorflow/subscriptions","organizations_url":"https://api.github.com/users/tensorflow/orgs","repos_url":"https://api.github.com/users/tensorflow/repos","events_url":"https://api.github.com/users/tensorflow/events{/privacy}","received_events_url":"https://api.github.com/users/tensorflow/received_events","type":"Organization","user_view_type":"public","site_admin":false},"network_count":3797,"subscribers_count":10}'
+    headers:
+      accept-ranges:
+      - bytes
+      access-control-allow-origin:
+      - '*'
+      access-control-expose-headers:
+      - ETag, Link, Location, Retry-After, X-GitHub-OTP, X-RateLimit-Limit, X-RateLimit-Remaining,
+        X-RateLimit-Used, X-RateLimit-Resource, X-RateLimit-Reset, X-OAuth-Scopes,
+        X-Accepted-OAuth-Scopes, X-Poll-Interval, X-GitHub-Media-Type, X-GitHub-SSO,
+        X-GitHub-Request-Id, Deprecation, Sunset, Warning
+      cache-control:
+      - public, max-age=60, s-maxage=60
+      content-security-policy:
+      - default-src 'none'
+      content-type:
+      - application/json; charset=utf-8
+      date:
+      - Wed, 30 Sep 2026 12:36:39 GMT
+      etag:
+      - W/"7bd7af6f43d27d0324cfbf3e6d837926af648a42f7ca8598310a1e4ba7d5dc57"
+      last-modified:
+      - Wed, 30 Sep 2026 04:29:13 GMT
+      referrer-policy:
+      - origin-when-cross-origin, strict-origin-when-cross-origin
+      server:
+      - github.com
+      strict-transport-security:
+      - max-age=31536000; includeSubdomains; preload
+      vary:
+      - Accept,Accept-Encoding, Accept, X-Requested-With
+      x-content-type-options:
+      - nosniff
+      x-frame-options:
+      - deny
+      x-github-api-version-selected:
+      - '2022-11-28'
+      x-github-edge-region:
+      - fra
+      x-github-media-type:
+      - github.v3; format=json
+      x-github-request-id:
+      - B765:B6CC:84EFA75:84EA9AF:6ABD0257
+      x-ratelimit-limit:
+      - '60'
+      x-ratelimit-remaining:
+      - '59'
+      x-ratelimit-reset:
+      - '1790775399'
+      x-ratelimit-resource:
+      - core
+      x-ratelimit-used:
+      - '1'
+      x-xss-protection:
+      - '0'
+    status:
+      code: 200
+      message: OK
+version: 1

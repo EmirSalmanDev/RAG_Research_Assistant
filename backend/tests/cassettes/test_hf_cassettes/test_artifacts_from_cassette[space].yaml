@@ -1,0 +1,66 @@
+interactions:
+- request:
+    body: ''
+    headers:
+      accept:
+      - '*/*'
+      accept-encoding:
+      - gzip, deflate
+      connection:
+      - keep-alive
+      host:
+      - huggingface.co
+      user-agent:
+      - research-copilot/0.1 (personal research tool)
+    method: GET
+    uri: https://huggingface.co/api/spaces?filter=arxiv%3A1706.03762&limit=100
+  response:
+    body:
+      string: '[]'
+    headers:
+      access-control-allow-origin:
+      - https://huggingface.co
+      access-control-expose-headers:
+      - X-Repo-Commit,X-Request-Id,X-Error-Code,X-Error-Message,X-Total-Count,ETag,Link,Accept-Ranges,Content-Range,X-Linked-Size,X-Linked-ETag,X-Xet-Hash
+      access-control-max-age:
+      - '86400'
+      alt-svc:
+      - h3=":443"; ma=86400
+      connection:
+      - keep-alive
+      content-type:
+      - application/json; charset=utf-8
+      cross-origin-opener-policy:
+      - same-origin
+      date:
+      - Wed, 30 Sep 2026 12:35:41 GMT
+      etag:
+      - W/"2-l9Fw4VUO7kr8CvBlt4zaMCqXZ0w"
+      ratelimit:
+      - '"api";r=495;t=7'
+      ratelimit-policy:
+      - '"fixed window";"api";q=500;w=300'
+      referrer-policy:
+      - strict-origin-when-cross-origin
+      server-timing:
+      - mongo1-0;dur=1.7705659996718168
+      strict-transport-security:
+      - max-age=31536000
+      vary:
+      - Origin
+      via:
+      - 1.1 b4d44b1c9cecc3f9334d6b1daac041b4.cloudfront.net (CloudFront)
+      x-amz-cf-id:
+      - k-f1xO5MxQGf6CyElWCP8nO5RXJLgW90VXRkcF25wFv-2icgBBVUkQ==
+      x-amz-cf-pop:
+      - IST52-P2
+      x-cache:
+      - Miss from cloudfront
+      x-powered-by:
+      - huggingface-moon
+      x-request-id:
+      - Root=1-6abd021d-762df9f66bb561a014faed70
+    status:
+      code: 200
+      message: OK
+version: 1

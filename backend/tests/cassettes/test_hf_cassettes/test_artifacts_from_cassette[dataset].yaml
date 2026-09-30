@@ -1,0 +1,179 @@
+interactions:
+- request:
+    body: ''
+    headers:
+      accept:
+      - '*/*'
+      accept-encoding:
+      - gzip, deflate
+      connection:
+      - keep-alive
+      host:
+      - huggingface.co
+      user-agent:
+      - research-copilot/0.1 (personal research tool)
+    method: GET
+    uri: https://huggingface.co/api/datasets?filter=arxiv%3A1706.03762&limit=100
+  response:
+    body:
+      string: '[{"_id": "66688315b22e8b20976e02b3", "id": "FcmC/E4SelfLearning", "author":
+        "FcmC", "disabled": false, "gated": false, "lastModified": "2024-06-30T20:07:10.000Z",
+        "likes": 1, "trendingScore": 0, "private": false, "sha": "f03b7d8f4fbf3f7eab0346cafaf91b1cb058df8b",
+        "description": "E4SelfLearning is a collection of the following open-access
+        datasets recording with an Empatica E4: \n\nADARP - Creative Commons Attribution
+        4.0 International\nBID IDEAS Lab - Open Data Commons Attribution License v1.0\nIn-Gauge
+        En-Gage - Open Data Commons Attribution License v1.0\nNurses Stress Detection
+        - ODC Database Contents License (DbCL) v1.0\nPPG-DaLiA - Creative Commons
+        Attribution 4.0 International\nSPS - MIT License\nToadstool - Creative Commons
+        Attribution 4.0 International\nUE4W- Creative\u2026 See the full description
+        on the dataset page: https://huggingface.co/datasets/FcmC/E4SelfLearning.",
+        "downloads": 18, "tags": ["license:cc", "arxiv:2311.04215", "arxiv:1706.03762",
+        "region:us"], "createdAt": "2024-06-11T17:02:13.000Z", "key": ""}, {"_id":
+        "67635516d09954b7a90b03b1", "id": "bird-of-paradise/transformer-from-scratch-tutorial",
+        "author": "bird-of-paradise", "disabled": false, "gated": false, "lastModified":
+        "2026-01-12T02:02:20.000Z", "likes": 46, "trendingScore": 0, "private": false,
+        "sha": "bda7411071b2d41d00e0cdc782569a43221e3e14", "description": "\n\t\n\t\t\n\t\tImplementing
+        Transformer from Scratch: A Step-by-Step Guide\n\t\n\nThis repository provides
+        a detailed guide and implementation of the Transformer architecture from the
+        \"Attention Is All You Need\" paper. The implementation focuses on understanding
+        each component through clear code, comprehensive testing, and visual aids.\nFor
+        implementions of more recent architectural innovations from DeepSeek, see
+        the Related Implementations section.\n\n\t\n\t\t\n\t\n\t\n\t\tQuick Start\n\t\n\nView
+        the complete\u2026 See the full description on the dataset page: https://huggingface.co/datasets/bird-of-paradise/transformer-from-scratch-tutorial.",
+        "downloads": 221, "tags": ["license:mit", "arxiv:1706.03762", "region:us"],
+        "createdAt": "2024-12-18T23:04:54.000Z", "key": ""}, {"_id": "689e4c4c88d0dc6643f9337e",
+        "id": "asvs/gpt5-attention-is-all-you-need-quiz", "author": "asvs", "disabled":
+        false, "gated": false, "lastModified": "2025-08-14T21:04:35.000Z", "likes":
+        0, "trendingScore": 0, "private": false, "sha": "f93d51db9148c49292db27009ad8fceb214ba663",
+        "description": "\n\t\n\t\t\n\t\tDataset Card for \"Attention is all you need\"
+        quiz\n\t\n\nGPT5-Thinking generated synthetic dataset of 15 questions, choices
+        and answers.\n\n\t\n\t\t\n\t\tPrompt used for generation\n\t\n\nhttps://arxiv.org/pdf/1706.03762
+        Create a quiz of 15 questions with answers in the form of a hf dataset.\n\n\n\t\n\t\t\n\t\tDataset
+        Card Contact\n\t\n\nIDK\n", "downloads": 18, "tags": ["task_categories:question-answering",
+        "language:en", "license:mit", "size_categories:n<1K", "format:parquet", "modality:tabular",
+        "modality:text", "library:datasets", "library:pandas", "library:mlcroissant",
+        "library:polars", "arxiv:1706.03762", "region:us"], "createdAt": "2025-08-14T20:51:24.000Z",
+        "key": ""}, {"_id": "696efa72e6c58c5b5218f062", "id": "abhisu30/transformer-hackathon-leaderboard",
+        "author": "abhisu30", "disabled": false, "gated": false, "lastModified": "2026-02-07T23:59:38.000Z",
+        "likes": 0, "trendingScore": 0, "private": false, "sha": "5752db278d6a454e0c82e9232d5bec2e6d614706",
+        "description": "\n\t\n\t\t\n\t\t\ud83c\udfc6 Transformer Hackathon Leaderboard\n\t\n\nBuild
+        Your Own GPT \u2022 Train \u2022 Compete \u2022 Win!\n\n\t\n\t\t\n\t\t\ud83d\udcca
+        Current Standings\n\t\n\nLower perplexity = better model performance\n\n\t\n\t\t\nRank\nName\nTeam\nPerplexity
+        \u2b07\ufe0f\nLoss\nTokens/sec\nTimestamp\n\n\n\t\t\n\ud83e\udd47\nKay sep\nkay\n1.9439\n0.6647\n67774\n2026-02-07
+        21:29\n\n\n\ud83e\udd48\nPraneeth\nSolo\n1.9832\n0.6847\n91551\n2026-02-07
+        21:35\n\n\n\ud83e\udd49\nJames Faul, Vatsala\nBA\n1.9970\n0.6917\n149140\n2026-02-07
+        20:18\n\n\n4\nImageBear\nSolo\n1.9983\n0.6923\n67189\n2026-02-07 20:10\n\n\n5\nMatt
+        O\nSolo\n2.02160.7039\n64286\u2026 See the full description on the dataset
+        page: https://huggingface.co/datasets/abhisu30/transformer-hackathon-leaderboard.",
+        "downloads": 16, "tags": ["size_categories:n<1K", "format:json", "modality:text",
+        "library:datasets", "library:pandas", "library:polars", "library:mlcroissant",
+        "arxiv:1706.03762", "region:us"], "createdAt": "2026-01-20T03:45:54.000Z",
+        "key": ""}, {"_id": "69be264f8ef670b5bf343318", "id": "alpha-one-index/awesome-ai-index",
+        "author": "alpha-one-index", "disabled": false, "gated": false, "lastModified":
+        "2026-03-25T05:18:24.000Z", "likes": 2, "trendingScore": 0, "private": false,
+        "sha": "1104526a8a798037997981453231f7498f3fffda", "description": "\n\t\n\t\t\n\t\tAwesome
+        AI Index  \n\t\n\nMachine-readable JSON. No paywalls. Updated daily via GitHub
+        Actions.\n\nCurated catalog of AI tools, models, papers, frameworks, and resources
+        for engineers and researchers.\n\n\n\t\n\t\t\n\t\n\t\n\t\tContents\n\t\n\n\nWhat''s
+        Inside\nWhy This Exists\nQuick Start\nTop Open Models\nTop Proprietary Models\nAgent
+        Frameworks\nRAG Frameworks & Tools\nFine-Tuning Tools\nInference Optimization\nVector
+        Databases\nLLM Orchestration\nPrompt Engineering\nAI Code Assistants\nAI Image
+        Generation\nAI Video\u2026 See the full description on the dataset page: https://huggingface.co/datasets/alpha-one-index/awesome-ai-index.",
+        "downloads": 343, "tags": ["task_categories:text-classification", "task_categories:question-answering",
+        "language:en", "license:cc-by-sa-4.0", "size_categories:1K<n<10K", "arxiv:2311.12022",
+        "arxiv:2311.07911", "arxiv:1803.09010", "arxiv:2412.19437", "arxiv:2408.03314",
+        "arxiv:2212.08073", "arxiv:1706.03762", "arxiv:2106.09685", "arxiv:2203.02155",
+        "arxiv:2201.11903", "arxiv:2005.11401", "arxiv:2303.17564", "region:us", "ai",
+        "machine-learning", "deep-learning", "awesome-list", "ai-tools", "llm", "rag",
+        "agents", "benchmarks"], "createdAt": "2026-03-21T05:02:07.000Z", "key": ""},
+        {"_id": "69e2c1bac3f0c38f76d15282", "id": "molmohsen/attention-is-all-you-need",
+        "author": "molmohsen", "disabled": false, "gated": false, "lastModified":
+        "2026-04-17T23:26:52.000Z", "likes": 0, "trendingScore": 0, "private": false,
+        "sha": "072339be7271e561a7992cedf9463c5f90ba7e6d", "description": "\n\t\n\t\t\n\t\tAttention
+        Is All You Need\n\t\n\narXiv ID: 1706.03762\n\n\t\n\t\t\n\t\tDescription\n\t\n\nThis
+        dataset contains the PDF of the paper: Attention Is All You Need\n\n\t\n\t\t\n\t\tCitation\n\t\n\nPlease
+        see the original paper at: https://arxiv.org/abs/1706.03762\n", "downloads":
+        47, "tags": ["license:other", "size_categories:n<1K", "modality:document",
+        "library:datasets", "library:mlcroissant", "arxiv:1706.03762", "region:us",
+        "ai-research", "paper", "arxiv"], "createdAt": "2026-04-17T23:26:50.000Z",
+        "key": ""}, {"_id": "69fc95581bd96cae4cdc861b", "id": "NovBase-VTX/OSINT-Apple-Intelligence-Sample",
+        "author": "NovBase-VTX", "disabled": false, "gated": false, "lastModified":
+        "2026-05-13T04:06:27.000Z", "likes": 0, "trendingScore": 0, "private": false,
+        "sha": "009dcb6e3abe69d76ae99f79068f8d419b6bc2a8", "description": "\n\t\n\t\t\n\t\t\ud83d\udc3a
+        NovBase V1.7 | OSINT Swarm Intelligence\n\t\n\nProject Status: Active Research
+        & Development (May 2026)\nOperational Mode: Local-First / Zero-Cloud Dependency\nHardware:
+        Native Deployment (Acer Nitro V15 / 8B Quantized Inference)\n\n\t\n\t\t\n\t\t\ud83d\udccc
+        Overview\n\t\n\nHigh-density technical intelligence reports generated by the
+        NovBase Swarm Intelligence system. System V1.7 introduces Deep Sniffing capabilities,
+        allowing the swarm to autonomously capture, download, and analyze technical
+        PDF documents and\u2026 See the full description on the dataset page: https://huggingface.co/datasets/NovBase-VTX/OSINT-Apple-Intelligence-Sample.",
+        "downloads": 75, "tags": ["language:ru", "language:en", "license:mit", "size_categories:n<1K",
+        "format:text", "modality:document", "modality:text", "library:datasets", "library:mlcroissant",
+        "arxiv:1706.03762", "region:us", "osint", "swarm-intelligence", "ai-report",
+        "technical-analysis", "private-core"], "createdAt": "2026-05-07T13:36:24.000Z",
+        "key": ""}, {"_id": "6a76f223134f9db89c04b5bd", "id": "Roy229/paper-registry-2193",
+        "author": "Roy229", "disabled": false, "gated": false, "lastModified": "2026-08-25T04:15:21.000Z",
+        "likes": 0, "trendingScore": 0, "private": false, "sha": "a4c89bf8bdf9cde842b9b9d227eff5b8c23daedb",
+        "description": "\n\t\n\t\t\n\t\n\t\n\t\tResearch Paper Registry v1\n\t\n\n\n\t\n\t\t\n\t\n\t\n\t\tDescription\n\t\n\nA
+        curated registry of recent research papers on retrieval-augmented generation
+        (RAG), maintained by the Novalytics research team. Each entry links a paper''s
+        arXiv identifier to its title and the hub author handle that catalogued it.\n\n\t\n\t\t\n\t\n\t\n\t\tDataset
+        Structure\n\t\n\n\npaper_id: The arXiv identifier of the paper\ntitle: The
+        full title of the paper\nauthor_handle: The hub handle of the researcher who
+        added the entry\u2026 See the full description on the dataset page: https://huggingface.co/datasets/Roy229/paper-registry-2193.",
+        "downloads": 27, "tags": ["task_categories:text-retrieval", "language:en",
+        "license:cc-by-4.0", "size_categories:n<1K", "format:csv", "modality:text",
+        "library:datasets", "library:pandas", "library:polars", "library:mlcroissant",
+        "arxiv:1706.03762", "region:us", "retrieval-augmented-generation", "rag",
+        "research-papers", "arxiv"], "createdAt": "2026-08-08T09:08:51.000Z", "key":
+        ""}]'
+    headers:
+      access-control-allow-origin:
+      - https://huggingface.co
+      access-control-expose-headers:
+      - X-Repo-Commit,X-Request-Id,X-Error-Code,X-Error-Message,X-Total-Count,ETag,Link,Accept-Ranges,Content-Range,X-Linked-Size,X-Linked-ETag,X-Xet-Hash
+      access-control-max-age:
+      - '86400'
+      alt-svc:
+      - h3=":443"; ma=86400
+      connection:
+      - keep-alive
+      content-type:
+      - application/json; charset=utf-8
+      cross-origin-opener-policy:
+      - same-origin
+      date:
+      - Wed, 30 Sep 2026 12:35:41 GMT
+      etag:
+      - W/"23a8-3EfDAlGtpzgJOB9OI0bnvp2a6Jw"
+      ratelimit:
+      - '"api";r=496;t=7'
+      ratelimit-policy:
+      - '"fixed window";"api";q=500;w=300'
+      referrer-policy:
+      - strict-origin-when-cross-origin
+      server-timing:
+      - mongo1-0;dur=2.063715999945998
+      strict-transport-security:
+      - max-age=31536000
+      transfer-encoding:
+      - chunked
+      vary:
+      - Origin
+      - Accept-Encoding
+      via:
+      - 1.1 6d63265298f0b78004bb9c6b0c5308a6.cloudfront.net (CloudFront)
+      x-amz-cf-id:
+      - 7DalHxOpSX9u67OBVyEHO61QzNAb87zmkpQvY18O7qtMvoU5CM3Glg==
+      x-amz-cf-pop:
+      - IST52-P2
+      x-cache:
+      - Miss from cloudfront
+      x-powered-by:
+      - huggingface-moon
+      x-request-id:
+      - Root=1-6abd021d-345dee1f1f9b116e31721f12
+    status:
+      code: 200
+      message: OK
+version: 1

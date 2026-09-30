@@ -1,0 +1,107 @@
+interactions:
+- request:
+    body: ''
+    headers:
+      accept:
+      - application/vnd.github.raw+json
+      accept-encoding:
+      - gzip, deflate
+      connection:
+      - keep-alive
+      host:
+      - api.github.com
+      user-agent:
+      - research-copilot/0.1 (personal research tool)
+      x-github-api-version:
+      - '2022-11-28'
+    method: GET
+    uri: https://api.github.com/repos/tensorflow/tensor2tensor/readme
+  response:
+    body:
+      string: '# Tensor2Tensor
+
+
+        [![PyPI
+
+        version](https://badge.fury.io/py/tensor2tensor.svg)](https://badge.fury.io/py/tensor2tensor)
+
+        [![GitHub
+
+        Issues](https://img.shields.io/github/issues/tensorflow/tensor2tensor.svg)](https://github.com/tensorflow/tensor2tensor/issues)
+
+        [![Contributions
+
+        welcome](https://img.shields.io/badge/contributions-welcome-brightgreen.svg)](CONTRIBUTING.md)
+
+        [![Gitter](https://img.shields.io/gitter/room/nwjs/nw.js.svg)](https://gitter.im/tensor2tensor/Lobby)
+
+        [![License](https://img.shields.io/badge/License-Apache%202.0-brightgreen.svg)](https://opensource.org/licenses/Apache-2.0)
+
+        [![Travis](https://img.shields.io/travis/tensorflow/tensor2tensor.svg)](https://travis-ci.org/tensorflow/tensor2tensor)
+
+        [![Run on FH](https://static.floydhub.com/button/button-small.svg)](https://floydhub.com/run)
+
+
+        [Tensor2Tensor](https://github.com/tensorflow/tensor2tensor), or
+
+        [T2T](https://github.com/tensorflow/tensor2tensor) for short, is a library
+
+        of deep learning models and datasets designed to m'
+    headers:
+      accept-ranges:
+      - bytes
+      access-control-allow-origin:
+      - '*'
+      access-control-expose-headers:
+      - ETag, Link, Location, Retry-After, X-GitHub-OTP, X-RateLimit-Limit, X-RateLimit-Remaining,
+        X-RateLimit-Used, X-RateLimit-Resource, X-RateLimit-Reset, X-OAuth-Scopes,
+        X-Accepted-OAuth-Scopes, X-Poll-Interval, X-GitHub-Media-Type, X-GitHub-SSO,
+        X-GitHub-Request-Id, Deprecation, Sunset, Warning
+      cache-control:
+      - public, max-age=60, s-maxage=60
+      content-security-policy:
+      - default-src 'none'
+      content-type:
+      - application/vnd.github.raw+json; charset=utf-8
+      date:
+      - Wed, 30 Sep 2026 12:36:40 GMT
+      etag:
+      - '"7a3e115e27a3aab44c5cdb3e0227edb6a476000d"'
+      last-modified:
+      - Sat, 01 Apr 2023 10:19:28 GMT
+      referrer-policy:
+      - origin-when-cross-origin, strict-origin-when-cross-origin
+      server:
+      - github.com
+      strict-transport-security:
+      - max-age=31536000; includeSubdomains; preload
+      vary:
+      - Accept,Accept-Encoding, Accept, X-Requested-With
+      x-content-type-options:
+      - nosniff
+      x-frame-options:
+      - deny
+      x-github-api-version-selected:
+      - '2022-11-28'
+      x-github-edge-region:
+      - fra
+      x-github-media-type:
+      - github.v3; param=raw; format=json
+      x-github-request-id:
+      - B3B5:8A8C9:7F17042:7F210B2:6ABD0257
+      x-ratelimit-limit:
+      - '60'
+      x-ratelimit-remaining:
+      - '58'
+      x-ratelimit-reset:
+      - '1790775399'
+      x-ratelimit-resource:
+      - core
+      x-ratelimit-used:
+      - '2'
+      x-xss-protection:
+      - '0'
+    status:
+      code: 200
+      message: OK
+version: 1
