@@ -22,10 +22,7 @@ def test_parse_github_url(url: str | None, expected: str | None) -> None:
     assert parse_github_url(url) == expected
 
 
-def test_repo_parses_stats_and_license_and_sends_no_token_by_default(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+def test_repo_parses_stats_and_license_and_sends_no_token_by_default() -> None:
     seen: list[httpx.Request] = []
 
     def handler(r: httpx.Request) -> httpx.Response:
