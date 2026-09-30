@@ -1,0 +1,31 @@
+# Secrets and local notes
+.env
+.env.*
+!.env.example
+scratchpad/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+.coverage
+htmlcov/
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+*.tsbuildinfo
+next-env.d.ts
+
+# Docker
+docker-compose.override.yml
+
+# macOS / editors
+.DS_Store
+.idea/
+.vscode/
