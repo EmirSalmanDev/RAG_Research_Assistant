@@ -16,13 +16,17 @@ config.set_main_option("sqlalchemy.url", get_settings().database_url.replace("%"
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.
 if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+    # keep loggers created before Alembic ran (e.g. in tests) alive
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 # add your model's MetaData object here
 # for 'autogenerate' support
 # from myapp import mymodel
 # target_metadata = mymodel.Base.metadata
-target_metadata = None
+from app.db import models  # noqa: E402,F401  (registers the tables on Base.metadata)
+from app.db.base import Base  # noqa: E402
+
+target_metadata = Base.metadata
 
 # other values from the config, defined by the needs of env.py,
 # can be acquired:

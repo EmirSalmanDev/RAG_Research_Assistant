@@ -1,4 +1,4 @@
-.PHONY: up down logs test lint
+.PHONY: up down logs test lint migrate ingest-one
 
 # Start the stack and wait until every service's healthcheck passes.
 up:
@@ -18,3 +18,7 @@ test:
 lint:
 	cd backend && uv run ruff check . && uv run ruff format --check . && uv run mypy app tests
 	cd frontend && pnpm lint && pnpm format:check
+
+# Apply Alembic migrations to the Postgres from `make up` (published on localhost:5432).
+migrate:
+	cd backend && uv run alembic upgrade head
