@@ -203,6 +203,14 @@ def _scrub_json(body: bytes) -> bytes:
     return json.dumps(data).encode()
 
 
+_last_request_url: list[str] = [""]  # set by before_record_request (requests are sequential)
+
+
+def before_record_request(request: Any) -> Any:
+    _last_request_url[0] = str(request.uri)
+    return request
+
+
 def before_record_response(response: dict[str, Any]) -> dict[str, Any]:
     headers = response.get("headers", {})
     for name in list(headers):
@@ -212,6 +220,13 @@ def before_record_response(response: dict[str, Any]) -> dict[str, Any]:
     content_type = next((v[0] for k, v in headers.items() if k.lower() == "content-type"), "")
     if content_type.startswith("text/markdown"):
         body = INVENTED_MARKDOWN  # HF full text of a paper: never stored (rule 14)
+    elif content_type.startswith("text/html"):
+        from tests.cassette_trim import trim_arxiv_html
+
+        # arXiv HTML of a paper: only a short LaTeXML excerpt is stored (rule 14).
+        body = trim_arxiv_html(body.decode("utf-8", "replace"), _last_request_url[0]).encode()
+    elif content_type.startswith("application/pdf"):
+        raise RuntimeError("refusing to record a PDF (rule 12/14): build invented PDFs in tests")
     elif content_type.startswith(TRUNCATED_TYPES):
         body = body[:MAX_TEXT_BYTES]  # never store whole READMEs
     elif "json" in content_type:
@@ -230,6 +245,7 @@ def vcr_config() -> dict[str, Any]:
     return {
         "filter_headers": ["authorization", "x-api-key", "cookie", "set-cookie"],
         "filter_query_parameters": ["token", "api_key", "access_token", "key"],
+        "before_record_request": before_record_request,
         "before_record_response": before_record_response,
         "decode_compressed_response": True,
     }
