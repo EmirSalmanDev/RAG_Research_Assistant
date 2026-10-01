@@ -162,6 +162,45 @@ class ArxivClient:
             papers.extend(_to_paper(r) for r in results)
         return papers
 
+    def updated_papers(
+        self,
+        categories: Sequence[str],
+        since: datetime,
+        until: datetime | None = None,
+        page_size: int = 100,
+        max_papers: int = 20_000,
+    ) -> list[ArxivPaper]:
+        """Papers in any of `categories` whose latest version is dated in [since, until],
+        newest first: new submissions and new versions (v2, v3, ...).
+
+        arXiv's `lastUpdatedDate:[..]` query filter does not reliably restrict results to
+        the window (checked live on 2026-10-01: a one-day window returned entries updated
+        on other days), so the window is applied here instead: one combined category
+        query sorted by lastUpdatedDate descending, paged until an entry is older than
+        `since` (or `max_papers` is reached). Each page is one request through the limiter.
+        """
+        until = until or datetime.now(UTC)
+        query = " OR ".join(f"cat:{c}" for c in categories)
+        search_kwargs: dict[str, Any] = {
+            "query": f"({query})" if len(categories) > 1 else query,
+            "sort_by": arxiv.SortCriterion.LastUpdatedDate,
+            "sort_order": arxiv.SortOrder.Descending,
+        }
+        papers: list[ArxivPaper] = []
+        offset = 0
+        while len(papers) < max_papers:
+            page = self._fetch_page(search_kwargs, offset=offset, size=page_size)
+            offset += len(page)
+            for result in page:
+                paper = _to_paper(result)
+                if paper.updated_at < since:
+                    return papers  # sorted newest first: everything after is older
+                if paper.updated_at <= until and len(papers) < max_papers:
+                    papers.append(paper)
+            if len(page) < page_size:  # short page = no more results
+                break
+        return papers
+
     def _get_web(self, path: str) -> httpx.Response:
         """GET from arxiv.org with retries; every attempt and every redirect hop takes its
         own limiter slot (rule 4: one request per 3 s, counted per request)."""

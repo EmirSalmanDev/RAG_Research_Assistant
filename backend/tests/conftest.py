@@ -126,11 +126,8 @@ def qdrant() -> Iterator["QdrantClient"]:
     client.close()
 
 
-def _real_collection_state(client: "QdrantClient") -> tuple[bool, int | None]:
+def _real_collection_state(client: "QdrantClient", name: str) -> tuple[bool, int | None]:
     """(exists, point count) of the real collection, e.g. `chunks`."""
-    from app.config import get_settings
-
-    name = get_settings().qdrant_collection
     if not client.collection_exists(name):
         return False, None
     return True, client.count(name, exact=True).count
@@ -138,10 +135,18 @@ def _real_collection_state(client: "QdrantClient") -> tuple[bool, int | None]:
 
 @pytest.fixture
 def real_collection_untouched(qdrant: "QdrantClient") -> Iterator[None]:
-    """Fails the test if the real collection's existence or point count changed."""
-    before = _real_collection_state(qdrant)
+    """Fails the test if the real collection's existence or point count changed.
+
+    The name is read once, before the test: a test may point the configured collection
+    at a scratch one (QDRANT_COLLECTION), and the check must still look at the real one.
+    """
+    from app.config import get_settings
+
+    name = get_settings().qdrant_collection
+    before = _real_collection_state(qdrant, name)
     yield
-    assert _real_collection_state(qdrant) == before, "the real collection changed during the test"
+    after = _real_collection_state(qdrant, name)
+    assert after == before, f"the real collection {name!r} changed during the test"
 
 
 @pytest.fixture

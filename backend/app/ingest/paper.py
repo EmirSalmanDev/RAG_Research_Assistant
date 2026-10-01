@@ -96,7 +96,7 @@ def ingest_one(session: Session, clients: Clients, raw_arxiv_id: str) -> IngestR
         paper = clients.arxiv.get_paper(arxiv_id)
         if paper is None:
             raise IngestError(f"arXiv has no paper {arxiv_id}")
-        _upsert_paper(session, paper)
+        upsert_paper(session, paper)
         counts["papers"] = 1
     except Exception as err:
         session.rollback()  # drop the partial work, then record the failure on the run
@@ -202,7 +202,7 @@ def primary_category_of(p: ArxivPaper) -> str | None:
     return p.primary_category or (p.categories[0] if p.categories else None)
 
 
-def _upsert_paper(session: Session, p: ArxivPaper) -> None:
+def upsert_paper(session: Session, p: ArxivPaper) -> None:
     values = {
         "arxiv_id": p.arxiv_id,
         "version": p.version,
