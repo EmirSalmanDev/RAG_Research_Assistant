@@ -172,6 +172,7 @@ def config_differences(info: m.CollectionInfo, dim: int) -> list[str]:
 REINDEXED_TYPES = ("abstract", "section")
 UPSERT_BATCH = 64  # points per Qdrant upsert request
 LOOKUP_BATCH = 256  # ids per Qdrant retrieve / delete request
+EMBED_GROUP = 1000  # abstracts embedded and upserted per round (bounds memory)
 FEATURE = {"abstract": "embed-abstract", "section": "embed-fulltext"}  # llm_usage.feature
 
 
@@ -350,7 +351,10 @@ def index_abstracts(
         query = query.where(Paper.arxiv_id.in_(list(arxiv_ids)))
     papers = session.scalars(query).all()
 
-    indexed = 0
+    # 1. Find every paper whose current abstract point is missing (Qdrant lookups in
+    #    batches). Collecting them first lets the embedding requests be full batches,
+    #    even when the missing papers are spread thinly across all papers.
+    todo: list[Paper] = []
     for batch in _batches(papers, LOOKUP_BATCH):
         wanted = {chunk_id(p.arxiv_id, p.version, ABSTRACT_ORD): p for p in batch}
         present = {
@@ -359,24 +363,26 @@ def index_abstracts(
                 collection, ids=[str(i) for i in wanted], with_payload=False, with_vectors=False
             )
         }
-        todo = [p for i, p in wanted.items() if i not in present]
-        if not todo:
-            continue
-        # 1. Postgres first (source of truth), committed before any money is spent.
-        for paper in todo:
+        todo += [p for i, p in wanted.items() if i not in present]
+
+    indexed = 0
+    # 2. Index them in groups (bounded memory: vectors of one group at a time).
+    for group in _batches(todo, EMBED_GROUP):
+        # Postgres first (source of truth), committed before any money is spent.
+        for paper in group:
             chunk = abstract_chunk(paper.arxiv_id, paper.version, paper.title, paper.abstract)
             save_chunks(session, paper.arxiv_id, [chunk])
         session.commit()
-        # 2. Then Qdrant: embed and upsert, then remove abstract points of older versions.
+        # Then Qdrant: embed and upsert, then remove abstract points of older versions.
         rows = session.scalars(
             select(ChunkRow).where(
-                ChunkRow.arxiv_id.in_([p.arxiv_id for p in todo]), ChunkRow.ord == ABSTRACT_ORD
+                ChunkRow.arxiv_id.in_([p.arxiv_id for p in group]), ChunkRow.ord == ABSTRACT_ORD
             )
         ).all()
-        by_id = {p.arxiv_id: p for p in todo}
+        by_id = {p.arxiv_id: p for p in group}
         _upsert(client, collection, _points([(by_id[r.arxiv_id], r) for r in rows], dense, sparse))
         _delete_stale_points(
-            client, collection, [p.arxiv_id for p in todo], ["abstract"], keep=[r.id for r in rows]
+            client, collection, [p.arxiv_id for p in group], ["abstract"], keep=[r.id for r in rows]
         )
         indexed += len(rows)
     return indexed

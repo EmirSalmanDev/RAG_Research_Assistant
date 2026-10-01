@@ -165,5 +165,6 @@ def test_backfill_refuses_more_than_7_days_without_confirm(monkeypatch: pytest.M
 
 def test_embedding_request_estimate() -> None:
     assert cli.embedding_requests(0, 100) == 0
-    assert cli.embedding_requests(256, 100) == 3  # one lookup batch: 100 + 100 + 56
-    assert cli.embedding_requests(300, 100) == 4
+    assert cli.embedding_requests(256, 100) == 3  # 100 + 100 + 56
+    assert cli.embedding_requests(300, 100) == 3
+    assert cli.embedding_requests(5674, 100) == 57

@@ -79,12 +79,12 @@ AVG_ABSTRACT_TOKENS = 300  # measured on the first indexed abstracts (~130-350 t
 
 
 def embedding_requests(papers: int, batch_size: int) -> int:
-    """Requests index_abstracts makes for `papers` abstracts: it looks papers up in
-    batches of LOOKUP_BATCH (256) and embeds each in requests of `batch_size` (100)."""
-    from app.ingest.index import LOOKUP_BATCH
+    """Requests index_abstracts makes for `papers` abstracts: it embeds them in groups of
+    EMBED_GROUP (1000), each sent in requests of `batch_size` (100)."""
+    from app.ingest.index import EMBED_GROUP
 
-    full, rest = divmod(papers, LOOKUP_BATCH)
-    return full * -(-LOOKUP_BATCH // batch_size) + -(-rest // batch_size)
+    full, rest = divmod(papers, EMBED_GROUP)
+    return full * -(-EMBED_GROUP // batch_size) + -(-rest // batch_size)
 
 
 def _backfill(days: int, max_papers: int) -> dict[str, Any]:

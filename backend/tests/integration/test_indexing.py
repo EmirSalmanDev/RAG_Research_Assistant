@@ -372,3 +372,22 @@ def test_each_embedding_request_writes_one_llm_usage_row(
         ("embed-abstract", "text-embedding-3-small", 500, 0),
     ]
     assert usage[0].cost_usd == embedding_cost(1000) == Decimal("0.000020")
+
+
+def test_missing_abstracts_spread_across_lookup_batches_share_one_request(
+    migrated_session: Session,
+    qdrant: QdrantClient,
+    collection: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.ingest import index as index_module
+
+    monkeypatch.setattr(index_module, "LOOKUP_BATCH", 2)  # 6 papers -> 3 lookup batches
+    for i in range(6):
+        _paper(migrated_session, f"2601.0000{i}")
+    kw = {"sparse": FakeSparse(), "client": qdrant, "collection": collection}
+    index_abstracts(migrated_session, ["2601.00000", "2601.00002", "2601.00004"],
+                    dense=FakeDense(), **kw)  # type: ignore[arg-type]  # fmt: skip
+    dense = FakeDense()
+    assert index_abstracts(migrated_session, dense=dense, **kw) == 3  # type: ignore[arg-type]
+    assert len(dense.calls) == 1 and len(dense.calls[0][1]) == 3  # one request, not three
