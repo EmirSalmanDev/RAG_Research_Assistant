@@ -90,3 +90,29 @@ def test_recorder_trims_html_and_refuses_pdfs() -> None:
     }
     with pytest.raises(RuntimeError, match="refusing to record a PDF"):
         before_record_response(pdf)
+
+
+def test_structure_only_drops_author_year_labels_links_and_alt_texts() -> None:
+    from tests.cassette_trim import structure_only
+
+    fragment = (
+        '<ul class="ltx_biblist"><li class="ltx_bibitem"><span class="ltx_tag">Smith (2024)</span>'
+        '<span class="ltx_bibblock">A real title. <a href="https://example.org/x">link</a></span></li>'
+        '<li class="ltx_bibitem"><span class="ltx_tag">[3]</span>Another.</li></ul>'
+        '<h2 class="ltx_title"><span class="ltx_tag">2.1</span>Real heading</h2>'
+        '<figure><img alt="real alt" src="x.png"/>'
+        '<figcaption><span class="ltx_tag">Figure 4:</span>Real caption.</figcaption></figure>'
+    )
+    out = structure_only(fragment)
+    for real in (
+        "Smith",
+        "A real title",
+        "example.org",
+        "real alt",
+        "x.png",
+        "Real heading",
+        "Real caption",
+    ):
+        assert real not in out, real
+    for numbering in ("[3]", "2.1", "Figure 4:"):
+        assert numbering in out

@@ -67,16 +67,53 @@ def _short(tag: Tag) -> str:
     return " ".join(str(tag).split())
 
 
+# Numbering that is structure, not content: '1', '1.2', 'Appendix A', 'A.1', 'Figure 1:',
+# 'Table 2:', '[3]'. Author-year labels such as 'Smith (2024)' are content and get replaced.
+_NUMBERING = re.compile(
+    r"^\s*(\d+(\.\d+)*\.?|Appendix [A-Z]|[A-Z](\.\d+)+|Figure \d+:?|Table \d+:?|\[\d+\])\s*$"
+)
+
+
 def _invent(tag: Tag, n: int) -> None:
-    """Replace every text (and math alttext) in `tag` with invented text, keeping tags."""
+    """Replace every text (and math alttext) in `tag` with invented text, keeping the tags
+    and only numbering text; external links and alt/title texts are removed too."""
     for math in tag.find_all("math"):
         math["alttext"] = "x^{2}"
         math.clear()
     for node in list(tag.descendants):
         if isinstance(node, NavigableString) and node.strip():
-            if node.parent is not None and "ltx_tag" in (node.parent.get("class") or []):
-                continue  # keep section numbers like '1 ' and 'Appendix A '
+            if _NUMBERING.match(node):
+                continue  # section/figure/table numbers are structure
             node.replace_with(f"Invented text {n}.")
+    _strip_attributes(tag)
+
+
+def _strip_attributes(tag: Tag) -> None:
+    for element in [tag, *tag.find_all(True)]:
+        for name in ("alt", "title", "src"):
+            if name in element.attrs:
+                del element.attrs[name]
+        href = element.get("href")
+        if isinstance(href, str) and not href.startswith("#"):
+            element["href"] = "#"
+
+
+def structure_only(fragment: str) -> str:
+    """Invent every text of an already-trimmed excerpt (used for non-permissive pages)."""
+    excerpt = BeautifulSoup(f"<article>{fragment}</article>", "lxml")
+    container = _first(excerpt, "article")
+    assert container is not None
+    for n, element in enumerate(container.find_all(_INVENTED_ELEMENTS), 1):
+        _invent(element, n)
+    for node in list(container.descendants):  # any text outside those elements
+        if isinstance(node, NavigableString) and node.strip() and not _NUMBERING.match(node):
+            if not re.fullmatch(r"Invented text \d+\.", node.strip()):
+                node.replace_with("Invented text.")
+    _strip_attributes(container)
+    return "\n".join(" ".join(str(c).split()) for c in container.children if str(c).strip())
+
+
+_INVENTED_ELEMENTS = ["h1", "h2", "h3", "h6", "p", "li", "tr", "figcaption", "span", "a", "cite"]
 
 
 def trim_arxiv_html(html: str, source_url: str) -> str:
@@ -149,16 +186,7 @@ def trim_arxiv_html(html: str, source_url: str) -> str:
 
     body = "\n".join(lines)
     if not keep_text:
-        excerpt = BeautifulSoup(f"<article>{body}</article>", "lxml")
-        container = _first(excerpt, "article")
-        assert container is not None
-        for n, element in enumerate(
-            container.find_all(["h1", "h2", "h3", "h6", "p", "li", "tr", "figcaption"]), 1
-        ):
-            _invent(element, n)
-        body = "\n".join(
-            " ".join(str(child).split()) for child in container.children if str(child).strip()
-        )
+        body = structure_only(body)
     header = (
         f"<!-- Trimmed excerpt of {source_url}, recorded {date.today().isoformat()} for tests. "
         f"Licence stated on the page: {licence}. "
