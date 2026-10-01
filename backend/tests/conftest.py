@@ -11,6 +11,46 @@ from sqlalchemy.orm import Session
 from app.config import Settings
 
 
+class NetworkBlockedError(RuntimeError):
+    """A test (or a fixture) tried to look up a host outside --allowed-hosts."""
+
+
+@pytest.fixture(scope="session", autouse=True)
+def block_network_for_the_whole_session(request: pytest.FixtureRequest) -> Iterator[None]:
+    """Second network guard, covering module- and session-scoped fixtures too.
+
+    pytest-recording's --block-network is a function-scoped fixture: it only covers each
+    test's own setup and body, so a module- or session-scoped fixture could still reach
+    the internet (that is how a tokenizer download slipped through once). Its block is
+    also undone after every test, so it cannot simply be widened. This guard works one
+    layer lower, on DNS lookups (`socket.getaddrinfo`, which every connection to a named
+    host makes first), with the same allowed hosts, for the whole session.
+    Off when recording cassettes (--record-mode other than none, or no --block-network).
+    """
+    import re
+    import socket
+
+    record_mode = request.config.getoption("--record-mode") or "none"
+    if not request.config.getoption("--block-network") or record_mode != "none":
+        yield
+        return
+    allowed = [h for h in (request.config.getoption("--allowed-hosts") or "").split(",") if h]
+    allowed_re = re.compile("(" + ")|(".join(allowed) + ")") if allowed else None
+    original = socket.getaddrinfo
+
+    def guarded(host: bytes | str | None, *args: object, **kwargs: object) -> object:
+        name = host.decode() if isinstance(host, bytes) else host
+        if name is None or (allowed_re is not None and allowed_re.match(name)):
+            return original(host, *args, **kwargs)  # type: ignore[arg-type]
+        raise NetworkBlockedError(f"network is blocked in tests: lookup of {name!r}")
+
+    socket.getaddrinfo = guarded  # type: ignore[assignment]
+    try:
+        yield
+    finally:
+        socket.getaddrinfo = original
+
+
 @pytest.fixture(autouse=True)
 def no_real_credentials(monkeypatch: pytest.MonkeyPatch) -> None:
     """Tests never use the developer's real keys (they could leak into cassettes).
