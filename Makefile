@@ -1,4 +1,4 @@
-.PHONY: up down logs test lint migrate ingest-one
+.PHONY: up down logs test lint migrate ingest-one backfill
 
 # Start the stack and wait until every service's healthcheck passes.
 up:
@@ -35,3 +35,13 @@ ingest-one:
 	@test -n "$(ID)" || (echo "usage: make ingest-one ID=<arxiv_id> [SOURCE=hf|html|pdf] [METADATA_ONLY=1]"; exit 2)
 	docker compose exec -T worker python -m app.ingest.cli one "$(ID)" \
 		$(if $(SOURCE),--force-source "$(SOURCE)") $(if $(METADATA_ONLY),--metadata-only)
+
+# Seed the corpus: fetch the last DAYS days of the configured arXiv categories (new
+# papers and new versions) and index their abstracts only (no full text):
+#   make backfill DAYS=7
+# More than 7 days needs CONFIRM=1 (costs more; ask first). Runs in the worker container
+# in the foreground; makes real network calls and embedding requests.
+backfill:
+	@test -n "$(DAYS)" || (echo "usage: make backfill DAYS=7 [CONFIRM=1]"; exit 2)
+	docker compose exec -T worker python -m app.ingest.cli backfill --days "$(DAYS)" \
+		$(if $(CONFIRM),--confirm)

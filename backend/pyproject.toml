@@ -47,6 +47,11 @@ plugins = ["pydantic.mypy"]
 module = ["celery.*", "arxiv.*", "vcr.*", "pymupdf4llm.*"]
 ignore_missing_imports = true
 
+# Celery ships no type hints, so its task decorators are untyped.
+[[tool.mypy.overrides]]
+module = ["app.ingest.tasks"]
+disallow_untyped_decorators = false
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
