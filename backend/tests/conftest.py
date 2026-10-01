@@ -2,6 +2,7 @@
 
 import uuid
 from collections.abc import Iterator
+from typing import TYPE_CHECKING
 
 import pytest
 from sqlalchemy import create_engine, text
@@ -9,6 +10,9 @@ from sqlalchemy.engine import URL, make_url
 from sqlalchemy.orm import Session
 
 from app.config import Settings
+
+if TYPE_CHECKING:
+    from qdrant_client import QdrantClient
 
 
 class NetworkBlockedError(RuntimeError):
@@ -106,6 +110,53 @@ def migrated_session(scratch_db_url: URL) -> Iterator[Session]:
     with Session(engine) as session:
         yield session
     engine.dispose()
+
+
+# ---------------------------------------------------------------------------
+# Qdrant: throwaway collections only. Tests never write to the real collection.
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def qdrant() -> Iterator["QdrantClient"]:
+    from qdrant_client import QdrantClient
+
+    client = QdrantClient(url=Settings(_env_file=None).qdrant_url)
+    yield client
+    client.close()
+
+
+def _real_collection_state(client: "QdrantClient") -> tuple[bool, int | None]:
+    """(exists, point count) of the real collection, e.g. `chunks`."""
+    from app.config import get_settings
+
+    name = get_settings().qdrant_collection
+    if not client.collection_exists(name):
+        return False, None
+    return True, client.count(name, exact=True).count
+
+
+@pytest.fixture
+def real_collection_untouched(qdrant: "QdrantClient") -> Iterator[None]:
+    """Fails the test if the real collection's existence or point count changed."""
+    before = _real_collection_state(qdrant)
+    yield
+    assert _real_collection_state(qdrant) == before, "the real collection changed during the test"
+
+
+@pytest.fixture
+def scratch_collection(qdrant: "QdrantClient") -> Iterator[str]:
+    """A unique `chunks_test_<random>` name; the collection is deleted afterwards, even if
+    the test fails."""
+    from app.config import get_settings
+
+    name = f"chunks_test_{uuid.uuid4().hex[:8]}"
+    assert name != get_settings().qdrant_collection
+    try:
+        yield name
+    finally:
+        if qdrant.collection_exists(name):
+            qdrant.delete_collection(name)
 
 
 # ---------------------------------------------------------------------------

@@ -18,15 +18,31 @@ qdrant-client 1.19 marks `on_disk` and `always_ram` as deprecated in favour of `
 (`on_disk=True` ~ `memory=cold`, `always_ram=True` ~ `memory=pinned`). The old flags still
 work and the server reports them back, so they are used here; the checks below also
 accept the `memory` form in case a later server reports the setting that way.
+
+Writing points (below `ensure_collection`): Postgres `chunks` rows are the source of
+truth, Qdrant points are derived from them. Re-indexing a paper upserts the current
+points first and only then deletes stale ones, so search never sees the paper vanish.
+Stale deletion only ever touches chunk_type 'abstract' and 'section'; 'analysis' chunks
+(added later) are never removed here.
 """
 
+import uuid
+from collections.abc import Iterator, Sequence
 from functools import lru_cache
+from typing import Any
 
 from qdrant_client import QdrantClient
 from qdrant_client import models as m
 from qdrant_client.http.exceptions import UnexpectedResponse
+from sqlalchemy import delete, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.orm import Session
 
 from app.config import get_settings
+from app.db.models import Chunk as ChunkRow
+from app.db.models import Paper
+from app.ingest.chunk import ABSTRACT_ORD, Chunk, abstract_chunk, chunk_id, embedding_text
+from app.ingest.embed import DenseEncoder, SparseEncoder
 
 DENSE_VECTOR = "text-dense"
 SPARSE_VECTOR = "text-sparse"
@@ -138,3 +154,192 @@ def config_differences(info: m.CollectionInfo, dim: int) -> list[str]:
                 f"payload index {field}: expected {schema.value}, found {index.data_type.value}"
             )
     return problems
+
+
+# --- writing chunks and points ----------------------------------------------------------------
+
+# Only these chunk types are rebuilt (and their stale copies deleted) by this module.
+REINDEXED_TYPES = ("abstract", "section")
+UPSERT_BATCH = 64  # points per Qdrant upsert request
+LOOKUP_BATCH = 256  # ids per Qdrant retrieve / delete request
+FEATURE = {"abstract": "embed-abstract", "section": "embed-fulltext"}  # llm_usage.feature
+
+
+def _batches[T](items: Sequence[T], size: int) -> Iterator[Sequence[T]]:
+    for start in range(0, len(items), size):
+        yield items[start : start + size]
+
+
+def save_chunks(session: Session, arxiv_id: str, chunks: Sequence[Chunk]) -> None:
+    """Upsert chunk rows in Postgres, keyed on (arxiv_id, ord). A row from an older paper
+    version at the same ord is overwritten (its id changes to the new version's id)."""
+    for chunk in chunks:
+        values = {
+            "id": chunk.id,
+            "arxiv_id": arxiv_id,
+            "chunk_type": chunk.chunk_type,
+            "section_path": chunk.section_path,
+            "ord": chunk.ord,
+            "text": chunk.text,
+            "token_count": chunk.token_count,
+        }
+        stmt = pg_insert(ChunkRow).values(**values)
+        session.execute(
+            stmt.on_conflict_do_update(
+                index_elements=[ChunkRow.arxiv_id, ChunkRow.ord],
+                set_={k: stmt.excluded[k] for k in values if k not in ("arxiv_id", "ord")},
+            )
+        )
+
+
+def payload(paper: Paper, row: ChunkRow) -> dict[str, Any]:
+    """The Qdrant payload of a chunk point (fields as in the Data model)."""
+    return {
+        "arxiv_id": paper.arxiv_id,
+        "chunk_type": row.chunk_type,
+        "section_path": row.section_path,
+        "title": paper.title,
+        "published_at": paper.published_at.isoformat(),  # RFC 3339, for the datetime index
+        "categories": list(paper.categories),
+        "primary_category": paper.primary_category,
+        "has_code": paper.github_url is not None,
+        "text": row.text,
+    }
+
+
+def _points(
+    rows: Sequence[tuple[Paper, ChunkRow]], dense: DenseEncoder, sparse: SparseEncoder
+) -> list[m.PointStruct]:
+    """Embed the rows (one dense request per batch and chunk type) and build points."""
+    points: list[m.PointStruct] = []
+    for chunk_type in REINDEXED_TYPES:
+        group = [(p, r) for p, r in rows if r.chunk_type == chunk_type]
+        if not group:
+            continue
+        texts = [embedding_text(p.title, r.section_path, r.text) for p, r in group]
+        dense_vectors = dense.embed(texts, FEATURE[chunk_type])
+        sparse_vectors = sparse.embed(texts)
+        for (paper, row), dv, sv in zip(group, dense_vectors, sparse_vectors, strict=True):
+            points.append(
+                m.PointStruct(
+                    id=str(row.id),
+                    vector={DENSE_VECTOR: dv, SPARSE_VECTOR: sv},
+                    payload=payload(paper, row),
+                )
+            )
+    return points
+
+
+def _upsert(client: QdrantClient, collection: str, points: Sequence[m.PointStruct]) -> None:
+    for batch in _batches(points, UPSERT_BATCH):
+        client.upsert(collection, points=list(batch), wait=True)
+
+
+def _delete_stale_points(
+    client: QdrantClient, collection: str, arxiv_ids: Sequence[str], types: Sequence[str],
+    keep: Sequence[uuid.UUID],
+) -> None:  # fmt: skip
+    """Delete points of these papers and chunk types whose id is not in `keep`.
+    One filtered delete per request, never touching other chunk types ('analysis')."""
+    stale = m.Filter(
+        must=[
+            m.FieldCondition(key="arxiv_id", match=m.MatchAny(any=list(arxiv_ids))),
+            m.FieldCondition(key="chunk_type", match=m.MatchAny(any=list(types))),
+        ],
+        must_not=[m.HasIdCondition(has_id=[str(i) for i in keep])] if keep else [],
+    )
+    client.delete(collection, points_selector=m.FilterSelector(filter=stale), wait=True)
+
+
+def upsert_paper_chunks(
+    session: Session,
+    arxiv_id: str,
+    *,
+    dense: DenseEncoder,
+    sparse: SparseEncoder,
+    client: QdrantClient | None = None,
+    collection: str | None = None,
+) -> int:
+    """(Re)index one paper's abstract and section chunks from its Postgres rows.
+
+    Current rows are those whose id matches the paper's current version; they are
+    embedded and upserted to Qdrant. Then stale points (older versions, removed ords)
+    and stale rows are deleted, for chunk types abstract and section only.
+    Returns the number of points upserted. The caller commits the session.
+    """
+    client = client or get_qdrant()
+    collection = collection or get_settings().qdrant_collection
+    paper = session.get(Paper, arxiv_id)
+    if paper is None:
+        raise ValueError(f"no paper {arxiv_id} in Postgres")
+    rows = session.scalars(
+        select(ChunkRow)
+        .where(ChunkRow.arxiv_id == arxiv_id, ChunkRow.chunk_type.in_(REINDEXED_TYPES))
+        .order_by(ChunkRow.ord)
+    ).all()
+    current = [r for r in rows if r.id == chunk_id(arxiv_id, paper.version, r.ord)]
+    stale_ids = [r.id for r in rows if r not in current]
+
+    points = _points([(paper, r) for r in current], dense, sparse)
+    _upsert(client, collection, points)
+    _delete_stale_points(
+        client, collection, [arxiv_id], REINDEXED_TYPES, keep=[r.id for r in current]
+    )
+    if stale_ids:
+        session.execute(delete(ChunkRow).where(ChunkRow.id.in_(stale_ids)))
+    return len(points)
+
+
+def index_abstracts(
+    session: Session,
+    arxiv_ids: Sequence[str] | None = None,
+    *,
+    dense: DenseEncoder,
+    sparse: SparseEncoder,
+    client: QdrantClient | None = None,
+    collection: str | None = None,
+) -> int:
+    """Make sure every paper (or the given ones) has its ord-0 abstract chunk indexed.
+
+    A paper is skipped when Qdrant already holds the point for its current version, so a
+    re-run makes no embedding calls. For the others: the ord-0 rows are written to
+    Postgres and committed first, then embedded and upserted to Qdrant, then the
+    abstract point of an older version (if any) is deleted. Returns how many were indexed.
+    """
+    client = client or get_qdrant()
+    collection = collection or get_settings().qdrant_collection
+    query = select(Paper).order_by(Paper.arxiv_id)
+    if arxiv_ids is not None:
+        query = query.where(Paper.arxiv_id.in_(list(arxiv_ids)))
+    papers = session.scalars(query).all()
+
+    indexed = 0
+    for batch in _batches(papers, LOOKUP_BATCH):
+        wanted = {chunk_id(p.arxiv_id, p.version, ABSTRACT_ORD): p for p in batch}
+        present = {
+            uuid.UUID(str(record.id))
+            for record in client.retrieve(
+                collection, ids=[str(i) for i in wanted], with_payload=False, with_vectors=False
+            )
+        }
+        todo = [p for i, p in wanted.items() if i not in present]
+        if not todo:
+            continue
+        # 1. Postgres first (source of truth), committed before any money is spent.
+        for paper in todo:
+            chunk = abstract_chunk(paper.arxiv_id, paper.version, paper.title, paper.abstract)
+            save_chunks(session, paper.arxiv_id, [chunk])
+        session.commit()
+        # 2. Then Qdrant: embed and upsert, then remove abstract points of older versions.
+        rows = session.scalars(
+            select(ChunkRow).where(
+                ChunkRow.arxiv_id.in_([p.arxiv_id for p in todo]), ChunkRow.ord == ABSTRACT_ORD
+            )
+        ).all()
+        by_id = {p.arxiv_id: p for p in todo}
+        _upsert(client, collection, _points([(by_id[r.arxiv_id], r) for r in rows], dense, sparse))
+        _delete_stale_points(
+            client, collection, [p.arxiv_id for p in todo], ["abstract"], keep=[r.id for r in rows]
+        )
+        indexed += len(rows)
+    return indexed

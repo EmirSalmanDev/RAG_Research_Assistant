@@ -75,6 +75,13 @@ class Chunk:
     embedding_text: str  # 'Title > Section path' + blank line + text; what gets embedded
 
 
+def embedding_text(title: str, section_path: str | None, text: str) -> str:
+    """What gets embedded: 'Title > Section path', a blank line, then the chunk text.
+    Indexing rebuilds it from the stored row with this same function."""
+    prefix = f"{title} > {section_path}" if section_path else title
+    return f"{prefix}\n\n{text}"
+
+
 def abstract_chunk(arxiv_id: str, version: int, title: str, abstract: str) -> Chunk:
     """The ord-0 chunk: title + abstract. It is also the paper-level vector."""
     text = abstract.strip()
@@ -85,7 +92,7 @@ def abstract_chunk(arxiv_id: str, version: int, title: str, abstract: str) -> Ch
         section_path="Abstract",
         text=text,
         token_count=count_tokens(text),
-        embedding_text=f"{title} > Abstract\n\n{text}",
+        embedding_text=embedding_text(title, "Abstract", text),
     )
 
 
@@ -101,7 +108,6 @@ def chunk_paper(
     chunks: list[Chunk] = []
     for section in _merge_small_sections(_sections(markdown), cfg.min_tokens):
         path = " > ".join(section.path) or None
-        prefix = " > ".join([title, *section.path])
         for text in _section_texts(section.lines, cfg):
             ord = FIRST_SECTION_ORD + len(chunks)
             if ord >= FIRST_ANALYSIS_ORD:
@@ -114,7 +120,7 @@ def chunk_paper(
                     section_path=path,
                     text=text,
                     token_count=count_tokens(text),
-                    embedding_text=f"{prefix}\n\n{text}",
+                    embedding_text=embedding_text(title, path, text),
                 )
             )
     return chunks
