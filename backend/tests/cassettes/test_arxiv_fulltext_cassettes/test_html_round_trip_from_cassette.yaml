@@ -1,0 +1,179 @@
+interactions:
+- request:
+    body: ''
+    headers:
+      accept:
+      - '*/*'
+      accept-encoding:
+      - gzip, deflate
+      connection:
+      - keep-alive
+      host:
+      - arxiv.org
+      user-agent:
+      - research-copilot/0.1 (personal research tool)
+    method: GET
+    uri: https://arxiv.org/html/2609.24972v2
+  response:
+    body:
+      string: '<!-- Trimmed excerpt of https://arxiv.org/html/2609.24972v2, recorded
+        2026-10-01 for tests. Licence stated on the page: License: arXiv.org perpetual
+        non-exclusive license (https://info.arxiv.org/help/license/index.html#licenses-available).
+        Text replaced with invented text; structure only. -->
+
+        <html><body><article class="ltx_document">
+
+        <h1 class="ltx_title ltx_title_document"><span class="ltx_text ltx_font_smallcaps"
+        id="id1">Invented text 2.</span>Invented text 1.</h1>
+
+        <div class="ltx_abstract"> <h6 class="ltx_title ltx_title_abstract">Invented
+        text 3.</h6> <p class="ltx_p" id="abstract1.1">Invented text 4.<span class="ltx_text
+        ltx_font_smallcaps" id="abstract1.1.1"></span><span class="ltx_text ltx_font_smallcaps"
+        id="abstract1.1.2"></span><span class="ltx_text ltx_align_center" id="abstract1.1.3"
+        style="position:relative; bottom:-0.2pt;"><img class="ltx_graphics ltx_img_square"
+        height="15" id="abstract1.g1" style="aspect-ratio:15/15;" width="15"/></span><a
+        class="ltx_ref ltx_centering ltx_href ltx_font_typewriter" href="#"></a><span
+        class="ltx_rule ltx_align_center" style="width:0.6pt;height:9.0pt;position:relative;
+        bottom:0.2pt;--ltx-bg-color:black;display:inline-block;"></span><span class="ltx_text
+        ltx_align_center" id="abstract1.1.4" style="position:relative; bottom:-0.2pt;"><img
+        class="ltx_graphics ltx_img_square" height="15" id="abstract1.g2" style="aspect-ratio:15/15;"
+        width="15"/></span><a class="ltx_ref ltx_centering ltx_href ltx_font_typewriter"
+        href="#"></a></p> </div>
+
+        <section class="ltx_section" id="S1"> <h2 class="ltx_title ltx_title_section"><span
+        class="ltx_tag ltx_tag_section">1 </span>Invented text 12.</h2> <p class="ltx_p"
+        id="S1.p1.1">Invented text 14.<cite class="ltx_cite ltx_citemacro_citep">Invented
+        text 15.<a class="ltx_ref" href="#bib.bib29">Invented text 16.</a>Invented
+        text 15.<a class="ltx_ref" href="#bib.bib30">Invented text 17.</a>Invented
+        text 15.</cite>Invented text 14.<cite class="ltx_cite ltx_citemacro_citep"><a
+        class="ltx_ref" href="#bib.bib2"></a><a class="ltx_ref" href="#bib.bib1"></a><a
+        class="ltx_ref" href="#bib.bib52"></a></cite></p> </section>
+
+        <section class="ltx_section" id="S2"> <h2 class="ltx_title ltx_title_section"><span
+        class="ltx_tag ltx_tag_section">2 </span>Invented text 22.</h2> <p class="ltx_p"
+        id="S2.p1.1"><span class="ltx_text ltx_font_bold" id="S2.p1.1.1">Invented
+        text 25.</span>Invented text 24.<math alttext="x^{2}" class="ltx_Math" display="inline"
+        id="S2.p1.m1" intent=":literal"></math>Invented text 24.<math alttext="x^{2}"
+        class="ltx_Math" display="inline" id="S2.p1.m2" intent=":literal"></math>Invented
+        text 24.<math alttext="x^{2}" class="ltx_Math" display="inline" id="S2.p1.m3"
+        intent=":literal"></math>Invented text 24.<cite class="ltx_cite ltx_citemacro_citep">Invented
+        text 26.<a class="ltx_ref" href="#bib.bib29">Invented text 27.</a>Invented
+        text 26.<a class="ltx_ref" href="#bib.bib30">Invented text 28.</a>Invented
+        text 26.</cite>Invented text 24.<math alttext="x^{2}" class="ltx_Math" display="inline"
+        id="S2.p1.m4" intent=":literal"></math><math alttext="x^{2}" class="ltx_math_unparsed"
+        display="inline" id="S2.p1.m5" intent=":literal"></math><math alttext="x^{2}"
+        class="ltx_Math" display="inline" id="S2.p1.m6" intent=":literal"></math><math
+        alttext="x^{2}" class="ltx_Math" display="inline" id="S2.p1.m7" intent=":literal"></math></p>
+        </section>
+
+        <table class="ltx_equation ltx_eqn_table"><tr><td> <math alttext="x^{2}" class="ltx_math_unparsed"
+        display="block" id="S2.E1.m1" intent=":literal"></math> </td></tr></table>
+
+        <figure class="ltx_figure"> <figcaption class="ltx_caption ltx_centering"><span
+        class="ltx_tag ltx_tag_figure">Figure 1: </span>Invented text 30.<span class="ltx_text
+        ltx_font_smallcaps" id="S1.F1.4">Invented text 32.</span>Invented text 30.<math
+        alttext="x^{2}" class="ltx_Math" display="inline" id="S1.F1.m3" intent=":literal"></math>Invented
+        text 30.<math alttext="x^{2}" class="ltx_Math" display="inline" id="S1.F1.m4"
+        intent=":literal"></math>Invented text 30.<span class="ltx_text ltx_font_smallcaps"
+        id="S1.F1.5"></span></figcaption> </figure>
+
+        <figure class="ltx_table"> <figcaption class="ltx_caption ltx_centering" style="font-size:90%;"><span
+        class="ltx_tag ltx_tag_table">Table 1: </span>Invented text 34.</figcaption>
+        <table class="ltx_tabular"> <tr class="ltx_tr" id="S4.T1.2.1.1"> <th class="ltx_td
+        ltx_th ltx_th_row ltx_border_tt" id="S4.T1.2.1.1.1"></th> <th class="ltx_td
+        ltx_align_center ltx_th ltx_th_column ltx_border_tt" colspan="2" id="S4.T1.2.1.1.2"><span
+        class="ltx_text" id="S4.T1.2.1.1.2.1" style="font-size:90%;">Invented text
+        37.</span></th> <th class="ltx_td ltx_align_center ltx_th ltx_th_column ltx_border_tt"
+        colspan="3" id="S4.T1.2.1.1.3"><span class="ltx_text" id="S4.T1.2.1.1.3.1"
+        style="font-size:90%;">Invented text 38.</span></th></tr> <tr class="ltx_tr"
+        id="S4.T1.2.1.2"> <th class="ltx_td ltx_align_left ltx_th ltx_th_column ltx_th_row"
+        id="S4.T1.2.1.2.1"><span class="ltx_text" id="S4.T1.2.1.2.1.1" style="font-size:90%;">Invented
+        text 40.</span></th> <th class="ltx_td ltx_align_center ltx_th ltx_th_column
+        ltx_border_t" id="S4.T1.2.1.2.2"><span class="ltx_text" id="S4.T1.2.1.2.2.1"
+        style="font-size:90%;">Invented text 41.</span></th> <th class="ltx_td ltx_align_center
+        ltx_th ltx_th_column ltx_border_t" id="S4.T1.2.1.2.3"><span class="ltx_text"
+        id="S4.T1.2.1.2.3.1" style="font-size:90%;">Invented text 42.</span></th>
+        <th class="ltx_td ltx_align_center ltx_th ltx_th_column ltx_border_t" id="S4.T1.2.1.2.4"><span
+        class="ltx_text" id="S4.T1.2.1.2.4.1" style="font-size:90%;">Invented text
+        43.</span></th> <th class="ltx_td ltx_align_center ltx_th ltx_th_column ltx_border_t"
+        id="S4.T1.2.1.2.5"><span class="ltx_text" id="S4.T1.2.1.2.5.1" style="font-size:90%;">Invented
+        text 44.</span></th> <th class="ltx_td ltx_align_center ltx_th ltx_th_column
+        ltx_border_t" id="S4.T1.2.1.2.6"><span class="ltx_text" id="S4.T1.2.1.2.6.1"
+        style="font-size:90%;">Invented text 45.</span></th></tr> <tr class="ltx_tr"
+        id="S4.T1.2.1.3"> <th class="ltx_td ltx_align_left ltx_th ltx_th_column ltx_th_row
+        ltx_border_t" id="S4.T1.2.1.3.1"><math alttext="x^{2}" class="ltx_Math" display="inline"
+        id="S4.T1.m1" intent=":literal"></math><span class="ltx_text" id="S4.T1.2.1.3.1.1"
+        style="font-size:90%;">Invented text 47.</span></th> <th class="ltx_td ltx_align_center
+        ltx_th ltx_th_column ltx_border_t" id="S4.T1.2.1.3.2"><span class="ltx_text"
+        id="S4.T1.2.1.3.2.1" style="font-size:90%;">Invented text 48.</span></th>
+        <th class="ltx_td ltx_align_center ltx_th ltx_th_column ltx_border_t" id="S4.T1.2.1.3.3"><span
+        class="ltx_text" id="S4.T1.2.1.3.3.1" style="font-size:90%;">Invented text
+        49.</span></th> <th class="ltx_td ltx_align_center ltx_th ltx_th_column ltx_border_t"
+        id="S4.T1.2.1.3.4"><span class="ltx_text" id="S4.T1.2.1.3.4.1" style="font-size:90%;">Invented
+        text 50.</span></th> <th class="ltx_td ltx_align_center ltx_th ltx_th_column
+        ltx_border_t" id="S4.T1.2.1.3.5"><span class="ltx_text" id="S4.T1.2.1.3.5.1"
+        style="font-size:90%;">Invented text 51.</span></th> <th class="ltx_td ltx_align_center
+        ltx_th ltx_th_column ltx_border_t" id="S4.T1.2.1.3.6"><span class="ltx_text"
+        id="S4.T1.2.1.3.6.1" style="font-size:90%;">Invented text 52.</span></th></tr>
+        </table></figure>
+
+        <section class="ltx_bibliography" id="bib"> <h2 class="ltx_title ltx_title_bibliography">Invented
+        text 53.</h2> <ul class="ltx_biblist"> <li class="ltx_bibitem ltx_bib_misc"
+        id="bib.bib25"><span class="ltx_tag ltx_bib_author-year ltx_role_refnum ltx_tag_bibitem">Invented
+        text 55.</span> <span class="ltx_bibblock"><span class="ltx_text ltx_bib_author">Invented
+        text 57.</span> </span> <span class="ltx_bibblock"><span class="ltx_text ltx_bib_title">Invented
+        text 59.</span>Invented text 58.</span> <span class="ltx_bibblock">Invented
+        text 60.<span class="ltx_text ltx_bib_links"><a class="ltx_ref ltx_bib_external"
+        href="#">Invented text 62.</a></span> </span> <span class="ltx_bibblock ltx_bib_cited">Invented
+        text 63.<a class="ltx_ref" href="#S4.SS1.p3.1"><span class="ltx_text ltx_ref_tag">Invented
+        text 65.</span></a>Invented text 63.</span></li> <li class="ltx_bibitem ltx_bib_misc"
+        id="bib.bib27"><span class="ltx_tag ltx_bib_author-year ltx_role_refnum ltx_tag_bibitem">Invented
+        text 67.</span> <span class="ltx_bibblock"><span class="ltx_text ltx_bib_author">Invented
+        text 69.</span> </span> <span class="ltx_bibblock"><span class="ltx_text ltx_bib_title">Invented
+        text 71.</span>Invented text 70.</span> <span class="ltx_bibblock">Invented
+        text 72.<span class="ltx_text ltx_bib_links"><a class="ltx_ref ltx_bib_external"
+        href="#">Invented text 74.</a></span> </span> <span class="ltx_bibblock ltx_bib_cited">Invented
+        text 75.<a class="ltx_ref" href="#A1.SS5.p1.1"><span class="ltx_text ltx_ref_tag">Invented
+        text 77.</span></a>Invented text 75.</span></li> </ul></section>
+
+        <section class="ltx_appendix"> <h2 class="ltx_title ltx_title_appendix"><span
+        class="ltx_tag ltx_tag_appendix">Appendix A </span>Invented text 78.</h2>
+        <p class="ltx_p" id="A1.p1.1">Invented text 80.</p> </section>
+
+        </article></body></html>'
+    headers:
+      accept-ranges:
+      - bytes
+      access-control-allow-origin:
+      - '*'
+      age:
+      - '252005'
+      connection:
+      - keep-alive
+      content-type:
+      - text/html; charset=utf-8
+      date:
+      - Thu, 01 Oct 2026 09:01:12 GMT
+      etag:
+      - '"CIrsi8S5iJcDEAE="'
+      last-modified:
+      - Fri, 25 Sep 2026 00:14:11 GMT
+      link:
+      - <https://arxiv.org/html/2609.24972>; rel='canonical'
+      server:
+      - Google Frontend
+      via:
+      - 1.1 google, 1.1 varnish, 1.1 varnish, 1.1 varnish
+      x-cache:
+      - MISS, HIT, HIT
+      x-robots-tag:
+      - nofollow
+      x-served-by:
+      - cache-lga-kjfk8660054-LGA, cache-lga-kjfk8660054-LGA, cache-lga-kjfk8660054-LGA,
+        cache-lin1730063-LIN
+      x-timer:
+      - S1790845272.460990,VS0,VE1
+    status:
+      code: 200
+      message: OK
+version: 1

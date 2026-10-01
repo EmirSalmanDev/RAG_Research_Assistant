@@ -31,6 +31,7 @@ class HFPaper(BaseModel):
     upvotes: int = 0
     github_repo: str | None = Field(default=None, alias="githubRepo")
     github_stars: int | None = Field(default=None, alias="githubStars")
+    project_page: str | None = Field(default=None, alias="projectPage")
     published_at: datetime | None = Field(default=None, alias="publishedAt")
 
 

@@ -30,6 +30,15 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
 
+# papers.fulltext_status (CHECK constraint below and in migration 0002):
+#   none        - nobody asked for the full text (default; abstract only)
+#   requested   - asked for by hand; the next selection step picks it up
+#   fetched     - full text stored in paper_texts, not yet chunked and indexed
+#   indexed     - full-text chunks are in Postgres and Qdrant
+#   unavailable - no source (HF .md, arXiv HTML, PDF) had usable text
+#   failed      - a step failed after its last retry (shown on the health page)
+FULLTEXT_STATUSES = ("none", "requested", "fetched", "indexed", "unavailable", "failed")
+
 
 def _paper_fk() -> ForeignKey:
     # A ForeignKey object belongs to one column, so build a fresh one each time.
@@ -48,11 +57,15 @@ class Paper(Base):
     title: Mapped[str] = mapped_column(Text)
     abstract: Mapped[str] = mapped_column(Text)
     authors: Mapped[list[Any]] = mapped_column(JSONB, default=list)
+    # arXiv's order is kept: the primary category comes first.
     categories: Mapped[list[str]] = mapped_column(ARRAY(Text), default=list)
+    primary_category: Mapped[str | None] = mapped_column(Text)
     published_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     hf_upvotes: Mapped[int | None] = mapped_column(Integer)
     citation_count: Mapped[int | None] = mapped_column(Integer)
     github_url: Mapped[str | None] = mapped_column(Text)
+    project_url: Mapped[str | None] = mapped_column(Text)  # project page, from Hugging Face
+    # See FULLTEXT_STATUSES for what each value means.
     fulltext_status: Mapped[str] = mapped_column(Text, default="none", server_default="none")
     fulltext_source: Mapped[str | None] = mapped_column(Text)
     relevance_score: Mapped[float | None] = mapped_column(Float)
@@ -61,15 +74,33 @@ class Paper(Base):
         DateTime(timezone=True), server_default=_now(), onupdate=_now()
     )
 
-    __table_args__ = (Index("ix_papers_published_at", "published_at"),)
+    __table_args__ = (
+        Index("ix_papers_published_at", "published_at"),
+        CheckConstraint(
+            "fulltext_status IN (" + ", ".join(f"'{s}'" for s in FULLTEXT_STATUSES) + ")",
+            name="fulltext_status",
+        ),
+    )
 
 
 class PaperText(Base):
+    """A paper's full text, kept so it can be re-cleaned and re-chunked without a download.
+
+    Two versions of the text are stored:
+    - `raw_markdown`: the text exactly as fetched or converted (Hugging Face .md,
+      arXiv HTML -> markdown, or PDF -> markdown), before any cleaning;
+    - `markdown`: the CLEANED text (output of `app/ingest/clean.py`), the input to chunking.
+    The reference list cut out by cleaning goes to `references`.
+    """
+
     __tablename__ = "paper_texts"
 
     arxiv_id: Mapped[str] = mapped_column(_paper_fk(), primary_key=True)
-    markdown: Mapped[str] = mapped_column(Text)
-    token_count: Mapped[int] = mapped_column(Integer)
+    version: Mapped[int] = mapped_column(Integer)  # arXiv version the text was fetched for
+    raw_markdown: Mapped[str] = mapped_column(Text)  # as fetched/converted, NOT cleaned
+    markdown: Mapped[str] = mapped_column(Text)  # cleaned; this is what gets chunked
+    references: Mapped[str | None] = mapped_column(Text)  # reference list cut by cleaning
+    token_count: Mapped[int] = mapped_column(Integer)  # tokens in the cleaned `markdown`
     parsed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=_now())
 
 

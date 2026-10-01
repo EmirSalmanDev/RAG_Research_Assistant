@@ -72,13 +72,16 @@ def make_client(
     base_url: str = "",
     headers: dict[str, str] | None = None,
     transport: httpx.BaseTransport | None = None,
+    follow_redirects: bool = True,
 ) -> httpx.Client:
-    """httpx client with our User-Agent. `transport` lets tests inject a fake server."""
+    """httpx client with our User-Agent. `transport` lets tests inject a fake server.
+    `follow_redirects=False` is for rate-limited hosts, where every hop must take its
+    own limiter slot (the caller follows redirects itself)."""
     return httpx.Client(
         base_url=base_url,
         headers={"User-Agent": USER_AGENT, **(headers or {})},
         timeout=DEFAULT_TIMEOUT_S,
-        follow_redirects=True,
+        follow_redirects=follow_redirects,
         transport=transport,
     )
 

@@ -2,6 +2,7 @@
 
 import uuid
 from collections.abc import Iterator
+from typing import TYPE_CHECKING
 
 import pytest
 from sqlalchemy import create_engine, text
@@ -9,6 +10,49 @@ from sqlalchemy.engine import URL, make_url
 from sqlalchemy.orm import Session
 
 from app.config import Settings
+
+if TYPE_CHECKING:
+    from qdrant_client import QdrantClient
+
+
+class NetworkBlockedError(RuntimeError):
+    """A test (or a fixture) tried to look up a host outside --allowed-hosts."""
+
+
+@pytest.fixture(scope="session", autouse=True)
+def block_network_for_the_whole_session(request: pytest.FixtureRequest) -> Iterator[None]:
+    """Second network guard, covering module- and session-scoped fixtures too.
+
+    pytest-recording's --block-network is a function-scoped fixture: it only covers each
+    test's own setup and body, so a module- or session-scoped fixture could still reach
+    the internet (that is how a tokenizer download slipped through once). Its block is
+    also undone after every test, so it cannot simply be widened. This guard works one
+    layer lower, on DNS lookups (`socket.getaddrinfo`, which every connection to a named
+    host makes first), with the same allowed hosts, for the whole session.
+    Off when recording cassettes (--record-mode other than none, or no --block-network).
+    """
+    import re
+    import socket
+
+    record_mode = request.config.getoption("--record-mode") or "none"
+    if not request.config.getoption("--block-network") or record_mode != "none":
+        yield
+        return
+    allowed = [h for h in (request.config.getoption("--allowed-hosts") or "").split(",") if h]
+    allowed_re = re.compile("(" + ")|(".join(allowed) + ")") if allowed else None
+    original = socket.getaddrinfo
+
+    def guarded(host: bytes | str | None, *args: object, **kwargs: object) -> object:
+        name = host.decode() if isinstance(host, bytes) else host
+        if name is None or (allowed_re is not None and allowed_re.match(name)):
+            return original(host, *args, **kwargs)  # type: ignore[arg-type]
+        raise NetworkBlockedError(f"network is blocked in tests: lookup of {name!r}")
+
+    socket.getaddrinfo = guarded  # type: ignore[assignment]
+    try:
+        yield
+    finally:
+        socket.getaddrinfo = original
 
 
 @pytest.fixture(autouse=True)
@@ -69,6 +113,58 @@ def migrated_session(scratch_db_url: URL) -> Iterator[Session]:
 
 
 # ---------------------------------------------------------------------------
+# Qdrant: throwaway collections only. Tests never write to the real collection.
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def qdrant() -> Iterator["QdrantClient"]:
+    from qdrant_client import QdrantClient
+
+    client = QdrantClient(url=Settings(_env_file=None).qdrant_url)
+    yield client
+    client.close()
+
+
+def _real_collection_state(client: "QdrantClient", name: str) -> tuple[bool, int | None]:
+    """(exists, point count) of the real collection, e.g. `chunks`."""
+    if not client.collection_exists(name):
+        return False, None
+    return True, client.count(name, exact=True).count
+
+
+@pytest.fixture
+def real_collection_untouched(qdrant: "QdrantClient") -> Iterator[None]:
+    """Fails the test if the real collection's existence or point count changed.
+
+    The name is read once, before the test: a test may point the configured collection
+    at a scratch one (QDRANT_COLLECTION), and the check must still look at the real one.
+    """
+    from app.config import get_settings
+
+    name = get_settings().qdrant_collection
+    before = _real_collection_state(qdrant, name)
+    yield
+    after = _real_collection_state(qdrant, name)
+    assert after == before, f"the real collection {name!r} changed during the test"
+
+
+@pytest.fixture
+def scratch_collection(qdrant: "QdrantClient") -> Iterator[str]:
+    """A unique `chunks_test_<random>` name; the collection is deleted afterwards, even if
+    the test fails."""
+    from app.config import get_settings
+
+    name = f"chunks_test_{uuid.uuid4().hex[:8]}"
+    assert name != get_settings().qdrant_collection
+    try:
+        yield name
+    finally:
+        if qdrant.collection_exists(name):
+            qdrant.delete_collection(name)
+
+
+# ---------------------------------------------------------------------------
 # Cassette (recorded HTTP) configuration. CLAUDE.md rules 3 and 14: strip credentials,
 # and keep only metadata / abstracts / short text in committed cassettes.
 # ---------------------------------------------------------------------------
@@ -82,7 +178,9 @@ INVENTED_MARKDOWN = b"# Invented paper\n\nThis body replaces the real full text 
 ARTIFACTS_KEPT = 10  # HF lists up to 100 models/datasets/spaces per paper; keep 10
 MAX_BODY_BYTES = 300_000  # hard stop: a bigger body probably holds full paper text
 TRUNCATED_TYPES = ("text/plain", "application/vnd.github.raw")  # README-like text
-HF_PAPER_KEYS = {"id", "title", "summary", "upvotes", "githubRepo", "githubStars", "publishedAt"}
+HF_PAPER_KEYS = {
+    "id", "title", "summary", "upvotes", "githubRepo", "githubStars", "publishedAt", "projectPage",
+}  # fmt: skip
 DAILY_ENTRIES_KEPT = 3  # daily_papers returns ~30 entries with submitter profiles; keep 3
 
 
@@ -110,6 +208,14 @@ def _scrub_json(body: bytes) -> bytes:
     return json.dumps(data).encode()
 
 
+_last_request_url: list[str] = [""]  # set by before_record_request (requests are sequential)
+
+
+def before_record_request(request: Any) -> Any:
+    _last_request_url[0] = str(request.uri)
+    return request
+
+
 def before_record_response(response: dict[str, Any]) -> dict[str, Any]:
     headers = response.get("headers", {})
     for name in list(headers):
@@ -119,6 +225,13 @@ def before_record_response(response: dict[str, Any]) -> dict[str, Any]:
     content_type = next((v[0] for k, v in headers.items() if k.lower() == "content-type"), "")
     if content_type.startswith("text/markdown"):
         body = INVENTED_MARKDOWN  # HF full text of a paper: never stored (rule 14)
+    elif content_type.startswith("text/html"):
+        from tests.cassette_trim import trim_arxiv_html
+
+        # arXiv HTML of a paper: only a short LaTeXML excerpt is stored (rule 14).
+        body = trim_arxiv_html(body.decode("utf-8", "replace"), _last_request_url[0]).encode()
+    elif content_type.startswith("application/pdf"):
+        raise RuntimeError("refusing to record a PDF (rule 12/14): build invented PDFs in tests")
     elif content_type.startswith(TRUNCATED_TYPES):
         body = body[:MAX_TEXT_BYTES]  # never store whole READMEs
     elif "json" in content_type:
@@ -137,6 +250,7 @@ def vcr_config() -> dict[str, Any]:
     return {
         "filter_headers": ["authorization", "x-api-key", "cookie", "set-cookie"],
         "filter_query_parameters": ["token", "api_key", "access_token", "key"],
+        "before_record_request": before_record_request,
         "before_record_response": before_record_response,
         "decode_compressed_response": True,
     }

@@ -96,7 +96,7 @@ def ingest_one(session: Session, clients: Clients, raw_arxiv_id: str) -> IngestR
         paper = clients.arxiv.get_paper(arxiv_id)
         if paper is None:
             raise IngestError(f"arXiv has no paper {arxiv_id}")
-        _upsert_paper(session, paper)
+        upsert_paper(session, paper)
         counts["papers"] = 1
     except Exception as err:
         session.rollback()  # drop the partial work, then record the failure on the run
@@ -131,7 +131,12 @@ def ingest_one(session: Session, clients: Clients, raw_arxiv_id: str) -> IngestR
         session.execute(
             update(Paper)
             .where(Paper.arxiv_id == arxiv_id)
-            .values(hf_upvotes=hf_paper.upvotes, github_url=github_url or Paper.github_url)
+            .values(
+                hf_upvotes=hf_paper.upvotes,
+                github_url=github_url or Paper.github_url,
+                # untrusted third-party URL (rule 8): stored and shown as data only
+                project_url=hf_paper.project_page or Paper.project_url,
+            )
         )
 
     optional("hf", hf_page)
@@ -191,14 +196,21 @@ def _describe(err: Exception) -> str:
     return f"{type(err).__name__}: {err}"[:500]
 
 
-def _upsert_paper(session: Session, p: ArxivPaper) -> None:
+def primary_category_of(p: ArxivPaper) -> str | None:
+    """arXiv's own primary category; if the feed left it empty, the first listed category
+    (arXiv lists the primary first). None only if the paper has no categories at all."""
+    return p.primary_category or (p.categories[0] if p.categories else None)
+
+
+def upsert_paper(session: Session, p: ArxivPaper) -> None:
     values = {
         "arxiv_id": p.arxiv_id,
         "version": p.version,
         "title": p.title,
         "abstract": p.abstract,
         "authors": [{"name": name} for name in p.authors],
-        "categories": p.categories,
+        "categories": p.categories,  # kept in arXiv's order
+        "primary_category": primary_category_of(p),
         "published_at": p.published_at,
     }
     stmt = pg_insert(Paper).values(**values)

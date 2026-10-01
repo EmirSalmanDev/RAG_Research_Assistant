@@ -1,0 +1,144 @@
+interactions:
+- request:
+    body: null
+    headers:
+      Accept:
+      - '*/*'
+      Accept-Encoding:
+      - gzip, deflate
+      Connection:
+      - keep-alive
+      user-agent:
+      - arxiv.py/4.0.1
+    method: GET
+    uri: https://export.arxiv.org/api/query?id_list=1706.03762%2C2609.24972%2C1301.3781&max_results=3&sortBy=relevance&sortOrder=descending&start=0
+  response:
+    body:
+      string: "<?xml version='1.0' encoding='UTF-8'?>\n<feed xmlns:opensearch=\"http://a9.com/-/spec/opensearch/1.1/\"
+        xmlns:arxiv=\"http://arxiv.org/schemas/atom\" xmlns=\"http://www.w3.org/2005/Atom\">\n
+        \ <id>https://arxiv.org/api/DXwGxZZBuj8KNNph81vkik51Xxg</id>\n  <title>arXiv
+        Query: search_query=&amp;id_list=1706.03762,2609.24972,1301.3781&amp;start=0&amp;max_results=3</title>\n
+        \ <updated>2026-10-01T09:01:11Z</updated>\n  <link href=\"https://arxiv.org/api/query?search_query=&amp;start=0&amp;max_results=3&amp;id_list=1706.03762,2609.24972,1301.3781\"
+        type=\"application/atom+xml\"/>\n  <opensearch:itemsPerPage>3</opensearch:itemsPerPage>\n
+        \ <opensearch:totalResults>3</opensearch:totalResults>\n  <opensearch:startIndex>0</opensearch:startIndex>\n
+        \ <entry>\n    <id>http://arxiv.org/abs/1706.03762v7</id>\n    <title>Attention
+        Is All You Need</title>\n    <updated>2023-08-02T00:41:18Z</updated>\n    <link
+        href=\"https://arxiv.org/abs/1706.03762v7\" rel=\"alternate\" type=\"text/html\"/>\n
+        \   <link href=\"https://arxiv.org/pdf/1706.03762v7\" rel=\"related\" type=\"application/pdf\"
+        title=\"pdf\"/>\n    <summary>The dominant sequence transduction models are
+        based on complex recurrent or convolutional neural networks in an encoder-decoder
+        configuration. The best performing models also connect the encoder and decoder
+        through an attention mechanism. We propose a new simple network architecture,
+        the Transformer, based solely on attention mechanisms, dispensing with recurrence
+        and convolutions entirely. Experiments on two machine translation tasks show
+        these models to be superior in quality while being more parallelizable and
+        requiring significantly less time to train. Our model achieves 28.4 BLEU on
+        the WMT 2014 English-to-German translation task, improving over the existing
+        best results, including ensembles by over 2 BLEU. On the WMT 2014 English-to-French
+        translation task, our model establishes a new single-model state-of-the-art
+        BLEU score of 41.8 after training for 3.5 days on eight GPUs, a small fraction
+        of the training costs of the best models from the literature. We show that
+        the Transformer generalizes well to other tasks by applying it successfully
+        to English constituency parsing both with large and limited training data.</summary>\n
+        \   <category term=\"cs.CL\" scheme=\"http://arxiv.org/schemas/atom\"/>\n
+        \   <category term=\"cs.LG\" scheme=\"http://arxiv.org/schemas/atom\"/>\n
+        \   <published>2017-06-12T17:57:34Z</published>\n    <arxiv:comment>15 pages,
+        5 figures</arxiv:comment>\n    <arxiv:primary_category term=\"cs.CL\"/>\n
+        \   <author>\n      <name>Ashish Vaswani</name>\n    </author>\n    <author>\n
+        \     <name>Noam Shazeer</name>\n    </author>\n    <author>\n      <name>Niki
+        Parmar</name>\n    </author>\n    <author>\n      <name>Jakob Uszkoreit</name>\n
+        \   </author>\n    <author>\n      <name>Llion Jones</name>\n    </author>\n
+        \   <author>\n      <name>Aidan N. Gomez</name>\n    </author>\n    <author>\n
+        \     <name>Lukasz Kaiser</name>\n    </author>\n    <author>\n      <name>Illia
+        Polosukhin</name>\n    </author>\n  </entry>\n  <entry>\n    <id>http://arxiv.org/abs/1301.3781v3</id>\n
+        \   <title>Efficient Estimation of Word Representations in Vector Space</title>\n
+        \   <updated>2013-09-07T00:30:40Z</updated>\n    <link href=\"https://arxiv.org/abs/1301.3781v3\"
+        rel=\"alternate\" type=\"text/html\"/>\n    <link href=\"https://arxiv.org/pdf/1301.3781v3\"
+        rel=\"related\" type=\"application/pdf\" title=\"pdf\"/>\n    <summary>We
+        propose two novel model architectures for computing continuous vector representations
+        of words from very large data sets. The quality of these representations is
+        measured in a word similarity task, and the results are compared to the previously
+        best performing techniques based on different types of neural networks. We
+        observe large improvements in accuracy at much lower computational cost, i.e.
+        it takes less than a day to learn high quality word vectors from a 1.6 billion
+        words data set. Furthermore, we show that these vectors provide state-of-the-art
+        performance on our test set for measuring syntactic and semantic word similarities.</summary>\n
+        \   <category term=\"cs.CL\" scheme=\"http://arxiv.org/schemas/atom\"/>\n
+        \   <published>2013-01-16T18:24:43Z</published>\n    <arxiv:primary_category
+        term=\"cs.CL\"/>\n    <author>\n      <name>Tomas Mikolov</name>\n    </author>\n
+        \   <author>\n      <name>Kai Chen</name>\n    </author>\n    <author>\n      <name>Greg
+        Corrado</name>\n    </author>\n    <author>\n      <name>Jeffrey Dean</name>\n
+        \   </author>\n  </entry>\n  <entry>\n    <id>http://arxiv.org/abs/2609.24972v2</id>\n
+        \   <title>RRSI: Regularized Recursive Self-Improvement of Agent Harnesses</title>\n
+        \   <updated>2026-09-23T22:10:39Z</updated>\n    <link href=\"https://arxiv.org/abs/2609.24972v2\"
+        rel=\"alternate\" type=\"text/html\"/>\n    <link href=\"https://arxiv.org/pdf/2609.24972v2\"
+        rel=\"related\" type=\"application/pdf\" title=\"pdf\"/>\n    <summary>An
+        LLM agent's capability is largely magnified by its harness, namely the prompts,
+        control flow, tooling, memory, and context management surrounding the frozen
+        backbone model. Recent methods increasingly automate this process by iteratively
+        proposing and selecting component-wise edits of an agent harness, practically
+        establishing a form of recursive self-improvement (RSI) at the agent-system
+        level. However, such recursive evolution may overfit by memorizing the training
+        tasks, showing large in-distribution gains that shrink or even vanish on out-of-distribution
+        benchmarks. We introduce Regularized Recursive Self-Improvement of Agent Harnesses
+        (RRSI), which incorporates the principles of regularizations into harness
+        self-improvement by constraining the evolution candidate proposal and selection.
+        The proposer operates with a temporally annealed budget, limiting how many
+        edits a candidate can bundle, and it encourages unexplored trajectories based
+        on evolution history. The selector is equipped with a critic and a pruner:
+        the critic screens benchmark-specific proposals, while the pruner, removes
+        changes that are too small, too expensive, or no longer useful. Together these
+        constraints favor reusable agent mechanisms over benchmark-specific ones or
+        even noises. Across eight benchmarks spanning coding, agentic workspace and
+        engineering design tasks, RRSI gains up to 14.1 points on the split it evolves
+        against and up to 4.7 points on the five out-of-distribution benchmarks, while
+        producing a harness that runs on 30% fewer policy tokens than the unregularized
+        evolution. Code is available at https://github.com/google-research/rrsi and
+        project page is https://regularized-rsi.com/.</summary>\n    <category term=\"cs.LG\"
+        scheme=\"http://arxiv.org/schemas/atom\"/>\n    <category term=\"cs.AI\" scheme=\"http://arxiv.org/schemas/atom\"/>\n
+        \   <category term=\"cs.CL\" scheme=\"http://arxiv.org/schemas/atom\"/>\n
+        \   <published>2026-09-21T17:54:49Z</published>\n    <arxiv:primary_category
+        term=\"cs.LG\"/>\n    <author>\n      <name>Peng Xia</name>\n    </author>\n
+        \   <author>\n      <name>Rujun Han</name>\n    </author>\n    <author>\n
+        \     <name>Zifeng Wang</name>\n    </author>\n    <author>\n      <name>Yanfei
+        Chen</name>\n    </author>\n    <author>\n      <name>Yufan Zhuang</name>\n
+        \   </author>\n    <author>\n      <name>Yoonho Lee</name>\n    </author>\n
+        \   <author>\n      <name>Chengsong Huang</name>\n    </author>\n    <author>\n
+        \     <name>Han Yu</name>\n    </author>\n    <author>\n      <name>Zhongying
+        CuiZhu</name>\n    </author>\n    <author>\n      <name>Yifei Ming</name>\n
+        \   </author>\n    <author>\n      <name>Huaxiu Yao</name>\n    </author>\n
+        \   <author>\n      <name>Burak Gokturk</name>\n    </author>\n    <author>\n
+        \     <name>Tomas Pfister</name>\n    </author>\n    <author>\n      <name>Chen-Yu
+        Lee</name>\n    </author>\n  </entry>\n</feed>\n"
+    headers:
+      Accept-Ranges:
+      - bytes
+      Age:
+      - '0'
+      Connection:
+      - keep-alive
+      Date:
+      - Thu, 01 Oct 2026 09:01:12 GMT
+      Strict-Transport-Security:
+      - max-age=300
+      X-Cache:
+      - MISS, MISS, MISS
+      X-Cache-Hits:
+      - 0, 0, 0
+      X-Served-By:
+      - cache-lga-kjfk8660038-LGA, cache-lga-kjfk8660038-LGA, cache-lga-kjfk8660038-LGA,
+        cache-lin1730022-LIN
+      X-Timer:
+      - S1790845268.257317,VS0,VE3744
+      content-type:
+      - application/atom+xml; charset=utf-8
+      server:
+      - Google Frontend
+      via:
+      - 1.1 google, 1.1 varnish, 1.1 varnish, 1.1 varnish
+      x-cloud-trace-context:
+      - c1a69106e2f98a03e57699457fa7856d
+    status:
+      code: 200
+      message: OK
+version: 1
