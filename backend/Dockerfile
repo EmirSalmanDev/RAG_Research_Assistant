@@ -1,7 +1,9 @@
 FROM python:3.12-slim
 
 # uv is copied from its official image; it installs exactly what uv.lock pins.
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+# Pinned by version and digest so every build uses the same uv (keep the local uv on the
+# same version: `uv self update <version>`).
+COPY --from=ghcr.io/astral-sh/uv:0.12.21@sha256:a7aed3216253ee804de3e2d8afa5073baa1a177335345d43845cd4165e43b711 /uv /usr/local/bin/uv
 
 ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy PYTHONUNBUFFERED=1
 WORKDIR /app
