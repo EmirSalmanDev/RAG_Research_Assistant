@@ -28,10 +28,15 @@ the payload.
 the last successful run's cursor minus 4 days and now, so new versions (v2, v3) are
 caught, not only new submissions (`submittedDate` is the v1 date). The overlap covers
 arXiv's announcement delay and weekends; repeats are free because papers are upserted and
-abstracts already indexed are skipped. arXiv's `lastUpdatedDate:[...]` query filter did
-not restrict results to the requested window when checked (a one-day window returned
-entries updated on other days), so the client sorts one combined category query by
-`lastUpdatedDate` descending and stops paging at the window start. Every arXiv request,
+abstracts already indexed are skipped. arXiv's `lastUpdatedDate:[...]` query filter does
+not restrict results to the requested window. Checked on 2026-10-01 with
+`search_query=cat:cs.CL AND lastUpdatedDate:[202609200000 TO 202609210000]`,
+`sortBy=lastUpdatedDate`, `sortOrder=descending`, `max_results=5`: arXiv answered
+`totalResults=50`, but the five entries' `<updated>` values were 2026-09-30T05:42:02Z,
+2026-09-27T08:13:41Z, 2026-09-23T07:05:51Z, 2026-09-22T10:17:56Z and 2026-09-20T23:47:30Z,
+so four of five lie outside the one-day window (the order did follow `<updated>`). The
+client therefore sorts one combined category query by `lastUpdatedDate` descending, keeps
+entries whose `updated` lies in the window, and stops paging at the first older entry. Every arXiv request,
 page and redirect hop goes through a Redis limiter (one request per 3 s across all
 processes). A backfill uses the same query for a past window and also sets the cursor.
 
