@@ -10,8 +10,12 @@ jobs:
     defaults:
       run:
         working-directory: backend
-    # Service containers: tests are offline today, but later milestones'
-    # integration tests will use these (same URLs as the defaults in app/config.py).
+    env:
+      # Where tiktoken keeps its tokenizer file. Same directory app/ingest/tokens.py uses
+      # by default (~/.cache/tiktoken); set explicitly so the cache step below matches.
+      TIKTOKEN_CACHE_DIR: /home/runner/.cache/tiktoken
+    # Service containers: integration tests use these (same URLs as the defaults in
+    # app/config.py).
     services:
       postgres:
         image: postgres:16
@@ -36,6 +40,16 @@ jobs:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
       - run: uv sync --locked
+      # The chunking tests need tiktoken's cl100k_base file, but pytest blocks the network.
+      # So it is fetched here, before pytest, and kept in the Actions cache. The key is the
+      # file's name in the cache directory (tiktoken names it by the SHA-1 of its URL), so
+      # it is downloaded only when the cache is empty.
+      - uses: actions/cache@v4
+        with:
+          path: /home/runner/.cache/tiktoken
+          key: tiktoken-9b5ad71b2ce5302211f9c61530b329a4922fc6a4
+      - name: Pre-fetch the tokenizer (no-op when cached)
+        run: uv run python -c "from app.ingest.tokens import get_encoding; print(get_encoding().name)"
       - run: uv run ruff check .
       - run: uv run ruff format --check .
       - run: uv run mypy app tests
