@@ -28,29 +28,42 @@ def is_table_row(line: str) -> bool:
     return line.lstrip().startswith("|")
 
 
+def protected_spans(lines: list[str]) -> list[tuple[int, int, str]]:
+    """Code and display math blocks as (start, end, kind): lines[start:end], fences included,
+    kind 'code' or 'math'. An unclosed block runs to the end of the text."""
+    spans: list[tuple[int, int, str]] = []
+    i = 0
+    while i < len(lines):
+        stripped = lines[i].strip()
+        if _FENCE_RE.match(lines[i]):
+            j = i + 1
+            while j < len(lines) and not _FENCE_RE.match(lines[j]):
+                j += 1
+            end = min(j + 1, len(lines))
+            spans.append((i, end, "code"))
+            i = end
+        elif stripped.startswith("$$"):
+            if len(stripped) > 2 and stripped.endswith("$$"):  # '$$ x = 1 $$' on one line
+                end = i + 1
+            else:
+                j = i + 1
+                while j < len(lines) and not lines[j].strip().endswith("$$"):
+                    j += 1
+                end = min(j + 1, len(lines))
+            spans.append((i, end, "math"))
+            i = end
+        else:
+            i += 1
+    return spans
+
+
 def protected_lines(lines: list[str]) -> list[bool]:
     """True for lines inside fenced code or a display math block, fences included.
 
     Their content must stay exactly as it is: a '# comment' in code is not a heading,
     and a lone '2' inside an equation is not a page number.
     """
-    mask: list[bool] = []
-    in_code = in_math = False
-    for line in lines:
-        stripped = line.strip()
-        if not in_math and _FENCE_RE.match(line):
-            mask.append(True)
-            in_code = not in_code
-            continue
-        if not in_code and stripped.startswith("$$"):
-            mask.append(True)
-            # '$$' alone or '$$ x = 1' opens/closes a block; '$$ x = 1 $$' is one line.
-            if stripped == "$$" or not (len(stripped) > 2 and stripped.endswith("$$")):
-                in_math = not in_math
-            continue
-        if not in_code and in_math and stripped.endswith("$$"):
-            mask.append(True)
-            in_math = False
-            continue
-        mask.append(in_code or in_math)
+    mask = [False] * len(lines)
+    for start, end, _ in protected_spans(lines):
+        mask[start:end] = [True] * (end - start)
     return mask
