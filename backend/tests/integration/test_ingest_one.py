@@ -110,6 +110,18 @@ def test_happy_path_fills_every_table(migrated_session: Session) -> None:
     assert run.finished_at is not None and run.counts["citations"] == 2 and run.errors == {}
 
 
+def test_new_paper_gets_primary_category(migrated_session: Session) -> None:
+    clients = _clients()
+    paper = _arxiv_paper()
+    paper.categories, paper.primary_category = ["cs.LG", "cs.CL"], "cs.LG"
+    clients.arxiv = FakeArxiv(paper)
+    ingest_one(migrated_session, clients, ID)
+    p = migrated_session.get(Paper, ID)
+    assert p is not None
+    assert p.primary_category == "cs.LG" == p.categories[0]
+    assert p.categories == ["cs.LG", "cs.CL"]  # order kept
+
+
 def test_running_twice_creates_no_duplicates(migrated_session: Session) -> None:
     ingest_one(migrated_session, _clients(), ID)
     before = _counts(migrated_session)

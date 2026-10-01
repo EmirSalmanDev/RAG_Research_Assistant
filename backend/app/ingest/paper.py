@@ -191,6 +191,12 @@ def _describe(err: Exception) -> str:
     return f"{type(err).__name__}: {err}"[:500]
 
 
+def primary_category_of(p: ArxivPaper) -> str | None:
+    """arXiv's own primary category; if the feed left it empty, the first listed category
+    (arXiv lists the primary first). None only if the paper has no categories at all."""
+    return p.primary_category or (p.categories[0] if p.categories else None)
+
+
 def _upsert_paper(session: Session, p: ArxivPaper) -> None:
     values = {
         "arxiv_id": p.arxiv_id,
@@ -198,7 +204,8 @@ def _upsert_paper(session: Session, p: ArxivPaper) -> None:
         "title": p.title,
         "abstract": p.abstract,
         "authors": [{"name": name} for name in p.authors],
-        "categories": p.categories,
+        "categories": p.categories,  # kept in arXiv's order
+        "primary_category": primary_category_of(p),
         "published_at": p.published_at,
     }
     stmt = pg_insert(Paper).values(**values)
