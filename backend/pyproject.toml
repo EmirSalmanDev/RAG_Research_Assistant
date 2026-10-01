@@ -54,3 +54,8 @@ asyncio_mode = "auto"
 # stack (Postgres/Redis) is reachable, and cassettes are replayed, never recorded.
 addopts = "--block-network --allowed-hosts=localhost,127.0.0.1,::1 --record-mode=none"
 markers = ["integration: needs the local Postgres/Redis from `make up` (service containers in CI)"]
+filterwarnings = [
+    # PyMuPDF's SWIG bindings warn on import under Python 3.12; not actionable here.
+    "ignore:builtin type Swig:DeprecationWarning",
+    "ignore:builtin type swigvarlink:DeprecationWarning",
+]
