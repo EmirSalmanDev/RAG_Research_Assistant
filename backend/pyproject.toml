@@ -44,7 +44,7 @@ strict = true
 plugins = ["pydantic.mypy"]
 
 [[tool.mypy.overrides]]
-module = ["celery.*", "arxiv.*", "vcr.*"]
+module = ["celery.*", "arxiv.*", "vcr.*", "pymupdf4llm.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
