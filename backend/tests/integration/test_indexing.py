@@ -200,17 +200,58 @@ def test_indexing_twice_gives_the_same_counts(
     paper = _paper(migrated_session)
     save_chunks(migrated_session, ID, _chunks(paper))
     migrated_session.commit()
+    embedded = []
     for _ in range(2):
-        upsert_paper_chunks(
-            migrated_session,
-            ID,
-            dense=FakeDense(),
-            sparse=FakeSparse(),
-            client=qdrant,
-            collection=collection,
+        dense = FakeDense()
+        embedded.append(
+            upsert_paper_chunks(
+                migrated_session,
+                ID,
+                dense=dense,
+                sparse=FakeSparse(),
+                client=qdrant,
+                collection=collection,
+            )
         )
         migrated_session.commit()
         assert len(_rows(migrated_session)) == len(_points(qdrant, collection)) == 6
+    assert embedded == [6, 0] and dense.calls == []  # the second run embeds nothing
+
+
+def test_changed_metadata_updates_the_payload_without_embedding(
+    migrated_session: Session, qdrant: QdrantClient, collection: str
+) -> None:
+    paper = _paper(migrated_session)
+    save_chunks(migrated_session, ID, _chunks(paper))
+    migrated_session.commit()
+    kw = {"dense": FakeDense(), "sparse": FakeSparse(), "client": qdrant, "collection": collection}
+    upsert_paper_chunks(migrated_session, ID, **kw)  # type: ignore[arg-type]
+    paper.github_url = "https://github.com/invented/repo"
+    migrated_session.commit()
+    dense = FakeDense()
+    kw["dense"] = dense
+    assert upsert_paper_chunks(migrated_session, ID, **kw) == 0  # type: ignore[arg-type]
+    assert dense.calls == []
+    assert all((p.payload or {})["has_code"] is True for p in _points(qdrant, collection))
+
+
+def test_changed_chunk_text_is_embedded_again(
+    migrated_session: Session, qdrant: QdrantClient, collection: str
+) -> None:
+    paper = _paper(migrated_session)
+    chunks = _chunks(paper)
+    save_chunks(migrated_session, ID, chunks)
+    migrated_session.commit()
+    kw = {"dense": FakeDense(), "sparse": FakeSparse(), "client": qdrant, "collection": collection}
+    upsert_paper_chunks(migrated_session, ID, **kw)  # type: ignore[arg-type]
+    row = _rows(migrated_session)[1]
+    row.text = row.text + " An invented extra sentence."
+    migrated_session.commit()
+    dense = FakeDense()
+    kw["dense"] = dense
+    assert upsert_paper_chunks(migrated_session, ID, **kw) == 1  # type: ignore[arg-type]
+    [point] = qdrant.retrieve(collection, ids=[str(row.id)], with_payload=True)
+    assert (point.payload or {})["text"].endswith("An invented extra sentence.")
 
 
 def test_version_bump_removes_stale_points_and_rows_but_keeps_analysis(

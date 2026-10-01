@@ -261,6 +261,22 @@ def _delete_stale_points(
     client.delete(collection, points_selector=m.FilterSelector(filter=stale), wait=True)
 
 
+def _embedded_fields(p: dict[str, Any]) -> tuple[Any, ...]:
+    """The payload fields the vectors are computed from (see chunk.embedding_text)."""
+    return (p.get("title"), p.get("section_path"), p.get("text"))
+
+
+def _stored_payloads(
+    client: QdrantClient, collection: str, ids: Sequence[uuid.UUID]
+) -> dict[str, dict[str, Any]]:
+    """Payloads of the points that already exist, keyed by point id."""
+    found: dict[str, dict[str, Any]] = {}
+    for batch in _batches(ids, LOOKUP_BATCH):
+        for record in client.retrieve(collection, ids=[str(i) for i in batch], with_payload=True):
+            found[str(record.id)] = dict(record.payload or {})
+    return found
+
+
 def upsert_paper_chunks(
     session: Session,
     arxiv_id: str,
@@ -272,10 +288,13 @@ def upsert_paper_chunks(
 ) -> int:
     """(Re)index one paper's abstract and section chunks from its Postgres rows.
 
-    Current rows are those whose id matches the paper's current version; they are
-    embedded and upserted to Qdrant. Then stale points (older versions, removed ords)
-    and stale rows are deleted, for chunk types abstract and section only.
-    Returns the number of points upserted. The caller commits the session.
+    Current rows are those whose id matches the paper's current version. Only rows whose
+    point is missing, or whose embedded text (title, section path, chunk text) changed,
+    are embedded and upserted; a point whose other payload fields changed only gets its
+    payload updated (no embedding call). So re-running on an unchanged paper costs
+    nothing. Then stale points (older versions, removed ords) and stale rows are
+    deleted, for chunk types abstract and section only.
+    Returns the number of points embedded. The caller commits the session.
     """
     client = client or get_qdrant()
     collection = collection or get_settings().qdrant_collection
@@ -290,7 +309,15 @@ def upsert_paper_chunks(
     current = [r for r in rows if r.id == chunk_id(arxiv_id, paper.version, r.ord)]
     stale_ids = [r.id for r in rows if r not in current]
 
-    points = _points([(paper, r) for r in current], dense, sparse)
+    stored = _stored_payloads(client, collection, [r.id for r in current])
+    to_embed: list[ChunkRow] = []
+    for row in current:
+        old, new = stored.get(str(row.id)), payload(paper, row)
+        if old is None or _embedded_fields(old) != _embedded_fields(new):
+            to_embed.append(row)
+        elif old != new:  # same vectors, other metadata changed (e.g. categories, has_code)
+            client.set_payload(collection, payload=new, points=[str(row.id)], wait=True)
+    points = _points([(paper, r) for r in to_embed], dense, sparse)
     _upsert(client, collection, points)
     _delete_stale_points(
         client, collection, [arxiv_id], REINDEXED_TYPES, keep=[r.id for r in current]
