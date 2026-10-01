@@ -53,6 +53,17 @@ jobs:
       - run: uv run ruff check .
       - run: uv run ruff format --check .
       - run: uv run mypy app tests
+      # The Qdrant image has no curl, so its service container has no healthcheck; wait
+      # here (the runner has curl) until it answers /readyz. BM25 needs no download step:
+      # its stopword list is committed in app/ingest/data/.
+      - name: Wait for Qdrant
+        run: |
+          for i in $(seq 1 30); do
+            curl -fsS http://localhost:6333/readyz && exit 0
+            sleep 1
+          done
+          echo "Qdrant did not become ready in 30 s" >&2
+          exit 1
       - run: uv run pytest
 
   frontend:
