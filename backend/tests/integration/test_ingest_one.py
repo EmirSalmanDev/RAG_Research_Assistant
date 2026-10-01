@@ -76,7 +76,13 @@ def _clients(
 ) -> Clients:
     return Clients(
         arxiv=FakeArxiv(_arxiv_paper()),
-        hf=hf or FakeHF(HFPaper(id=ID, upvotes=9, githubRepo="https://github.com/a/b")),
+        hf=hf
+        or FakeHF(
+            HFPaper(
+                id=ID, upvotes=9, githubRepo="https://github.com/a/b",
+                projectPage="https://example.org/invented-project",
+            )
+        ),
         github=FakeGitHub(github or GitHubRepo(full_name="a/b", stargazers_count=7, license="MIT")),
         s2=FakeS2(
             s2 or S2Paper(arxiv_id=ID, citation_count=50, references=["2001.00001", "2001.00002"])
@@ -98,6 +104,7 @@ def test_happy_path_fills_every_table(migrated_session: Session) -> None:
     assert p is not None
     assert (p.title, p.version, p.hf_upvotes, p.citation_count) == ("Invented", 2, 9, 50)
     assert p.github_url == "https://github.com/a/b" and p.categories == ["cs.CL"]
+    assert p.project_url == "https://example.org/invented-project"
     assert p.authors == [{"name": "Ada Example"}]
     repo = migrated_session.get(Repo, (ID, "a/b"))
     assert repo is not None and repo.stars == 7 and repo.license == "MIT"

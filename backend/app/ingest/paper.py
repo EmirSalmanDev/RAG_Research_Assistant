@@ -131,7 +131,12 @@ def ingest_one(session: Session, clients: Clients, raw_arxiv_id: str) -> IngestR
         session.execute(
             update(Paper)
             .where(Paper.arxiv_id == arxiv_id)
-            .values(hf_upvotes=hf_paper.upvotes, github_url=github_url or Paper.github_url)
+            .values(
+                hf_upvotes=hf_paper.upvotes,
+                github_url=github_url or Paper.github_url,
+                # untrusted third-party URL (rule 8): stored and shown as data only
+                project_url=hf_paper.project_page or Paper.project_url,
+            )
         )
 
     optional("hf", hf_page)

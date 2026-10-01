@@ -173,7 +173,9 @@ INVENTED_MARKDOWN = b"# Invented paper\n\nThis body replaces the real full text 
 ARTIFACTS_KEPT = 10  # HF lists up to 100 models/datasets/spaces per paper; keep 10
 MAX_BODY_BYTES = 300_000  # hard stop: a bigger body probably holds full paper text
 TRUNCATED_TYPES = ("text/plain", "application/vnd.github.raw")  # README-like text
-HF_PAPER_KEYS = {"id", "title", "summary", "upvotes", "githubRepo", "githubStars", "publishedAt"}
+HF_PAPER_KEYS = {
+    "id", "title", "summary", "upvotes", "githubRepo", "githubStars", "publishedAt", "projectPage",
+}  # fmt: skip
 DAILY_ENTRIES_KEPT = 3  # daily_papers returns ~30 entries with submitter profiles; keep 3
 
 
