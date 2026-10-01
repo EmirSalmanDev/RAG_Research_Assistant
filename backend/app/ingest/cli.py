@@ -6,6 +6,7 @@ import logging
 import sys
 
 from app.db.session import session_scope
+from app.ingest.index import close_qdrant
 from app.ingest.paper import IngestError, default_clients, ingest_one
 
 
@@ -23,6 +24,8 @@ def main(argv: list[str] | None = None) -> int:
     except (IngestError, ValueError) as err:
         print(f"ingest-one failed: {err}", file=sys.stderr)
         return 1
+    finally:
+        close_qdrant()  # close the shared Qdrant client (if any) before the process exits
     print(json.dumps(result.model_dump(), indent=2))
     return 0  # optional-source failures are in result.errors but do not fail the command
 

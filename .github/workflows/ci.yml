@@ -39,6 +39,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
+        with:
+          version: "0.12.21"  # same uv as the Docker image and local development
       - run: uv sync --locked
       # The chunking tests need tiktoken's cl100k_base file, but pytest blocks the network.
       # So it is fetched here, before pytest, and kept in the Actions cache. The key is the

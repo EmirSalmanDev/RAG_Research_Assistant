@@ -108,3 +108,19 @@ def test_name_and_size_come_from_config(
     finally:
         monkeypatch.delenv("QDRANT_COLLECTION")
         get_settings.cache_clear()
+
+
+def test_close_qdrant_closes_and_forgets_the_shared_client(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.ingest import index
+
+    index.get_qdrant.cache_clear()
+    client = index.get_qdrant()
+    closed: list[bool] = []
+    monkeypatch.setattr(client, "close", lambda **kwargs: closed.append(True))
+    index.close_qdrant()
+    assert closed == [True]
+    assert index.get_qdrant.cache_info().currsize == 0
+    index.close_qdrant()  # nothing cached: a no-op
+    assert closed == [True]

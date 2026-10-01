@@ -61,7 +61,17 @@ class CollectionConfigError(RuntimeError):
 
 @lru_cache
 def get_qdrant() -> QdrantClient:
+    """One shared client per process. Scripts and the CLI call `close_qdrant()` before
+    exiting (otherwise qdrant-client closes it during interpreter shutdown and prints a
+    noisy 'Exception ignored in QdrantClient.__del__')."""
     return QdrantClient(url=get_settings().qdrant_url)
+
+
+def close_qdrant() -> None:
+    """Close the shared client if one was created (safe to call more than once)."""
+    if get_qdrant.cache_info().currsize:
+        get_qdrant().close()
+        get_qdrant.cache_clear()
 
 
 def ensure_collection(
