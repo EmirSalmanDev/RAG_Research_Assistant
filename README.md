@@ -4,7 +4,8 @@ A personal, local-first research assistant for AI papers. It ingests new arXiv p
 every morning, indexes their abstracts (and the full text of the papers you care about)
 for hybrid search, and will answer questions with citations.
 
-Status: the ingestion pipeline (milestone M2) is in place; retrieval and chat follow.
+Status: ingestion (milestone M2) is in place; hybrid retrieval and its evaluation (M3)
+are being built; chat with citations follows.
 
 ## Stack
 - Backend: Python 3.12, FastAPI, SQLAlchemy 2 + Alembic, Celery + Redis (Beat schedules)
@@ -29,9 +30,30 @@ Status: the ingestion pipeline (milestone M2) is in place; retrieval and chat fo
 | `make test` / `make lint` | backend tests (offline) and frontend checks / linters |
 | `make ingest-one ID=<arxiv_id> [SOURCE=hf\|html\|pdf] [METADATA_ONLY=1]` | ingest one paper end to end: metadata, abstract, full text, chunks, embeddings |
 | `make backfill DAYS=7 [CONFIRM=1]` | fetch the last N days of the configured categories and index abstracts only; more than 7 days needs `CONFIRM=1` |
+| `make fetch-reranker` | download the reranker model once (about 1 GB) into `~/.cache/fastembed` |
+| `make eval-retrieval [EMBED=1]` | retrieval metrics on the golden set for four configurations, stored in `eval_runs` |
 
 `make ingest-one` and `make backfill` run inside the worker container and make real
-network and (small) embedding calls.
+network and (small) embedding calls. `make fetch-reranker` downloads from Hugging Face.
+`make eval-retrieval` makes no paid calls: it stops if a golden question has no cached
+embedding and prints what embedding it would cost; `EMBED=1` embeds those questions.
+
+## Search
+`GET /search?q=...` returns the best chunks for a question, each with its arXiv abstract
+link. Optional parameters: `limit` (1-50, default 10), `category` and `arxiv_id`
+(repeatable), `published_from` and `published_to` (dates, inclusive). Three stages run in
+order, each with its own setting (see `.env.example` and `docs/adr/0005`):
+
+1. **search**: one Qdrant query in `dense`, `bm25` or `hybrid` mode. Hybrid takes 50
+   candidates from each vector and fuses them with Reciprocal Rank Fusion; filters run
+   inside Qdrant.
+2. **rerank**: a cross-encoder (`BAAI/bge-reranker-base`) rescores the candidates. The
+   model is only read from the local cache (`make fetch-reranker`), never downloaded by
+   the app.
+3. **cap**: at most 3 chunks per paper.
+
+The dense and hybrid modes embed the question with OpenAI (one small paid request per
+search, logged in `llm_usage`).
 
 ## The daily pipeline
 Celery Beat starts it every day at **07:00 Europe/Istanbul**:
