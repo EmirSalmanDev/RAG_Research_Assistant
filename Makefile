@@ -1,4 +1,4 @@
-.PHONY: up down logs test lint migrate ingest-one backfill fetch-reranker
+.PHONY: up down logs test lint migrate ingest-one backfill fetch-reranker eval-retrieval
 
 # Start the stack and wait until every service's healthcheck passes.
 up:
@@ -52,3 +52,12 @@ backfill:
 # Nothing else ever downloads it: the app loads the model from the cache only.
 fetch-reranker:
 	cd backend && uv run python -m app.rag.rerank fetch
+
+# Retrieval metrics (Recall@8, MRR, nDCG@10) on backend/eval/golden.jsonl for dense, BM25,
+# hybrid and hybrid + rerank; each run is stored in eval_runs. Runs natively against the
+# stores (needs the reranker from `make fetch-reranker`). No LLM calls, no cost: question
+# embeddings come from a local cache (backend/eval/.cache/), and a run with uncached
+# questions stops and prints what embedding them would cost. EMBED=1 embeds just those
+# (paid OpenAI requests: ask first).
+eval-retrieval:
+	cd backend && uv run python -m eval.run $(if $(EMBED),--embed)
