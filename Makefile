@@ -18,7 +18,7 @@ test:
 	cd frontend && pnpm typecheck && pnpm lint
 
 lint:
-	cd backend && uv run ruff check . && uv run ruff format --check . && uv run mypy app tests
+	cd backend && uv run ruff check . && uv run ruff format --check . && uv run mypy app eval tests
 	cd frontend && pnpm lint && pnpm format:check
 
 # Apply Alembic migrations to the Postgres from `make up` (published on localhost:5432).

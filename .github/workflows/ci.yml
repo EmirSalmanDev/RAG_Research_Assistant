@@ -54,7 +54,7 @@ jobs:
         run: uv run python -c "from app.ingest.tokens import get_encoding; print(get_encoding().name)"
       - run: uv run ruff check .
       - run: uv run ruff format --check .
-      - run: uv run mypy app tests
+      - run: uv run mypy app eval tests
       # The Qdrant image has no curl, so its service container has no healthcheck; wait
       # here (the runner has curl) until it answers /readyz. BM25 needs no download step:
       # its stopword list is committed in app/ingest/data/.
