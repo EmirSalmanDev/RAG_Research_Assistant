@@ -1,4 +1,4 @@
-.PHONY: up down logs test lint migrate ingest-one backfill
+.PHONY: up down logs test lint migrate ingest-one backfill fetch-reranker
 
 # Start the stack and wait until every service's healthcheck passes.
 up:
@@ -45,3 +45,10 @@ backfill:
 	@test -n "$(DAYS)" || (echo "usage: make backfill DAYS=7 [CONFIRM=1]"; exit 2)
 	docker compose exec -T worker python -m app.ingest.cli backfill --days "$(DAYS)" \
 		$(if $(CONFIRM),--confirm)
+
+# Download the reranker model (RERANKER_MODEL, default BAAI/bge-reranker-base, about 1 GB)
+# once into FASTEMBED_CACHE_DIR (default ~/.cache/fastembed). Makes real network calls to
+# Hugging Face: ask first. Runs natively; the API container mounts that folder read-only.
+# Nothing else ever downloads it: the app loads the model from the cache only.
+fetch-reranker:
+	cd backend && uv run python -m app.rag.rerank fetch
