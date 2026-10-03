@@ -1,8 +1,8 @@
-"""The golden set: hand-written questions with the chunks that answer them.
+"""The golden set: questions with the chunks that answer them.
 
-`backend/eval/golden.jsonl` holds one JSON object per line. Only the owner writes it;
-the code only reads it. The 20 hand-written questions are a held-out check: nothing is
-ever tuned to make them score better.
+`backend/eval/golden.jsonl` holds one JSON object per line. Only the owner changes it;
+the code only reads it. The 20 questions are AI-drafted, verified against stored chunk
+text; they are a held-out check: nothing is ever tuned to make them score better.
 
     {"id": "q01", "question": "How does LoRA reduce the trainable parameters?",
      "reference_answer": "It freezes the weights and learns two low-rank matrices ...",

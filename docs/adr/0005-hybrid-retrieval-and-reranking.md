@@ -7,7 +7,8 @@ applied by Qdrant at query time). See 0003. Questions now have to find the right
 Recall comes from combining both vectors, and precision from a cross-encoder that reads
 the question and the chunk together. The machine has 8 GB of RAM, so a large model may be
 loaded in one process only. Retrieval quality must be measurable from the start, on a
-hand-written golden set, without spending money on every run.
+golden set (AI-drafted, verified against stored chunk text), without spending money on
+every run.
 
 ## Decision
 
@@ -82,8 +83,9 @@ Options not taken now, to re-measure in M4 when answers depend on the reranker:
 - **Golden set.** `backend/eval/golden.jsonl` has one JSON object per line: `id`,
   `question`, `reference_answer`, `reference_chunk_ids`, and optionally `type` and
   `notes`. An empty `reference_chunk_ids` marks an unanswerable question: it is stored
-  but not scored. Only the owner writes this file. The 20 hand-written questions are a
-  held-out check and are never tuned against.
+  but not scored. Only the owner changes this file. The 20 questions are AI-drafted,
+  verified against stored chunk text; they are a held-out check and are never tuned
+  against.
 - **Syncing questions.** Questions go into `eval_items`, matched on their exact text, so
   re-runs add no duplicates and no migration is needed.
 - **Stale references.** A run stops if a reference chunk id is missing from Postgres.
