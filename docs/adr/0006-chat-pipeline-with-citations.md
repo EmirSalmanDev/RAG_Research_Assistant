@@ -94,9 +94,10 @@ saves nothing, and a retry does not leave a dangling question. Spend is separate
 - the assistant message gets the turn's totals: tokens of the chat calls, and the cost of
   the chat calls plus the question embeddings;
 - a stream that breaks before its final usage chunk gets an ESTIMATED row instead, under
-  its own feature name (`chat-generate-estimated`). The count uses the local tokenizer
-  (`cl100k_base`; the chat model's `o200k_base` is not downloaded for this): the prompt
-  plus a few tokens per message, and only the text received, so output is a lower bound.
+  its own feature name (`chat-generate-estimated`). The count uses the local `cl100k_base`
+  tokenizer, which is only an approximation for gpt-4o-mini (that model uses
+  `o200k_base`, which is not downloaded for this). It counts the prompt plus a few tokens
+  per message, and only the text received, so the output count is a lower bound.
 
 **`messages.meta` (migration 0003).** One nullable jsonb column on `messages`. It holds
 the intent, the checked plan, the verification, the skipped stages, the errors fallen
@@ -116,8 +117,27 @@ rather than a tracing SDK.
   has the same shape.
 - Spans are started and ended explicitly, because the streamed answer pauses between
   pieces.
-- Until the Langfuse adapter and its SDK are added, the tracer is a no-op, and tests use a
-  recording fake.
+- Langfuse (`app/observability/langfuse_tracer.py`, SDK 4.15.6, OpenTelemetry-based) is
+  used only when both Langfuse keys are set; otherwise, in tests, and when the SDK cannot
+  start, the tracer is a no-op. Tests use a recording fake, a fake SDK client, and the
+  real SDK with an in-memory exporter.
+- A turn sends exactly the six stage spans, in one trace and with no root span. Each span
+  is started in a trace id made by the adapter, which the SDK marks as a top-level
+  observation. The trace name ("chat-turn") and the session (the conversation id) are
+  attached to each span. The turn's summary (outcome, prompt versions, skipped stages,
+  errors) goes on the last span, `verify`. One flush per turn sends them to
+  `{LANGFUSE_HOST}/api/public/otel/v1/traces`.
+- The SDK gets a private OpenTelemetry tracer provider (it would otherwise install itself
+  as the process-wide one and could receive other libraries' spans), and it exports only
+  its own spans. Keys, host, timeout, debug and sample rate are passed as parameters, so
+  environment variables such as `LANGFUSE_BASE_URL` cannot redirect the export.
+- Span data is sanitised first. Key-like strings and bearer tokens are redacted, and
+  base64 `data:` URIs are dropped, because the SDK would upload those as media. Long
+  strings are cut. The same redaction is applied to error texts stored in
+  `messages.meta`. The SDK itself attaches the PUBLIC key to its instrumentation scope;
+  that is the same key it already sends to the same host in its auth header. The secret
+  key never leaves the auth header.
+- A failure inside the SDK is logged and dropped: tracing never fails a chat turn.
 
 ## Departures from the original design
 1. **No author filter.** The planner returns no author filter, because chunk payloads have
@@ -128,8 +148,8 @@ rather than a tracing SDK.
 3. **compare and find_papers use the qa prompt.** Their own outputs (a comparison table,
    ranked paper cards) come later. The intent is already stored and traced.
 4. **One `messages.meta` jsonb column** (see above), not part of the original data model.
-5. **Langfuse comes in a separate step.** The tracing interface and the six-span shape are
-   in place; the adapter is added together with the Langfuse SDK dependency.
+5. **Six top-level spans per trace, no root span.** The pipeline stages are the trace's
+   observations; there is no extra "chat-turn" span wrapping them.
 6. **Reranking is re-measured for speed and memory only** (fewer candidates, an ONNX
    thread limit, possibly a smaller model). Rerank quality is compared at the full
    evaluation milestone, on non-golden questions. Rerank stays off by default, and the
