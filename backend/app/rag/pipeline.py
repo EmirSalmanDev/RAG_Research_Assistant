@@ -43,6 +43,7 @@ from app.config import Settings, get_settings
 from app.ingest.embed import DenseEmbedder, DenseEncoder, SparseEncoder, get_sparse_embedder
 from app.llm.client import ChatClient, ChatUsage
 from app.llm.usage import UsageRecorder, embedding_cost, record_embedding_usage
+from app.observability.redact import redact_secrets
 from app.observability.tracing import Span, Trace, Tracer, get_tracer
 from app.rag.citations import (
     Source,
@@ -108,8 +109,9 @@ class ChatDeps:
 
 
 def describe(err: BaseException) -> str:
-    """An error as recorded in meta and on spans: its type and a short message."""
-    return f"{type(err).__name__}: {err}"[:ERROR_CHARS]
+    """An error as recorded in meta and on spans: its type and a short message, with
+    anything that looks like a key removed (an OpenAI 401 quotes part of the key)."""
+    return redact_secrets(f"{type(err).__name__}: {err}")[:ERROR_CHARS]
 
 
 def fuse_ranked_lists(lists: Sequence[Sequence[SearchHit]], k: int) -> list[SearchHit]:
