@@ -122,7 +122,8 @@ Options not taken now, to re-measure in M4 when answers depend on the reranker:
    adds it. The stages are already separate typed functions, so a span can wrap each
    one.
 3. **No author filter.** The Qdrant payload has no authors. Author filters come with the
-   query planner, which can add the field to the payload.
+   query planner, which can add the field to the payload. (Superseded by 0006: the
+   planner returns no author filter.)
 4. **No LlamaIndex** (see Client above). The original stack listed it for documents,
    nodes and the Qdrant store.
 5. **The diversity cap is applied in all four evaluation configurations**, not only

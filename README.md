@@ -4,8 +4,9 @@ A personal, local-first research assistant for AI papers. It ingests new arXiv p
 every morning, indexes their abstracts (and the full text of the papers you care about)
 for hybrid search, and will answer questions with citations.
 
-Status: ingestion (milestone M2) is in place; hybrid retrieval and its evaluation (M3)
-are being built; chat with citations follows.
+Status: ingestion (M2) and hybrid retrieval with its evaluation (M3) are in place. Chat
+with citations (M4) is being built: the pipeline and `POST /chat` exist; tracing to
+Langfuse is not connected yet.
 
 ## Stack
 - Backend: Python 3.12, FastAPI, SQLAlchemy 2 + Alembic, Celery + Redis (Beat schedules)
@@ -56,6 +57,42 @@ link. Optional parameters: `limit` (1-50, default 10), `category` and `arxiv_id`
 
 The dense and hybrid modes embed the question with OpenAI (one small paid request per
 search, logged in `llm_usage`).
+
+## Chat
+`POST /chat` answers a question from the indexed papers. The answer streams as
+server-sent events, and every factual sentence cites its source as `[n]`. Run
+`make migrate` first (the chat stores extra data on each message).
+
+```sh
+curl -N -X POST localhost:8000/chat -H 'content-type: application/json' \
+     -d '{"message": "How does LoRA reduce the number of trained parameters?"}'
+```
+
+A follow-up sends `"conversation_id"` from the first event. The events, in order:
+`meta` (conversation id, intent, the standalone question and the search plan),
+`sources` (the numbered chunks with their arXiv links), `token` (pieces of the answer)
+or `refusal`, `verification` (the citation checks), and finally `done` (message id,
+cited sources, tokens and cost) or `error`.
+
+Six stages, each a function in `backend/app/rag/` with its own setting (see
+`.env.example` and `docs/adr/0006`):
+
+1. **condense**: a follow-up ("and its limitations?") becomes a standalone question,
+   using the last 6 messages.
+2. **plan**: one structured call returns the intent, two rephrasings and filters
+   (arXiv ids, categories, dates). The code keeps only filters it can verify, for example
+   an arXiv id that is actually written in the question. There is no author filter.
+3. **search**: the question and the rephrasings, merged with Reciprocal Rank Fusion.
+4. **rerank**: optional and off by default, as for `GET /search`.
+5. **generate**: the answer, from at most 8 numbered sources. Each source shows its
+   evidence level (`section`, `abstract` or `analysis`). An answer that rests only on
+   abstracts says so, and the `done` event carries `abstract_only`.
+6. **verify**: every `[n]` must exist, and a second call checks each cited sentence
+   against its sources. Unsupported sentences are flagged, not removed.
+
+If nothing in the index matches, or the sources do not answer the question, the reply is
+a fixed refusal instead of a guess. A turn makes up to four chat requests (`gpt-4o-mini`)
+and up to three small embedding requests; each one is logged in `llm_usage`.
 
 ## The daily pipeline
 Celery Beat starts it every day at **07:00 Europe/Istanbul**:
