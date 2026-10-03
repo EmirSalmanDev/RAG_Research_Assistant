@@ -15,6 +15,7 @@ A stream is retried only while it is being opened. Once tokens have been sent to
 user, a retry would repeat the answer, so a failure mid-stream is raised instead.
 """
 
+import logging
 from collections.abc import Callable, Generator, Iterable, Iterator, Sequence
 from dataclasses import dataclass
 from decimal import Decimal
@@ -28,10 +29,15 @@ from app.config import get_settings
 # Imported from ingestion, where the embedding client was built first (M2). Moving it to
 # app/llm/ would change embed.py; it is left there on purpose for now.
 from app.ingest.embed import default_openai_client
+from app.ingest.tokens import count_tokens
 from app.llm.usage import ChatUsageRecorder, record_chat_usage
 from app.sources.http import RetryableError, call_with_retry
 
 ChatMessage = dict[str, str]  # {"role": "system" | "user" | "assistant", "content": "..."}
+ESTIMATED = "-estimated"  # llm_usage.feature suffix for usage we had to estimate
+MESSAGE_OVERHEAD_TOKENS = 4  # role and separators per chat message (approximate)
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -88,44 +94,67 @@ class ChatStream:
     last chunk after the text. If the reader stops early (the browser went away), `close`
     reads the rest of the stream anyway: the tokens are generated and billed either way,
     and only that last chunk tells us how many, so the cost can still be logged.
+
+    If the stream breaks (network error) that last chunk never arrives. Then `on_break`
+    logs an ESTIMATE instead, counted from the prompt and the text received so far, and
+    `estimated` is set. Spend is recorded either way (rule 9), and the separate feature
+    name keeps estimates apart from the counts the API reported.
     """
 
-    def __init__(self, raw: Iterable[Any], on_usage: Callable[[Any], ChatUsage]) -> None:
+    def __init__(
+        self,
+        raw: Iterable[Any],
+        on_usage: Callable[[Any], ChatUsage],
+        on_break: Callable[[str], ChatUsage] | None = None,
+    ) -> None:
         self._raw = raw
         self._chunks: Iterator[Any] = iter(raw)
         self._on_usage = on_usage
+        self._on_break = on_break
+        self._received: list[str] = []
         self._closed = False
         self.usage: ChatUsage | None = None
+        self.estimated = False
 
     def __iter__(self) -> Generator[str]:
         try:
             for chunk in self._chunks:
-                self._take_usage(chunk)
-                for choice in chunk.choices:
-                    if choice.delta.content:
-                        yield choice.delta.content
+                yield from self._read(chunk)
         finally:
             self.close()
 
-    def _take_usage(self, chunk: Any) -> None:
+    def _read(self, chunk: Any) -> list[str]:
+        """Take the usage (last chunk) and the text pieces of one chunk."""
         if chunk.usage is not None and self.usage is None:
             self.usage = self._on_usage(chunk.usage)
+        pieces = [c.delta.content for c in chunk.choices if c.delta.content]
+        self._received += pieces
+        return pieces
 
     def close(self) -> None:
-        """Drain the rest of the stream (to log its usage), then release the connection."""
+        """Drain the rest of the stream (to log its usage), then release the connection.
+        A stream that ended without its usage chunk gets an estimated usage row."""
         if self._closed:
             return
         self._closed = True
         try:
             if self.usage is None:
                 for chunk in self._chunks:
-                    self._take_usage(chunk)
+                    self._read(chunk)
         except Exception:  # the stream itself failed: the reader already got that error
             pass
         finally:
             close = getattr(self._raw, "close", None)
             if callable(close):
                 close()
+        if self.usage is None and self._on_break is not None:
+            try:
+                self.usage = self._on_break("".join(self._received))
+                self.estimated = True
+            except Exception:  # never hide the stream's own error behind this one
+                logger.warning(
+                    "could not log the estimated usage of a broken stream", exc_info=True
+                )
 
 
 class ChatClient:
@@ -233,4 +262,23 @@ class ChatClient:
             ),
             **self._retry_kwargs,
         )
-        return ChatStream(raw, lambda usage: self._log(feature, usage))
+        return ChatStream(
+            raw,
+            lambda usage: self._log(feature, usage),
+            lambda text: self._log_estimate(feature, messages, text),
+        )
+
+    def _log_estimate(
+        self, feature: str, messages: Sequence[ChatMessage], received: str
+    ) -> ChatUsage:
+        """An llm_usage row for a stream that broke before its usage chunk: an ESTIMATE.
+
+        Counted with the local tokenizer (cl100k_base, the embedding model's; the chat
+        model's own o200k_base is not cached and is not downloaded for this), plus a few
+        tokens per message for the role and separators. Output is only the text received:
+        the model may have written more after the break, so it is a lower bound.
+        """
+        tokens_in = sum(count_tokens(m["content"]) + MESSAGE_OVERHEAD_TOKENS for m in messages)
+        tokens_out = count_tokens(received)
+        cost = self._record_usage(f"{feature}{ESTIMATED}", self.model, tokens_in, tokens_out)
+        return ChatUsage(tokens_in, tokens_out, cost)

@@ -92,7 +92,11 @@ saves nothing, and a retry does not leave a dangling question. Spend is separate
 - each request writes its own committed `llm_usage` row (`chat-condense`, `chat-plan`,
   `chat-generate`, `chat-verify`, `embed-query`), so a failed turn's spend is kept;
 - the assistant message gets the turn's totals: tokens of the chat calls, and the cost of
-  the chat calls plus the question embeddings.
+  the chat calls plus the question embeddings;
+- a stream that breaks before its final usage chunk gets an ESTIMATED row instead, under
+  its own feature name (`chat-generate-estimated`). The count uses the local tokenizer
+  (`cl100k_base`; the chat model's `o200k_base` is not downloaded for this): the prompt
+  plus a few tokens per message, and only the text received, so output is a lower bound.
 
 **`messages.meta` (migration 0003).** One nullable jsonb column on `messages`. It holds
 the intent, the checked plan, the verification, the skipped stages, the errors fallen

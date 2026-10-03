@@ -406,6 +406,8 @@ def test_a_stream_that_breaks_midway_ends_with_an_error() -> None:
     events = h.run()
     assert _names(events) == ["meta", "sources", "token", "error"]
     _assert_nothing_saved_and_six_spans(h)
+    # No usage chunk arrived, so the spend is logged as an estimate (rule 9).
+    assert [r[0] for r in h.chat_rows] == ["chat-condense", "chat-plan", "chat-generate-estimated"]
 
 
 def test_a_failed_save_is_an_error_not_done() -> None:

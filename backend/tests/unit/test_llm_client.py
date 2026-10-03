@@ -6,7 +6,8 @@ import openai
 import pytest
 from pydantic import BaseModel
 
-from app.llm.client import ChatResponseError
+from app.ingest.tokens import count_tokens
+from app.llm.client import MESSAGE_OVERHEAD_TOKENS, ChatResponseError
 from app.llm.usage import chat_cost
 from app.sources.http import RetryableError
 from tests.chat_fakes import (
@@ -144,5 +145,33 @@ def test_a_failure_mid_stream_is_raised_not_retried() -> None:
     with pytest.raises(openai.APIConnectionError):
         for piece in stream:
             got.append(piece)
-    assert got == ["a"] and len(calls.calls) == 1
-    assert rows == [] and raw.closed  # the usage chunk never arrived
+    assert got == ["a"] and len(calls.calls) == 1 and raw.closed
+    # The usage chunk never arrived: one estimated row instead (checked below).
+    assert [r[0] for r in rows] == ["chat-generate-estimated"]
+
+
+def test_a_broken_stream_logs_an_estimate_from_the_prompt_and_the_text_received() -> None:
+    messages = [
+        {"role": "system", "content": "You answer from the sources."},
+        {
+            "role": "user",
+            "content": "<question>\nWhat does the invented paper propose?\n</question>",
+        },
+    ]
+    raw = stream_reply(["The invented paper ", "proposes a ", "method"], fail_after=2)
+    client, _, rows = fake_chat([raw])
+    stream = client.stream(messages, feature="chat-generate", max_tokens=100)
+    with pytest.raises(openai.APIConnectionError):
+        list(stream)
+    tokens_in = sum(count_tokens(m["content"]) + MESSAGE_OVERHEAD_TOKENS for m in messages)
+    tokens_out = count_tokens("The invented paper proposes a ")  # only what arrived
+    assert rows == [("chat-generate-estimated", "gpt-4o-mini", tokens_in, tokens_out)]
+    assert stream.estimated and stream.usage is not None
+    assert stream.usage.cost_usd == chat_cost(tokens_in, tokens_out)
+
+
+def test_a_complete_stream_is_never_estimated() -> None:
+    client, _, rows = fake_chat([stream_reply(["ok"], 10, 1)])
+    stream = client.stream(MESSAGES, feature="chat-generate", max_tokens=10)
+    assert "".join(stream) == "ok" and not stream.estimated
+    assert [r[0] for r in rows] == ["chat-generate"]
