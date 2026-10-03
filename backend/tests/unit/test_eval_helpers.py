@@ -7,18 +7,38 @@ from pathlib import Path
 
 import pytest
 
+from app.config import get_settings
 from app.ingest.tokens import count_tokens
 from app.llm.usage import embedding_cost
 from eval.golden import GoldenItem
 from eval.run import (
+    CONFIGURATIONS,
     CachedQueryEncoder,
     QueryVectorCache,
+    build_configs,
     embedding_estimate,
     main,
     percentile,
     results_table,
     score,
 )
+
+
+@pytest.mark.parametrize("search_default", ["false", "true"])
+def test_eval_configurations_ignore_the_search_rerank_default(
+    monkeypatch: pytest.MonkeyPatch, search_default: str
+) -> None:
+    """GET /search reranks only on request (RERANK_ENABLED); the evaluation must not
+    follow that default: hybrid-rerank always reranks, the others never do, and all four
+    keep the configured 50 candidates."""
+    monkeypatch.setenv("RERANK_ENABLED", search_default)
+    get_settings.cache_clear()
+    configs = build_configs(list(CONFIGURATIONS))
+    get_settings.cache_clear()
+    assert {name: c.rerank for name, c in configs.items()} == {
+        "dense": False, "bm25": False, "hybrid": False, "hybrid-rerank": True,
+    }  # fmt: skip
+    assert {c.candidates for c in configs.values()} == {50}
 
 
 def test_cache_round_trip_and_atomic_save(tmp_path: Path) -> None:

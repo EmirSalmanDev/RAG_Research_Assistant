@@ -41,15 +41,17 @@ embedding and prints what embedding it would cost; `EMBED=1` embeds those questi
 ## Search
 `GET /search?q=...` returns the best chunks for a question, each with its arXiv abstract
 link. Optional parameters: `limit` (1-50, default 10), `category` and `arxiv_id`
-(repeatable), `published_from` and `published_to` (dates, inclusive). Three stages run in
-order, each with its own setting (see `.env.example` and `docs/adr/0005`):
+(repeatable), `published_from` and `published_to` (dates, inclusive), and `rerank`
+(`true` to rerank; off by default). Three stages run in order, each with its own setting
+(see `.env.example` and `docs/adr/0005`):
 
 1. **search**: one Qdrant query in `dense`, `bm25` or `hybrid` mode. Hybrid takes 50
    candidates from each vector and fuses them with Reciprocal Rank Fusion; filters run
    inside Qdrant.
-2. **rerank**: a cross-encoder (`BAAI/bge-reranker-base`) rescores the candidates. The
-   model is only read from the local cache (`make fetch-reranker`), never downloaded by
-   the app.
+2. **rerank** (only with `rerank=true`, or `RERANK_ENABLED=true`): a cross-encoder
+   (`BAAI/bge-reranker-base`) rescores the candidates. On a laptop CPU this takes about
+   20 s for 50 candidates, which is why it is off by default. The model is only read from
+   the local cache (`make fetch-reranker`), never downloaded by the app.
 3. **cap**: at most 3 chunks per paper.
 
 The dense and hybrid modes embed the question with OpenAI (one small paid request per

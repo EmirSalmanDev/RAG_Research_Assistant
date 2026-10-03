@@ -2,13 +2,16 @@
 
 Example: /search?q=how+does+lora+work&category=cs.CL&published_from=2026-09-01&limit=5
 
-The pipeline (app/rag/retrieve.py) runs with the configured stages. It is synchronous
+The pipeline (app/rag/retrieve.py) runs with the configured stages. Reranking is off
+unless the request asks for it (`rerank=true`) or RERANK_ENABLED turns it on: on a CPU
+the cross-encoder needs about 20 s for 50 candidates (docs/adr/0005). It is synchronous
 (qdrant-client, OpenAI and the reranker are blocking calls), so it runs in FastAPI's
 thread pool and the event loop stays free for other requests. In the dense and hybrid
 modes, every call embeds the question: one paid OpenAI request, logged to llm_usage.
 """
 
 import uuid
+from dataclasses import replace
 from datetime import UTC, date, datetime, time
 from typing import Annotated
 
@@ -88,12 +91,18 @@ async def search_chunks(
     arxiv_id: Annotated[list[str] | None, Query(description="repeatable; any of")] = None,
     published_from: date | None = None,
     published_to: date | None = None,
+    rerank: Annotated[
+        bool | None,
+        Query(description="run the cross-encoder (slow on CPU); default: RERANK_ENABLED, off"),
+    ] = None,
 ) -> SearchResponse:
     query = q.strip()
     if not query:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "q is blank")
     filters = _filters(category, arxiv_id, published_from, published_to)
     config = RetrievalConfig.from_settings()
+    if rerank is not None:  # the request overrides the configured default
+        config = replace(config, rerank=rerank)
     try:
         hits = await run_in_threadpool(retrieve, query, filters, limit=limit, config=config)
     except (RerankerUnavailable, OpenAIKeyMissing) as err:

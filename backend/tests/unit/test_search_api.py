@@ -53,7 +53,7 @@ async def test_returns_hits_with_an_abstract_link(
     assert r.status_code == 200
     body = r.json()
     assert body["query"] == "how does it work?"
-    assert (body["mode"], body["reranked"]) == ("hybrid", True)  # the configured defaults
+    assert (body["mode"], body["reranked"]) == ("hybrid", False)  # the configured defaults
     assert body["hits"] == [
         {
             "chunk_id": "0214d8ce-b010-59e2-b4d6-06b4e659c8d5",
@@ -101,11 +101,30 @@ async def test_mode_and_rerank_follow_the_settings(
     client: AsyncClient, calls: list[dict[str, Any]], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv("SEARCH_MODE", "bm25")
-    monkeypatch.setenv("RERANK_ENABLED", "false")
+    monkeypatch.setenv("RERANK_ENABLED", "true")  # the config switch can turn it on
     get_settings.cache_clear()
     r = await client.get("/search", params={"q": "lora"})
-    assert (r.json()["mode"], r.json()["reranked"]) == ("bm25", False)
-    assert (calls[0]["config"].mode, calls[0]["config"].rerank) == ("bm25", False)
+    assert (r.json()["mode"], r.json()["reranked"]) == ("bm25", True)
+    assert (calls[0]["config"].mode, calls[0]["config"].rerank) == ("bm25", True)
+    get_settings.cache_clear()
+
+
+async def test_rerank_is_off_unless_the_request_asks(
+    client: AsyncClient, calls: list[dict[str, Any]]
+) -> None:
+    await client.get("/search", params={"q": "lora"})
+    await client.get("/search", params={"q": "lora", "rerank": "true"})
+    await client.get("/search", params={"q": "lora", "rerank": "false"})
+    assert [c["config"].rerank for c in calls] == [False, True, False]
+
+
+async def test_the_request_overrides_the_configured_default(
+    client: AsyncClient, calls: list[dict[str, Any]], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("RERANK_ENABLED", "true")
+    get_settings.cache_clear()
+    r = await client.get("/search", params={"q": "lora", "rerank": "false"})
+    assert r.json()["reranked"] is False and calls[0]["config"].rerank is False
     get_settings.cache_clear()
 
 
@@ -120,6 +139,7 @@ async def test_mode_and_rerank_follow_the_settings(
         {"q": "lora", "limit": 51},
         {"q": "lora", "published_from": "2026-09-30", "published_to": "2026-09-01"},
         {"q": "lora", "published_from": "not-a-date"},
+        {"q": "lora", "rerank": "maybe"},
     ],
 )
 async def test_bad_requests_are_rejected_before_searching(

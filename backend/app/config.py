@@ -59,7 +59,10 @@ class Settings(BaseSettings):
     search_prefetch_limit: int = 50  # candidates taken from each list in hybrid mode
     search_rrf_k: int = 60  # RRF constant k (the RRF paper's value; Qdrant's default is 2)
     search_candidates: int = 50  # results handed from search to the reranker
-    rerank_enabled: bool = True
+    # Default for GET /search (a request can override it with ?rerank=true). Off because a
+    # rerank of 50 candidates took about 22 s on an Apple M1 CPU (docs/adr/0005). The
+    # retrieval evaluation sets rerank per configuration and does not read this.
+    rerank_enabled: bool = False
     reranker_model: str = "BAAI/bge-reranker-base"  # a FastEmbed TextCrossEncoder model
     rerank_batch_size: int = 16  # (question, chunk) pairs per model run; bounds memory
     max_chunks_per_paper: int = 3  # diversity cap after reranking; 0 switches it off

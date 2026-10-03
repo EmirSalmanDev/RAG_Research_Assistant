@@ -57,6 +57,27 @@ blocked:
 The API loads the model lazily, behind a lock, so two first requests cannot load two
 copies. The worker never loads it.
 
+**Measured cost, and reranking off by default in `GET /search`.** Measured on 2026-10-02
+in a native process on an Apple M1 (8 cores, 8 GB RAM), with the same modules the API
+imports, BM25 candidates from the real collection and the configured batch size of 16:
+- loading the model from the local cache took 2.09 s;
+- RSS was 168 MiB with the API modules and BM25 loaded, 758 MiB with the reranker
+  loaded, 841 MiB after reranking, and 1,375 MiB at the peak;
+- a rerank of 50 candidates (about 394 model tokens per question–chunk pair) took a
+  median of 22.0 s (mean 21.9 s, range 19.0 to 25.3 s over 15 timed runs).
+
+That is too slow for an interactive search, so `GET /search` reranks only when the
+request asks for it (`rerank=true`); `rerank_enabled` (default false) sets the default
+for requests that do not say. The evaluation is unaffected: it sets rerank per
+configuration, keeps `bge-reranker-base` and 50 candidates, so `hybrid-rerank` takes
+about 20 questions × 22 s per run. The api container's own numbers are measured when it
+is rebuilt with the model mount.
+
+Options not taken now, to re-measure in M4 when answers depend on the reranker:
+- a lower `search_candidates` (fewer pairs to score; the cost grows with their number);
+- `Xenova/ms-marco-MiniLM-L-12-v2` (0.12 GB, a much smaller model; needs a download);
+- limiting ONNX Runtime threads to the M1's 4 performance cores.
+
 **Retrieval evaluation (`backend/eval/`).**
 - **Golden set.** `backend/eval/golden.jsonl` has one JSON object per line: `id`,
   `question`, `reference_answer`, `reference_chunk_ids`, and optionally `type` and
@@ -110,10 +131,12 @@ copies. The worker never loads it.
 ## Consequences
 - Search with the `dense` or `hybrid` mode costs one embedding request per question
   (logged as `embed-query`). The `bm25` mode costs nothing.
-- The reranker adds about 1 GB of RAM (fastembed's figure for the model file; RAM and
-  latency are measured before the default is kept) to the one process that uses it.
-  Evaluation runs natively, so `/search` with reranking should not be called while an
+- The reranker adds about 590 MiB of resident memory once loaded, with peaks near
+  1.4 GiB while it runs (measured above), to the one process that uses it. Evaluation
+  runs natively, so `/search` with `rerank=true` should not be called while an
   evaluation runs, or two copies are loaded.
+- `GET /search` returns fusion-ranked results unless `rerank=true` is passed; a reranked
+  request takes about 20 s on a CPU like the one measured.
 - A new paper version changes its chunk ids, so golden reference ids can go stale. The
   evaluation refuses to run until the owner updates them.
 - Changing `search_rrf_k`, the candidate counts or the reranker changes retrieval;

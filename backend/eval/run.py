@@ -69,6 +69,14 @@ CONFIGURATIONS: dict[str, dict[str, Any]] = {
 }
 
 
+def build_configs(names: Sequence[str]) -> dict[str, RetrievalConfig]:
+    """The named configurations: the configured settings (candidates, RRF k, the cap)
+    with only the mode and the rerank switch replaced. Rerank is set explicitly, so the
+    evaluation does not depend on RERANK_ENABLED (the GET /search default)."""
+    base = RetrievalConfig.from_settings()
+    return {name: replace(base, **CONFIGURATIONS[name]) for name in names}
+
+
 # --- question embeddings: cached, so repeated runs cost nothing --------------------------------
 
 
@@ -345,8 +353,7 @@ def main(argv: list[str] | None = None) -> int:
         parser.error(f"unknown configurations {unknown}; choose from {list(CONFIGURATIONS)}")
 
     settings = get_settings()
-    base = RetrievalConfig.from_settings()
-    configs = {n: replace(base, **CONFIGURATIONS[n]) for n in names}
+    configs = build_configs(names)
     collection = settings.qdrant_collection
     client = get_qdrant()
     try:
