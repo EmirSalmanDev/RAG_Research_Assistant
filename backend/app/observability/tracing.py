@@ -5,8 +5,9 @@ The pipeline talks to this small interface, not to a tracing SDK, so that:
 - tracing is a no-op whenever it is not configured (no Langfuse keys, or no SDK
   installed), and the chat works the same either way.
 
-The Langfuse adapter (Langfuse Cloud, host from LANGFUSE_HOST) is added together with
-the Langfuse SDK dependency; until then `get_tracer()` always returns the no-op tracer.
+`get_tracer()` returns the Langfuse adapter (app/observability/langfuse_tracer.py, host
+from LANGFUSE_HOST) only when both LANGFUSE_PUBLIC_KEY and LANGFUSE_SECRET_KEY are set;
+otherwise, and if the SDK cannot start, the no-op tracer. Tests blank both keys.
 
 Spans are started and ended explicitly, not with `with` blocks: the answer is streamed
 from a generator that pauses between pieces, and a stage's span must stay open across
@@ -17,8 +18,14 @@ A stage that did not run still gets its span, ended with `skipped` and the reaso
 every trace has the same shape and a missing stage is visible rather than absent.
 """
 
+import logging
 from collections.abc import Mapping
+from functools import lru_cache
 from typing import Any, Protocol
+
+from app.config import get_settings
+
+logger = logging.getLogger(__name__)
 
 
 class Span(Protocol):
@@ -83,5 +90,21 @@ class NoopTracer:
 
 
 def get_tracer() -> Tracer:
-    """The process's tracer. No-op until the Langfuse adapter is added (see above)."""
-    return NoopTracer()
+    """Langfuse when both keys are set, else the no-op tracer (see the module doc)."""
+    s = get_settings()
+    if s.langfuse_public_key is None or s.langfuse_secret_key is None:
+        return NoopTracer()
+    return _langfuse_tracer(s.langfuse_host, s.langfuse_public_key.get_secret_value())
+
+
+@lru_cache(maxsize=1)
+def _langfuse_tracer(host: str, public_key: str) -> Tracer:
+    """One SDK client per process (its background threads start once). The arguments
+    only key the cache; the client reads them from the settings."""
+    try:
+        from app.observability.langfuse_tracer import make_langfuse_tracer
+
+        return make_langfuse_tracer(get_settings())
+    except Exception:
+        logger.warning("langfuse could not start; tracing is off", exc_info=True)
+        return NoopTracer()
