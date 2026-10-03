@@ -31,14 +31,18 @@ def _message_columns(engine: Engine) -> set[str]:
 def test_0003_adds_a_nullable_meta_and_keeps_existing_messages(engine: Engine) -> None:
     command.upgrade(alembic_config(), "0002")
     with engine.begin() as conn:
-        conn.execute(text("INSERT INTO conversations (id, title) VALUES (:id, 'invented')"),
-                     {"id": CONVERSATION})  # fmt: skip
         conn.execute(
-            text("INSERT INTO messages (conversation_id, role, content, citations)"
-                 " VALUES (:c, 'user', 'invented question', '[]'::jsonb),"
-                 " (:c, 'assistant', 'invented answer [1].', CAST(:cit AS jsonb))"),
+            text("INSERT INTO conversations (id, title) VALUES (:id, 'invented')"),
+            {"id": CONVERSATION},
+        )
+        conn.execute(
+            text(
+                "INSERT INTO messages (conversation_id, role, content, citations)"
+                " VALUES (:c, 'user', 'invented question', '[]'::jsonb),"
+                " (:c, 'assistant', 'invented answer [1].', CAST(:cit AS jsonb))"
+            ),
             {"c": CONVERSATION, "cit": json.dumps([{"n": 1, "chunk_type": "abstract"}])},
-        )  # fmt: skip
+        )
     assert "meta" not in _message_columns(engine)
 
     command.upgrade(alembic_config(), "0003")
@@ -50,8 +54,9 @@ def test_0003_adds_a_nullable_meta_and_keeps_existing_messages(engine: Engine) -
             ("user", "invented question", None),
             ("assistant", "invented answer [1].", None),
         ]
-        conn.execute(text("UPDATE messages SET meta = '{\"version\": 1}'::jsonb"
-                          " WHERE role = 'assistant'"))  # fmt: skip
+        conn.execute(
+            text("UPDATE messages SET meta = '{\"version\": 1}'::jsonb WHERE role = 'assistant'")
+        )
 
     command.downgrade(alembic_config(), "0002")
     assert "meta" not in _message_columns(engine)

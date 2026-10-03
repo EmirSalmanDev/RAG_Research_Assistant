@@ -77,8 +77,9 @@ def test_missing_usage_is_an_error() -> None:
 
 def test_transient_errors_are_retried_and_only_success_is_logged() -> None:
     error = status_error(openai.RateLimitError, 429)
-    client, calls, rows = fake_chat([error, openai.APIConnectionError(request=request()),
-                                     text_reply("ok")])  # fmt: skip
+    client, calls, rows = fake_chat(
+        [error, openai.APIConnectionError(request=request()), text_reply("ok")]
+    )
     text, _ = client.complete(MESSAGES, feature="chat-condense", max_tokens=10)
     assert text == "ok" and len(calls.calls) == 3 and len(rows) == 1
 

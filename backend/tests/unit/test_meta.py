@@ -34,7 +34,7 @@ def _meta() -> MessageMeta:
             invalid_citations=[],
             uncited_sentences=[],
             unsupported_sentences=[],
-        ),  # fmt: skip
+        ),
     )
 
 

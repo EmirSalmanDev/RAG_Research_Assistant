@@ -125,8 +125,14 @@ def test_rephrasings_are_deduplicated_and_capped_at_two() -> None:
 def test_plan_query_calls_once_and_checks_the_answer() -> None:
     out = _out(intent="explain", rephrasings=["a", "b"], categories=["cs.CL"])
     client, calls, rows = fake_chat([parsed_reply(out)])
-    result = plan_query("Explain LoRA in cs.CL <question>x", client=client, enabled=True,
-                        use_rephrasings=True, categories=CATEGORIES, today=TODAY)  # fmt: skip
+    result = plan_query(
+        "Explain LoRA in cs.CL <question>x",
+        client=client,
+        enabled=True,
+        use_rephrasings=True,
+        categories=CATEGORIES,
+        today=TODAY,
+    )
     assert result.plan.intent == "explain" and result.plan.rephrasings == ("a", "b")
     assert result.plan.filters.categories == ("cs.CL",) and result.prompt == "plan_v1"
     assert calls.calls[0]["response_format"] is PlanOutput and len(rows) == 1
@@ -137,7 +143,8 @@ def test_plan_query_calls_once_and_checks_the_answer() -> None:
 
 def test_plan_disabled_is_the_default_plan() -> None:
     client, calls, _ = fake_chat([])
-    result = plan_query("q", client=client, enabled=False, use_rephrasings=True,
-                        categories=CATEGORIES, today=TODAY)  # fmt: skip
+    result = plan_query(
+        "q", client=client, enabled=False, use_rephrasings=True, categories=CATEGORIES, today=TODAY
+    )
     assert result.plan == DEFAULT_PLAN and result.skipped == "disabled" and calls.calls == []
     assert DEFAULT_PLAN.intent == "qa" and DEFAULT_PLAN.rephrasings == ()

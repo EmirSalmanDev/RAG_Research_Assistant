@@ -17,5 +17,9 @@ def test_one_committed_row_with_both_token_counts(migrated_session: Session) -> 
     assert cost == Decimal("0.000900")
     row = migrated_session.scalars(select(LLMUsage)).one()  # visible: it was committed
     assert (row.feature, row.model, row.tokens_in, row.tokens_out, row.cost_usd) == (
-        "chat-generate", "gpt-4o-mini", 4000, 500, Decimal("0.000900"),
-    )  # fmt: skip
+        "chat-generate",
+        "gpt-4o-mini",
+        4000,
+        500,
+        Decimal("0.000900"),
+    )
