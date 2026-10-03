@@ -62,6 +62,37 @@ def record_embedding_usage(feature: str, model: str, tokens_in: int) -> None:
         )
 
 
+def chat_cost(tokens_in: int, tokens_out: int) -> Decimal:
+    """USD for one chat call at the configured chat prices (input and output differ)."""
+    s = get_settings()
+    cost = (
+        Decimal(tokens_in) * Decimal(str(s.chat_price_in_per_1m))
+        + Decimal(tokens_out) * Decimal(str(s.chat_price_out_per_1m))
+    ) / 1_000_000
+    return cost.quantize(_MICRO_DOLLAR, ROUND_HALF_UP)
+
+
+# (feature, model, tokens_in, tokens_out) -> the cost written, so a caller can add it up.
+ChatUsageRecorder = Callable[[str, str, int, int], Decimal]
+
+
+def record_chat_usage(feature: str, model: str, tokens_in: int, tokens_out: int) -> Decimal:
+    """The default ChatUsageRecorder: one committed row per chat request."""
+    from app.db.session import session_scope
+
+    cost = chat_cost(tokens_in, tokens_out)
+    with session_scope() as session:
+        log_usage(
+            session,
+            feature=feature,
+            model=model,
+            tokens_in=tokens_in,
+            tokens_out=tokens_out,
+            cost_usd=cost,
+        )
+    return cost
+
+
 def session_recorder(session: Session) -> UsageRecorder:
     """A UsageRecorder that writes into an existing session (used by tests)."""
 
