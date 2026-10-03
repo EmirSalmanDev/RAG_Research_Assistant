@@ -10,6 +10,7 @@ dependencies = [
     "fastapi>=0.142.2",
     "fastembed>=0.8.1",
     "httpx>=0.28.1",
+    "langfuse>=4.15.6,<4.16",
     "openai>=3.22.1",
     "psycopg[binary]>=3.3.6",
     "pydantic-settings>=2.15.0",
