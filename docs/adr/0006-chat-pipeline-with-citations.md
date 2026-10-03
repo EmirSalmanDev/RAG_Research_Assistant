@@ -144,6 +144,14 @@ rather than a tracing SDK.
   can no longer be the marker (at most its 20 characters).
 - The simple sentence splitter can split at abbreviations such as "e.g.". Verify then
   judges two halves, which can flag more but never hides a claim.
+- Ties are resolved inside Qdrant, in no guaranteed order. Two chunks with the same
+  fused RRF score (for example dense #1 and BM25 #2 against dense #2 and BM25 #1) can
+  swap between identical runs, and a tie at a list's cutoff decides which chunk makes the
+  limit. The chat's own merge of the question and rephrasing lists breaks its ties
+  deterministically (first appearance), but it inherits the order Qdrant returned. The
+  retrieval evaluation is therefore not exactly repeatable for questions with tied top
+  chunks. A deterministic tie-break in the search stage is planned as a separate change,
+  with the rule chosen in advance and a before/after retrieval evaluation.
 - `/chat` needs migration 0003 applied (`make migrate`).
 - Changing a prompt means a new file and version. Comparisons across versions should use
   the version recorded on each message.
