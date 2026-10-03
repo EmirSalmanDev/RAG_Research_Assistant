@@ -134,7 +134,8 @@ Options not taken now, to re-measure in M4 when answers depend on the reranker:
 - Search with the `dense` or `hybrid` mode costs one embedding request per question
   (logged as `embed-query`). The `bm25` mode costs nothing.
 - The reranker adds about 590 MiB of resident memory once loaded, with peaks near
-  1.4 GiB while it runs (measured above), to the one process that uses it. Evaluation
+  1.4 GiB while it runs (measured above in a native process; the api container measured
+  about 2.45 GiB once it was loaded), to the one process that uses it. Evaluation
   runs natively, so `/search` with `rerank=true` should not be called while an
   evaluation runs, or two copies are loaded.
 - `GET /search` returns fusion-ranked results unless `rerank=true` is passed; a reranked
@@ -143,3 +144,27 @@ Options not taken now, to re-measure in M4 when answers depend on the reranker:
   evaluation refuses to run until the owner updates them.
 - Changing `search_rrf_k`, the candidate counts or the reranker changes retrieval;
   compare `make eval-retrieval` before and after.
+
+## Results (first measurement, 2026-10-03)
+The four configurations on the golden set, at commit 756b363, all with 50 candidates,
+RRF k = 60 and at most 3 chunks per paper. Metrics are averaged over the 17 answerable
+questions; the 3 unanswerable ones are stored but not scored.
+
+| Configuration | Recall@8 | MRR | nDCG@10 |
+| --- | --- | --- | --- |
+| dense | 0.824 | 0.735 | 0.758 |
+| bm25 | 0.912 | 0.825 | 0.831 |
+| hybrid | 0.912 | 0.833 | 0.838 |
+| hybrid-rerank | 0.794 | 0.765 | 0.757 |
+
+- Hybrid search is the best configuration, just ahead of BM25 alone.
+- Reranking with `bge-reranker-base` scored below hybrid on all three metrics. The
+  sample is small: with 17 scored questions, one question moves Recall@8 by about 0.06,
+  so the gap of 0.118 is about two questions.
+- Nothing was tuned on the golden set. The settings were fixed before the run, and the
+  set stays a held-out check.
+- Reranking therefore stays off by default for `GET /search` (`rerank=true` still enables
+  it) until it is re-measured on other data in M4, together with the follow-ups listed
+  under "Measured cost" above.
+- The reranked run took 426.6 s (about 21 s per question on the CPU); the other three
+  took under a second each.
