@@ -12,8 +12,8 @@ ever tuned to make them score better.
 - `reference_chunk_ids`: ids from the `chunks` table (= Qdrant point ids). An empty list
   marks an unanswerable question: it is run and stored, but not scored, because recall
   and nDCG need at least one right answer.
-- `type` (optional): fact, compare, filter or unanswerable. `unanswerable` and an empty
-  list must go together.
+- `type` (optional): fact, compare, filter, find_papers (the question asks which papers
+  cover something) or unanswerable. `unanswerable` and an empty list must go together.
 - `reference_answer`, `notes`: optional; for the answer metrics of a later milestone.
 
 Chunk ids contain the paper version, so a new arXiv version (or re-chunking) changes
@@ -29,7 +29,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_valida
 
 GOLDEN_PATH = Path(__file__).parent / "golden.jsonl"
 
-QuestionType = Literal["fact", "compare", "filter", "unanswerable"]
+QuestionType = Literal["fact", "compare", "filter", "find_papers", "unanswerable"]
 
 
 class GoldenError(ValueError):

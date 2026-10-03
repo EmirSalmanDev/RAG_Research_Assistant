@@ -46,12 +46,19 @@ def test_untyped_question_without_references_is_unscored(tmp_path: Path) -> None
     assert not item.scored
 
 
+def test_find_papers_questions_are_accepted_and_scored(tmp_path: Path) -> None:
+    (item,) = load_golden(_write(tmp_path, _q(1, type="find_papers", reference_chunk_ids=[C1])))
+    assert (item.type, item.scored) == ("find_papers", True)
+
+
 @pytest.mark.parametrize(
     ("item", "message"),
     [
         (_q(1, reference_chunk_ids=["not-a-uuid"]), "line 1"),
         (_q(1, reference_chunk_ids=[C1, C1]), "same id twice"),
         (_q(1, type="fact"), "needs reference_chunk_ids"),
+        (_q(1, type="find_papers"), "needs reference_chunk_ids"),
+        (_q(1, type="comparison", reference_chunk_ids=[C1]), "line 1"),  # the type is "compare"
         (_q(1, type="unanswerable", reference_chunk_ids=[C1]), "cannot have reference chunks"),
         (_q(1, type="opinion", reference_chunk_ids=[C1]), "line 1"),
         (_q(1, extra_field="typo"), "line 1"),
