@@ -42,7 +42,14 @@ class ChatUsage:
 
 
 class ChatResponseError(RuntimeError):
-    """The API answered, but not with usable output (refused, cut off, or no usage)."""
+    """The API answered, but not with usable output (refused, cut off, or no usage).
+
+    `usage` is set when the request was billed anyway, so the caller can still count it.
+    """
+
+    def __init__(self, message: str, usage: ChatUsage | None = None) -> None:
+        super().__init__(message)
+        self.usage = usage
 
 
 def _retry_after(err: openai.APIStatusError) -> float | None:
@@ -171,7 +178,7 @@ class ChatClient:
         usage = self._log(feature, completion.usage)
         text = completion.choices[0].message.content if completion.choices else None
         if not text or not text.strip():
-            raise ChatResponseError("the model returned no text")
+            raise ChatResponseError("the model returned no text", usage)
         return text.strip(), usage
 
     def parse[M: BaseModel](
@@ -198,13 +205,14 @@ class ChatClient:
             )
         except (openai.LengthFinishReasonError, openai.ContentFilterFinishReasonError) as err:
             # The request succeeded (and was billed) but the JSON was cut off or filtered.
+            billed = None
             if err.completion is not None and err.completion.usage is not None:
-                self._log(feature, err.completion.usage)
-            raise ChatResponseError(f"no structured output: {type(err).__name__}") from err
+                billed = self._log(feature, err.completion.usage)
+            raise ChatResponseError(f"no structured output: {type(err).__name__}", billed) from err
         usage = self._log(feature, completion.usage)
         message = completion.choices[0].message
         if message.parsed is None:
-            raise ChatResponseError(f"no structured output (refusal: {message.refusal!r})")
+            raise ChatResponseError(f"no structured output (refusal: {message.refusal!r})", usage)
         parsed: M = message.parsed
         return parsed, usage
 

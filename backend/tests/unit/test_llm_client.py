@@ -53,18 +53,20 @@ def test_parse_returns_the_model_instance() -> None:
 
 
 def test_parse_refusal_is_an_error_but_still_billed() -> None:
-    client, _, rows = fake_chat([parsed_reply(None)])
-    with pytest.raises(ChatResponseError):
+    client, _, rows = fake_chat([parsed_reply(None, 100, 10)])
+    with pytest.raises(ChatResponseError) as err:
         client.parse(MESSAGES, Answer, feature="chat-plan", max_tokens=100)
     assert len(rows) == 1
+    assert err.value.usage is not None and err.value.usage.cost_usd == chat_cost(100, 10)
 
 
 def test_parse_cut_off_json_logs_its_usage_and_raises() -> None:
     cut = openai.LengthFinishReasonError(completion=text_reply("{", 300, 100))  # type: ignore[arg-type]
     client, _, rows = fake_chat([cut])
-    with pytest.raises(ChatResponseError):
+    with pytest.raises(ChatResponseError) as err:
         client.parse(MESSAGES, Answer, feature="chat-verify", max_tokens=100)
     assert rows == [("chat-verify", "gpt-4o-mini", 300, 100)]
+    assert err.value.usage is not None and err.value.usage.tokens_out == 100
 
 
 def test_missing_usage_is_an_error() -> None:
