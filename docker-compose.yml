@@ -64,6 +64,15 @@ services:
 
   api:
     <<: *backend
+    environment:
+      <<: *backend-env
+      # The reranker's model files, downloaded once on the host by `make fetch-reranker`
+      # and mounted read-only; with Hugging Face's offline mode on, the API can never
+      # download a model itself. The API loads the model on the first reranked search.
+      FASTEMBED_CACHE_DIR: /opt/fastembed
+      HF_HUB_OFFLINE: "1"
+    volumes:
+      - ${HOME}/.cache/fastembed:/opt/fastembed:ro
     ports: ["8000:8000"]
     healthcheck:
       test:

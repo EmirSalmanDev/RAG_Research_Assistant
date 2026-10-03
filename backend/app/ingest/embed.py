@@ -78,10 +78,14 @@ class EmbeddingError(RuntimeError):
     """The API answered, but not with what we asked for (wrong count or size)."""
 
 
+class OpenAIKeyMissing(RuntimeError):
+    """OPENAI_API_KEY is not set, so nothing can be embedded."""
+
+
 def default_openai_client() -> OpenAIClient:
     key = get_settings().openai_api_key
     if key is None:
-        raise RuntimeError("OPENAI_API_KEY is not set (put it in .env); cannot embed")
+        raise OpenAIKeyMissing("OPENAI_API_KEY is not set (put it in .env); cannot embed")
     client: Any = openai.OpenAI(
         api_key=key.get_secret_value(), max_retries=0, timeout=OPENAI_TIMEOUT_S
     )

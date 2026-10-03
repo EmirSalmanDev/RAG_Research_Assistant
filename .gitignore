@@ -22,6 +22,9 @@ out/
 *.tsbuildinfo
 next-env.d.ts
 
+# Evaluation: cached question embeddings (rebuilt with `make eval-retrieval EMBED=1`)
+backend/eval/.cache/
+
 # Docker
 docker-compose.override.yml
 

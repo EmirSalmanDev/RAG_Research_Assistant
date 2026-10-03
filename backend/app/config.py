@@ -4,6 +4,7 @@ Model names live here and nowhere else (never hard-code them in other modules).
 """
 
 from functools import lru_cache
+from typing import Literal
 
 from pydantic import SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -49,6 +50,25 @@ class Settings(BaseSettings):
     # by rows with the header repeated). Must stay well below the model's 8191-token
     # input limit, which also has to fit the "Title > Section" prefix.
     chunk_hard_max_tokens: int = 2048
+
+    # --- Retrieval (docs/adr/0005) ---------------------------------------------------
+    # Every stage has its own switch, so the evaluation can measure what each one adds.
+    # search_mode: "dense" (the question's OpenAI embedding), "bm25" (local, free) or
+    # "hybrid" (both lists, fused with Reciprocal Rank Fusion inside Qdrant).
+    search_mode: Literal["dense", "bm25", "hybrid"] = "hybrid"
+    search_prefetch_limit: int = 50  # candidates taken from each list in hybrid mode
+    search_rrf_k: int = 60  # RRF constant k (the RRF paper's value; Qdrant's default is 2)
+    search_candidates: int = 50  # results handed from search to the reranker
+    # Default for GET /search (a request can override it with ?rerank=true). Off because a
+    # rerank of 50 candidates took about 22 s on an Apple M1 CPU (docs/adr/0005). The
+    # retrieval evaluation sets rerank per configuration and does not read this.
+    rerank_enabled: bool = False
+    reranker_model: str = "BAAI/bge-reranker-base"  # a FastEmbed TextCrossEncoder model
+    rerank_batch_size: int = 16  # (question, chunk) pairs per model run; bounds memory
+    max_chunks_per_paper: int = 3  # diversity cap after reranking; 0 switches it off
+    # Where the reranker's files are. They are never downloaded at runtime: only
+    # `make fetch-reranker` downloads them (a deliberate step, see app/rag/rerank.py).
+    fastembed_cache_dir: str = "~/.cache/fastembed"
 
     @field_validator(
         "openai_api_key", "langfuse_public_key", "langfuse_secret_key", "github_token",
