@@ -212,6 +212,9 @@ class Message(Base):
     tokens_out: Mapped[int | None] = mapped_column(Integer)
     cost_usd: Mapped[Decimal | None] = mapped_column(Numeric(12, 6))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=_now())
+    # Assistant messages only: intent, plan, verification, skipped stages, prompt versions
+    # (shape and version in app/rag/meta.py; migration 0003). NULL on user messages.
+    meta: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
 
     __table_args__ = (CheckConstraint("role IN ('user', 'assistant', 'system')", name="role"),)
 
