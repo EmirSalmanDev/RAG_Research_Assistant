@@ -56,7 +56,7 @@ class MessageMeta(BaseModel):
     sources: int  # how many numbered sources generate was given (0 on a refusal)
     refusal: Refusal | None = None
     abstract_only: bool = False  # every cited source is an abstract chunk
-    prompts: dict[Stage, str] = {}  # stage -> prompt id used, e.g. "generate_v1"
+    prompts: dict[Stage, str] = {}  # stage -> prompt id used, e.g. "generate_v2"
     skipped: dict[Stage, str] = {}  # stage -> why it did not run
     errors: dict[Stage, str] = {}  # stage -> the error it fell back from
     verification: VerifyResult | None = None

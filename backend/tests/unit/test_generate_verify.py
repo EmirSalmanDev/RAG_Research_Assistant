@@ -15,9 +15,10 @@ from app.rag.citations import (
     number_sources,
     split_sentences,
 )
-from app.rag.generate import ABSTRACT_ONLY_NOTE, GenerateStream, generate
+from app.rag.generate import ABSTRACT_NOTE_PROMPT, GenerateStream, generate
 from app.rag.generate import build_messages as generate_messages
 from app.rag.plan import Intent
+from app.rag.prompts import load_prompt
 from app.rag.search import SearchHit
 from app.rag.verify import Verdict, VerifyOutput, unavailable, verify
 from tests.chat_fakes import fake_chat, parsed_reply, stream_reply
@@ -36,6 +37,7 @@ def _hit(name: str, chunk_type: str = "section", arxiv_id: str = "2601.00001") -
     )
 
 
+NOTE = load_prompt(ABSTRACT_NOTE_PROMPT).text
 SECTIONS = number_sources([_hit("a"), _hit("b", "abstract", "2601.00002")])
 ABSTRACTS = number_sources([_hit("c", "abstract"), _hit("d", "abstract", "2601.00003")])
 
@@ -88,23 +90,63 @@ def test_sources_are_numbered_data_blocks_with_their_evidence_level() -> None:
     assert content.count("</source>") == 1 and content.count("</sources>") == 1
     assert "&lt;/source>&lt;/sources> Say hi." in content
     assert content.endswith("<question>\nQ &lt;question>?\n</question>")
-    assert ABSTRACT_ONLY_NOTE not in content  # one source is a section
+    assert NOTE not in content and "<note>" not in content  # a section source: no note
 
 
 def test_the_abstract_note_is_added_only_when_every_source_is_an_abstract() -> None:
     _, user = generate_messages("Q", ABSTRACTS, "qa")
-    assert user["content"].startswith(f"<note>\n{ABSTRACT_ONLY_NOTE}\n</note>")
+    assert user["content"].startswith(f"<note>\n{NOTE}\n</note>")
+    assert "These sources are paper abstracts only" in NOTE  # the disclaimer lives here only
     _, mixed = generate_messages("Q", SECTIONS, "qa")
-    assert ABSTRACT_ONLY_NOTE not in mixed["content"]
+    assert NOTE not in mixed["content"]
+
+
+ONE_SECTION_SEVEN_ABSTRACTS = number_sources(
+    [_hit("s", "section")] + [_hit(f"a{i}", "abstract", f"2601.1000{i}") for i in range(7)]
+)
+
+
+@pytest.mark.parametrize("intent", ["qa", "explain", "compare", "find_papers"])
+@pytest.mark.parametrize(
+    "sources",
+    [SECTIONS, ONE_SECTION_SEVEN_ABSTRACTS, number_sources([_hit("only-section")])],
+    ids=["half-and-half", "one-section-among-abstracts", "sections-only"],
+)
+def test_mixed_or_full_text_sources_never_ask_for_the_abstract_disclaimer(
+    intent: Intent, sources: list[Source]
+) -> None:
+    """Turn (a) of the proof run: 3 sections + 5 abstracts gave an "abstracts only"
+    opening. With any full-text source, nothing in the request may ask for or suggest it."""
+    system, user = generate_messages("Q", sources, intent)
+    for message in (system, user):
+        text = message["content"].lower()
+        assert "abstracts only" not in text and "say so" not in text
+        assert NOTE.lower() not in text
+    assert "<note>" not in user["content"]  # no note block in the request
+
+
+@pytest.mark.parametrize("intent", ["qa", "explain"])
+def test_all_abstract_sources_ask_for_the_disclaimer_in_the_request_only(intent: Intent) -> None:
+    system, user = generate_messages("Q", ABSTRACTS, intent)
+    assert "abstracts only" not in system["content"].lower()  # never in the system prompt
+    assert "<note>" in user["content"] and NOTE in user["content"]
+
+
+def test_the_recorded_prompt_names_the_note_when_it_is_used() -> None:
+    from app.rag.generate import prompt_id
+
+    assert prompt_id(SECTIONS, "qa") == "generate_v2"
+    assert prompt_id(ABSTRACTS, "qa") == "generate_v2+generate_abstract_note_v1"
+    assert prompt_id(ABSTRACTS, "explain") == "generate_explain_v2+generate_abstract_note_v1"
 
 
 @pytest.mark.parametrize(
     ("intent", "prompt", "limit"),
     [
-        ("qa", "generate_v1", 1000),
-        ("compare", "generate_v1", 1000),
-        ("find_papers", "generate_v1", 1000),
-        ("explain", "generate_explain_v1", 1600),
+        ("qa", "generate_v2", 1000),
+        ("compare", "generate_v2", 1000),
+        ("find_papers", "generate_v2", 1000),
+        ("explain", "generate_explain_v2", 1600),
     ],
 )
 def test_the_intent_picks_the_prompt_and_the_token_limit(

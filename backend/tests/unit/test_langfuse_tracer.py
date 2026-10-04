@@ -103,7 +103,7 @@ def test_a_chat_turn_sends_exactly_six_spans_in_one_trace_and_flushes_once() -> 
     verify = next(o for o in client.observations if o.name == "verify")
     summary = verify.updates[-1]["metadata"]["turn"]
     assert summary["outcome"] == {"status": "answered"}
-    assert summary["prompts"]["generate"] == "generate_v1"
+    assert summary["prompts"]["generate"] == "generate_v2"
 
 
 def test_span_end_times_are_the_moments_the_stages_finished() -> None:

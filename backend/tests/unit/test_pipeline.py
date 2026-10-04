@@ -242,7 +242,7 @@ def test_a_full_turn_streams_saves_and_traces_six_stages() -> None:
     assert trace.metadata["prompts"] == {
         "condense": "condense_v1",
         "plan": "plan_v1",
-        "generate": "generate_v1",
+        "generate": "generate_v2",
         "verify": "verify_v1",
     }
 

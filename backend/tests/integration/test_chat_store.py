@@ -77,7 +77,7 @@ def test_a_turn_is_saved_whole_with_meta_and_usage(migrated_session: Session) ->
     assert (answer.tokens_in, answer.tokens_out) == (3200, 130)
     meta = load_meta(answer.meta)
     assert meta is not None and meta.intent == "qa" and meta.verification is not None
-    assert meta.prompts == {"plan": "plan_v1", "generate": "generate_v1", "verify": "verify_v1"}
+    assert meta.prompts == {"plan": "plan_v1", "generate": "generate_v2", "verify": "verify_v1"}
     usage = migrated_session.scalars(select(LLMUsage).order_by(LLMUsage.id)).all()
     # One row per request, the question embedding included; together they are the turn's cost.
     assert [u.feature for u in usage] == [
