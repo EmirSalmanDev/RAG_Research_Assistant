@@ -24,7 +24,19 @@ ARXIV_ABS_URL = "https://arxiv.org/abs/{arxiv_id}"
 
 _CITATION = re.compile(r"\[(\d+(?:\s*[,;]\s*\d+)*)\]")
 _LEADING_CITATIONS = re.compile(r"^((?:\[\d+(?:\s*[,;]\s*\d+)*\]\s*)+)")
-_SENTENCE_END = re.compile(r"(?<=[.!?])\s+")
+# A possible sentence end: '.', '!' or '?' (optionally followed by a closing quote or
+# bracket) and then whitespace. Whether it really ends a sentence is decided in
+# _is_sentence_end.
+_SENTENCE_END = re.compile(r"[.!?][\"')\]]*\s+")
+# A list or heading marker at the start of a line: "1.", "2)", "-", "*", "+", "•", "#".
+_LINE_MARKER = re.compile(r"^(?:\d{1,3}[.)]|[-*+•]|#{1,6}|>)\s+")
+# Words that end with a period without ending the sentence (compared in lower case,
+# without their final period).
+_ABBREVIATIONS = frozenset({
+    "e.g", "i.e", "et al", "al", "cf", "vs", "etc", "approx", "fig", "figs", "eq", "eqs",
+    "sec", "secs", "tab", "ref", "refs", "no", "nos", "vol", "pp", "dr", "mr", "ms", "prof",
+    "resp", "ca", "incl", "w.r.t",
+})  # fmt: skip
 
 
 @dataclass(frozen=True)
@@ -71,22 +83,57 @@ class Sentence:
     citations: tuple[int, ...]
 
 
+def _is_sentence_end(text: str, match: re.Match[str]) -> bool:
+    """Is this '.', '!' or '?' + whitespace a real sentence end?
+
+    Not after an abbreviation ("e.g.", "et al.", "Fig.") or a single capital letter (an
+    initial, "A. Vaswani"), and not when the next word starts in lower case. Decimals
+    ("0.9 BLEU") never get here: the point is not followed by whitespace.
+    """
+    if match.group().startswith("."):
+        before = text[: match.start()]
+        word = before.rsplit(None, 1)[-1] if before.strip() else ""
+        word = word.lstrip("([\"'").lower()
+        if word in _ABBREVIATIONS or re.fullmatch(r"[a-z]", word):  # "et al." ends in "al"
+            return False
+    rest = text[match.end() :]
+    return not (rest[:1].islower())
+
+
+def _split_line(text: str) -> list[str]:
+    pieces: list[str] = []
+    start = 0
+    for match in _SENTENCE_END.finditer(text):
+        if _is_sentence_end(text, match):
+            pieces.append(text[start : match.end()].strip())
+            start = match.end()
+    pieces.append(text[start:].strip())
+    return [p for p in pieces if p]
+
+
 def split_sentences(answer: str) -> list[Sentence]:
     """The answer's sentences, each with the numbers it cites.
 
-    A simple splitter: lines, then '.', '!' or '?' followed by a space. Citations that
-    start the next piece ("... model. [2] The next ...") belong to the sentence before.
-    Abbreviations such as "e.g. " split a sentence in two; verify then checks two halves,
-    which is safe (it can only flag more, never hide a claim).
+    Line by line; a list or heading marker at the start of a line ("1.", "-", "##") stays
+    with the line's first sentence and is never a sentence of its own. Inside a line, a
+    sentence ends at '.', '!' or '?' plus whitespace, except after an abbreviation, after
+    an initial, or before a lower-case word (see _is_sentence_end). Citations that start
+    the next piece ("... model. [2] The next ...") belong to the sentence before.
     """
     pieces: list[str] = []
-    for line in answer.splitlines():
-        for piece in _SENTENCE_END.split(line.strip()):
+    for raw_line in answer.splitlines():
+        line = raw_line.strip()
+        marker_match = _LINE_MARKER.match(line)
+        marker = marker_match.group() if marker_match else ""
+        body = line[len(marker) :]
+        for k, piece in enumerate(_split_line(body)):
             lead = _LEADING_CITATIONS.match(piece)
-            if lead and pieces:
+            if lead and pieces and not (k == 0 and marker):
                 pieces[-1] = f"{pieces[-1]} {lead[1].strip()}"
-                piece = piece[lead.end() :]
-            if piece.strip(" -*#>") and re.search(r"\w", piece):
+                piece = piece[lead.end() :].strip()
+            if k == 0 and marker:
+                piece = f"{marker}{piece}"
+            if piece.strip(" -*#>") and re.search(r"[A-Za-z]", piece):
                 pieces.append(piece.strip())
     return [Sentence(i, p, tuple(cited_numbers(p))) for i, p in enumerate(pieces)]
 

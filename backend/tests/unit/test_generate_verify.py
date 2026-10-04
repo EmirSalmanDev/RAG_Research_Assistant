@@ -1,6 +1,7 @@
 """Citations, generate and verify, against the scripted fake OpenAI (no API calls).
 All paper text here is invented."""
 
+import re
 import uuid
 from dataclasses import replace
 
@@ -61,6 +62,55 @@ def test_split_sentences_keeps_citations_with_their_sentence() -> None:
         "## Heading",
     ]
     assert [s.citations for s in sentences] == [(1,), (2,), (), (1,), ()]
+
+
+def test_numbered_list_markers_are_never_sentences_of_their_own() -> None:
+    """Proof-run turn (c): "1." and "2." were counted as uncited sentences."""
+    answer = (
+        "Recent papers propose several methods:\n\n"
+        "1. **PatchKV**: It adds weight patches [2].\n"
+        "2) **JoLT**: It allocates rank and bits jointly [7]. It is near-lossless [7].\n"
+        "3. Another one [1]"
+    )
+    sentences = split_sentences(answer)
+    assert [s.text for s in sentences] == [
+        "Recent papers propose several methods:",
+        "1. **PatchKV**: It adds weight patches [2].",
+        "2) **JoLT**: It allocates rank and bits jointly [7].",
+        "It is near-lossless [7].",
+        "3. Another one [1]",
+    ]
+    assert [s.citations for s in sentences] == [(), (2,), (7,), (7,), (1,)]
+    assert all(not re.fullmatch(r"\s*\d+[.)]?\s*", s.text) for s in sentences)
+
+
+@pytest.mark.parametrize(
+    ("answer", "expected"),
+    [
+        ("Methods, e.g. LoRA, help [1]. Others, i.e. adapters, too [2].",
+         ["Methods, e.g. LoRA, help [1].", "Others, i.e. adapters, too [2]."]),
+        ("Vaswani et al. show this [2]. See Fig. 3 for details [1].",
+         ["Vaswani et al. show this [2].", "See Fig. 3 for details [1]."]),
+        ("Compared vs. RNNs it is faster [1]. A. Vaswani wrote it [2].",
+         ["Compared vs. RNNs it is faster [1].", "A. Vaswani wrote it [2]."]),
+        ("It ends here. the lower-case word continues it [1].",
+         ["It ends here. the lower-case word continues it [1]."]),
+    ],
+)  # fmt: skip
+def test_abbreviations_and_initials_do_not_end_a_sentence(answer: str, expected: list[str]) -> None:
+    assert [s.text for s in split_sentences(answer)] == expected
+
+
+def test_decimals_do_not_split_but_a_number_can_end_a_sentence() -> None:
+    answer = (
+        "Single-head attention is 0.9 BLEU worse [2]. Version 2.0 helps. It gains 3.5. Then more."
+    )
+    assert [s.text for s in split_sentences(answer)] == [
+        "Single-head attention is 0.9 BLEU worse [2].",
+        "Version 2.0 helps.",
+        "It gains 3.5.",
+        "Then more.",
+    ]
 
 
 def test_abstract_only_looks_at_the_cited_sources() -> None:
