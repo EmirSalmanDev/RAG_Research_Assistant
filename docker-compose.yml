@@ -1,6 +1,9 @@
 # Memory note (8 GB machine): the frontend is in the "frontend" profile, so
 # `make up` skips it. Run it natively with `cd frontend && pnpm dev`, or
 # start it in compose with `docker compose --profile frontend up -d frontend`.
+#
+# Every published port is bound to 127.0.0.1: without a host IP, Docker publishes on
+# 0.0.0.0 and the stores (with their default passwords) are reachable from the LAN.
 
 x-backend: &backend
   build: ./backend
@@ -27,7 +30,7 @@ services:
       POSTGRES_USER: copilot
       POSTGRES_PASSWORD: copilot
       POSTGRES_DB: copilot
-    ports: ["5432:5432"]
+    ports: ["127.0.0.1:5432:5432"]
     volumes: [postgres_data:/var/lib/postgresql/data]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U copilot -d copilot"]
@@ -36,8 +39,10 @@ services:
       retries: 10
 
   qdrant:
-    image: qdrant/qdrant
-    ports: ["6333:6333"]
+    # Pinned: Qdrant snapshots restore only into a compatible server version, and an
+    # unpinned tag moves to a new release on the next pull.
+    image: qdrant/qdrant:v1.19.1
+    ports: ["127.0.0.1:6333:6333"]
     volumes: [qdrant_data:/qdrant/storage]
     healthcheck:
       # The image has no curl; bash's /dev/tcp opens a socket to send a raw HTTP request.
@@ -55,7 +60,7 @@ services:
 
   redis:
     image: redis:7
-    ports: ["6379:6379"]
+    ports: ["127.0.0.1:6379:6379"]
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -73,7 +78,7 @@ services:
       HF_HUB_OFFLINE: "1"
     volumes:
       - ${HOME}/.cache/fastembed:/opt/fastembed:ro
-    ports: ["8000:8000"]
+    ports: ["127.0.0.1:8000:8000"]
     healthcheck:
       test:
         - CMD
@@ -113,7 +118,7 @@ services:
   frontend:
     profiles: ["frontend"]
     build: ./frontend
-    ports: ["3000:3000"]
+    ports: ["127.0.0.1:3000:3000"]
     healthcheck:
       test:
         - CMD
