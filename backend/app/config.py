@@ -70,6 +70,24 @@ class Settings(BaseSettings):
     # `make fetch-reranker` downloads them (a deliberate step, see app/rag/rerank.py).
     fastembed_cache_dir: str = "~/.cache/fastembed"
 
+    # --- Chat (docs/adr/0006) ---------------------------------------------------------
+    # One model for every chat call (condense, plan, generate, verify). The prices are
+    # only used to write `llm_usage.cost_usd`; no cached-input discount is assumed.
+    chat_model: str = "gpt-4o-mini"
+    chat_price_in_per_1m: float = 0.15  # USD per 1M input tokens
+    chat_price_out_per_1m: float = 0.60  # USD per 1M output tokens
+    chat_temperature: float = 0.0  # 0 = as repeatable as the API allows
+    chat_max_output_tokens: int = 1000  # cap for a qa answer (and for any other call)
+    chat_max_output_tokens_explain: int = 1600  # explain answers may be longer
+    chat_history_messages: int = 6  # earlier messages condense reads (N; no running summary)
+    chat_sources: int = 8  # numbered sources [1]..[n] given to generate
+    # Stage switches, so the evaluation can measure what each stage adds. Search always
+    # runs; rerank uses `rerank_enabled` above (off by default).
+    condense_enabled: bool = True  # rewrite follow-ups into a standalone question
+    plan_enabled: bool = True  # filters, intent and rephrasings from one structured call
+    plan_rephrasings_enabled: bool = True  # also search the planner's two rephrasings
+    verify_enabled: bool = True  # second call: is each cited sentence supported?
+
     @field_validator(
         "openai_api_key", "langfuse_public_key", "langfuse_secret_key", "github_token",
         "s2_api_key", mode="before",

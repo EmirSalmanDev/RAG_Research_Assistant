@@ -122,7 +122,8 @@ Options not taken now, to re-measure in M4 when answers depend on the reranker:
    adds it. The stages are already separate typed functions, so a span can wrap each
    one.
 3. **No author filter.** The Qdrant payload has no authors. Author filters come with the
-   query planner, which can add the field to the payload.
+   query planner, which can add the field to the payload. (Superseded by 0006: the
+   planner returns no author filter.)
 4. **No LlamaIndex** (see Client above). The original stack listed it for documents,
    nodes and the Qdrant store.
 5. **The diversity cap is applied in all four evaluation configurations**, not only
@@ -168,3 +169,42 @@ questions; the 3 unanswerable ones are stored but not scored.
   under "Measured cost" above.
 - The reranked run took 426.6 s (about 21 s per question on the CPU); the other three
   took under a second each.
+
+## Results (container measurement, 2026-10-05; partial)
+Speed and memory only, no quality. Measured on the same Apple M1 (8 GB RAM), in a one-off
+container from the api image: no network, 8 CPUs, a 2,700 MiB memory limit without swap,
+inside the 3.83 GiB Docker VM. The candidate lists were frozen beforehand: the 50 hybrid
+results for each question. The evaluation questions' text served only as realistic queries;
+nothing was scored. Each call went through `app.rag.rerank.rerank()` with batch size 16.
+
+**Only one setting was measured:** ONNX Runtime's default thread count (one per CPU, 8 here)
+with its memory arena on. **There is one timed call (n = 1) per candidate count**, so these
+are single readings, not distributions:
+
+| | Value |
+| --- | --- |
+| Loading the model | 23.1 s; 1,534 MiB resident afterwards (1,969 MiB peak during the load) |
+| First (warm-up) rerank of 50 | 39.4 s |
+| Rerank of 50 candidates | 42.0 s (0.84 s per pair) |
+| Rerank of 30 candidates | 25.6 s (0.85 s per pair) |
+| Peak resident memory (VmHWM) | 2,477 MiB |
+
+After the second timed call, the run stopped at its own memory guard (90 % of the limit).
+So **20 and 10 candidates were not measured**, and neither were the other settings:
+- ONNX Runtime limited to 4, 2 or 1 threads;
+- the memory arena switched off;
+- `Xenova/ms-marco-MiniLM-L-12-v2`.
+
+Compared with the native measurement above (22.0 s per 50, about 0.44 s per pair), the
+time per pair roughly doubled. The cause is not established, because the run did not
+record real per-pair token counts. The peak memory matches the 2.45 GiB seen in the api
+container.
+
+Consequences:
+- Reranking stays off by default.
+- The thread limit, the arena switch, fewer candidates and the smaller model move to the
+  full evaluation milestone (M10). They are measured there together with the reranker's
+  quality on questions outside the golden set.
+- A memory threshold for such a run has to sit above the peak already known (about
+  2.5 GiB here). Otherwise the guard stops the first setting and the cheaper ones are
+  never reached. Run the cheaper settings first.
