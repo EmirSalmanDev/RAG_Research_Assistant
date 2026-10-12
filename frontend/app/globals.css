@@ -72,6 +72,9 @@
   --font-sans:
     ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
     "Helvetica Neue", Arial, sans-serif;
+  /* Reading text (answers, cited passages): a system serif, nothing is downloaded. */
+  --font-serif:
+    ui-serif, "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
   --font-mono:
     ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
 }
