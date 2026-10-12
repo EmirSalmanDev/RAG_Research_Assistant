@@ -2,6 +2,7 @@
 
 import { Badge } from "@/components/ui/badge";
 import type { PlanMeta, Source } from "@/lib/chat/events";
+import { planChips } from "@/lib/chat/plan";
 import type { AssistantMessage, ChatMessage } from "@/lib/chat/reducer";
 
 import { AnswerText } from "./answer-text";
@@ -9,13 +10,7 @@ import { AnswerText } from "./answer-text";
 // The filters the query plan applied while searching, so the reader can see why some
 // papers were left out. Shown only when there is something to show.
 function PlanChips({ plan }: { plan: PlanMeta }) {
-  const chips: string[] = [];
-  if (plan.intent !== "qa")
-    chips.push(`Mode: ${plan.intent.replace("_", " ")}`);
-  for (const id of plan.arxiv_ids) chips.push(`Paper ${id}`);
-  for (const category of plan.categories) chips.push(category);
-  if (plan.published_from) chips.push(`From ${plan.published_from}`);
-  if (plan.published_to) chips.push(`Until ${plan.published_to}`);
+  const chips = planChips(plan);
   if (chips.length === 0) return null;
   return (
     <ul
