@@ -1,14 +1,23 @@
-import { api } from "./client";
+// The endpoint functions bound to the real client (same-origin /api, proxied to FastAPI).
+// Components call these from TanStack Query; tests call lib/api/endpoints.ts directly.
 
-/** The text of one chunk (what a citation chip opens). Throws a message fit for the UI. */
-export async function fetchChunk(chunkId: string) {
-  const { data, response } = await api.GET("/chunks/{chunk_id}", {
-    params: { path: { chunk_id: chunkId } },
-  });
-  if (data) return data;
-  throw new Error(
-    response.status === 404
-      ? "This passage is no longer in the index."
-      : "The passage could not be loaded. Is the API running?",
-  );
-}
+import { api } from "./client";
+import * as endpoints from "./endpoints";
+import type { SearchParams } from "../search/params";
+
+export type {
+  ChunkOut,
+  PaperChunksOut,
+  PaperOut,
+  SearchHit,
+  SearchResponse,
+} from "./endpoints";
+
+export const fetchChunk = (chunkId: string) =>
+  endpoints.fetchChunk(api, chunkId);
+export const fetchPaper = (arxivId: string) =>
+  endpoints.fetchPaper(api, arxivId);
+export const fetchPaperChunks = (arxivId: string) =>
+  endpoints.fetchPaperChunks(api, arxivId);
+export const fetchSearch = (params: SearchParams, signal?: AbortSignal) =>
+  endpoints.fetchSearch(api, params, signal);
