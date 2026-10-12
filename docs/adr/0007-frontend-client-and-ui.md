@@ -45,6 +45,39 @@ dependency.
 **No remote fonts.** The default `next/font/google` setup downloads font files from
 Google at dev and build time. The app uses system font stacks instead.
 
+**Chat streams over fetch, not EventSource.** `/chat` takes a POST body and EventSource
+only does GET, so `lib/chat/sse.ts` is a small parser for fetch bodies. It follows the
+SSE format (all three line endings, comments, multi-line data) and keeps unfinished lines
+and split multi-byte characters between chunks. `lib/chat/events.ts` types every event and
+checks each payload instead of casting it; an unknown event name is ignored, so a newer
+backend still works. A stream that ends before `done` or `error` is an error, not a
+silent half answer.
+
+**Citations.** The model writes `[3]` or `[1, 2]`; `lib/chat/citations.ts` splits the
+answer into text and citation segments with the same pattern the backend uses. A number
+that is one of the answer's sources becomes a chip; a number with no source stays plain
+text, so no chip ever opens nothing. A chip for a source whose `chunk_type` is `abstract`
+has a dashed border and the word "abstract". While the answer streams, an unfinished
+marker such as `[1,` at the end is held back so the line does not jump when it completes.
+The chunk text is fetched from `GET /chunks/{id}` when a chip is opened. The arXiv link
+is only rendered if it starts with `https://arxiv.org/abs/`.
+
+**Tests without a new dependency.** The modules in `lib/chat/` are plain TypeScript with
+no framework imports, and Node 24 strips types itself, so their tests run with
+`node --test` (`pnpm test:unit`, part of `make test`). To make that safe, `tsconfig.json`
+sets `erasableSyntaxOnly` (no enums or parameter properties), `verbatimModuleSyntax`
+(type-only imports must say `import type`) and `allowImportingTsExtensions` (relative
+imports in `lib/` name the `.ts` file, as Node needs). React components are covered by the
+browser test, not here. `package.json` is `"type": "module"`.
+
+**Streaming through the proxy was measured, not assumed.** A fake backend that sends
+tokens 600 ms apart, with the headers and chunked encoding of the real route, was read
+through the Next rewrite by the real client code: in `next dev --webpack`, in
+`next build --webpack` plus `next start`, and in `node .next/standalone/server.js` the
+tokens arrived 600 ms apart, as they do when read from the backend directly. An optional
+timing log (`localStorage["chat-debug"] = "1"`, then `window.__chatTimeline`) records
+when each event reaches the page, for the same check against the real API.
+
 **Server state with TanStack Query.** Queries are never retried or refetched on window
 focus, and stay fresh for five minutes, because `/search` embeds the question (a paid
 OpenAI request) and must not repeat behind the user's back.
