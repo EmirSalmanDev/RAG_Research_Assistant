@@ -115,7 +115,13 @@ fails if they are stale. The chat stream (server-sent events) cannot be describe
 OpenAPI, so its event types are written by hand in `frontend/lib/chat/events.ts`; the
 backend test `tests/unit/test_sse_fixtures.py` writes real streams from the real route
 into `frontend/lib/chat/testdata/`, and the frontend tests replay them.
-Answers are shown as pre-wrapped text, not rendered markdown. Decisions: `docs/adr/0007`.
+Answers are shown as pre-wrapped text, not rendered markdown, so a `**bold**` or a numbered
+list in an answer appears as the characters the model wrote. Plan filters (category, dates)
+are shown above each answer. Decisions: `docs/adr/0007`.
+
+To look at the real data in a browser, start the stack (`make up`), then `pnpm dev` in
+`frontend/` (or `pnpm build && pnpm start`). The chat page asks the real model: each turn
+makes about six small OpenAI requests (about $0.001), and each search one embedding request.
 
 ### Browser test
 `make e2e` runs one Playwright test (`frontend/e2e/chat-citation.spec.ts`): ask a question,

@@ -78,6 +78,29 @@ tokens arrived 600 ms apart, as they do when read from the backend directly. An 
 timing log (`localStorage["chat-debug"] = "1"`, then `window.__chatTimeline`) records
 when each event reaches the page, for the same check against the real API.
 
+**A run against the real API (once, guarded).** The chat flow was also run in a real browser
+against the real API, from a production build (`next build --webpack`, `next start`) behind the
+same `/api` rewrite: two chat turns, one `/search` (rerank off), and the paper page. The API ran
+with its egress guard allowing only the OpenAI host (16 requests, a spend bound of $0.04) and
+tracing off; 13 requests were made, none refused, and the real cost was $0.0025.
+- Tokens arrive one by one through the rewrite: 323 token events between 5.9 s and 10.0 s
+  (done at 10.0 s) in the first turn, 439 between 2.9 s and 7.4 s (done at 7.4 s) in the
+  second, spread over 11 and 14 different 250 ms windows. Nothing was held back until `done`.
+- A clicked chip opens the right passage: for each of the three chips opened, `[n]`, the chunk
+  id in the `sources` event, the id the panel requested and the id stored in the message's
+  citations were the same, and the panel's text equalled the stored chunk text byte for byte
+  (same UTF-8 length and sha256, no whitespace normalisation).
+- The abstract badge matched `chunk_type` on every chip, and the abstracts-only note showed
+  when every source was an abstract. `/search` and `/paper/[id]` matched the database
+  (titles, abstracts, chunk lists and texts, the category filter, grouping in rank order).
+- Limits of that run: both turns had only abstract sources, so a full-text (section) chip was
+  not opened against real data; that panel is covered by the browser test with mock data.
+  The first turn's plan added a category filter (`cs.AI`) the question did not name, which
+  kept the full-text paper out of the sources: a planner behaviour, not a frontend one. The
+  run also showed answers containing markdown (`**name**`, numbered lists), which appear as
+  the characters the model wrote (see Consequences), and plan dates in the chips as full
+  timestamps; the chips now show the day (`lib/chat/plan.ts`).
+
 **The sources panel is non-modal.** A citation opens the cited passage in a side panel
 that has no backdrop and no focus trap, so the answer stays readable, scrollable and
 clickable beside it. Escape and the close button close it; clicking elsewhere does not, so
@@ -137,6 +160,11 @@ committed. Added: `@tanstack/react-query`, `openapi-fetch`, `class-variance-auth
   (`hep-th/9901001`); they work through the API and in links (the id is URL-encoded), but
   are not tested, and the index holds recent papers only.
 - Answers are shown as pre-wrapped text, not rendered markdown: no markdown library was
-  added. A list or emphasis in an answer appears as the characters the model wrote.
+  added. A list or emphasis in an answer appears as the characters the model wrote; real
+  answers do contain `**bold**` and numbered lists, so this is visible, not hypothetical.
+  Rendering markdown safely is a separate decision (a dependency, and sanitising model output).
+- The `/chat` panel for a full-text passage was verified with mock data only; the real-API
+  run opened abstract chunks. How often an answer has section sources depends on the query
+  plan (see above), which is outside this milestone.
 - Because the proxy target is fixed at build time, running the frontend in a container
   needs `API_ORIGIN=http://api:8000` at build.
