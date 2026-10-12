@@ -1,0 +1,18 @@
+event: meta
+data: {"conversation_id": "00000000-0000-4000-8000-0000000000bb", "new_conversation": false, "intent": "qa", "standalone_question": "What are the limits of LoRA?", "plan": {"intent": "qa", "rephrasings": ["low-rank adapters", "LoRA finetuning"], "arxiv_ids": [], "categories": [], "published_from": null, "published_to": null, "dropped": []}}
+
+event: sources
+data: {"sources": [{"n": 1, "chunk_id": "6cf96eb0-d436-58d8-a8d8-e9142c5d348f", "arxiv_id": "2601.00001", "title": "Paper 2601.00001", "section_path": "3 Method", "chunk_type": "section", "published_at": "2026-09-01T00:00:00+00:00", "abs_url": "https://arxiv.org/abs/2601.00001"}, {"n": 2, "chunk_id": "2b92f22d-3cba-58d6-b51f-4b0ea5311294", "arxiv_id": "2601.00002", "title": "Paper 2601.00002", "section_path": null, "chunk_type": "abstract", "published_at": "2026-09-01T00:00:00+00:00", "abs_url": "https://arxiv.org/abs/2601.00002"}]}
+
+event: token
+data: {"text": "Paper 2601.00001 adds adapters [1]. "}
+
+event: token
+data: {"text": "Its abstract says less [2]."}
+
+event: verification
+data: {"status": "checked", "sentences": [{"index": 0, "text": "Paper 2601.00001 adds adapters [1].", "citations": [1], "invalid_citations": [], "supported": true, "reason": ""}, {"index": 1, "text": "Its abstract says less [2].", "citations": [2], "invalid_citations": [], "supported": false, "reason": ""}], "invalid_citations": [], "uncited_sentences": [], "unsupported_sentences": [1], "reason": "", "prompt": "verify_v1"}
+
+event: done
+data: {"conversation_id": "00000000-0000-4000-8000-0000000000bb", "message_id": 42, "refusal": null, "abstract_only": false, "citations": [{"n": 1, "chunk_id": "6cf96eb0-d436-58d8-a8d8-e9142c5d348f", "arxiv_id": "2601.00001", "title": "Paper 2601.00001", "section_path": "3 Method", "chunk_type": "section", "published_at": "2026-09-01T00:00:00+00:00", "abs_url": "https://arxiv.org/abs/2601.00001"}, {"n": 2, "chunk_id": "2b92f22d-3cba-58d6-b51f-4b0ea5311294", "arxiv_id": "2601.00002", "title": "Paper 2601.00002", "section_path": null, "chunk_type": "abstract", "published_at": "2026-09-01T00:00:00+00:00", "abs_url": "https://arxiv.org/abs/2601.00002"}], "tokens_in": 3400, "tokens_out": 142, "cost_usd": "0.000595", "trace_id": "trace-0001"}
+
