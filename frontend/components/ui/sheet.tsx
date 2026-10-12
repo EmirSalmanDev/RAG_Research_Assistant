@@ -1,6 +1,8 @@
 "use client";
 // Adapted from shadcn/ui (MIT), registry style new-york, item "sheet".
-// Local change: the close icon is an inline SVG instead of lucide-react's X.
+// Local changes: the close icon is an inline SVG instead of lucide-react's X, and
+// SheetContent takes `overlay={false}` to render without the dimming backdrop (used with
+// `<Sheet modal={false}>` for a side panel that leaves the page usable).
 import * as React from "react";
 import * as SheetPrimitive from "@radix-ui/react-dialog";
 import { cva, type VariantProps } from "class-variance-authority";
@@ -52,14 +54,17 @@ const sheetVariants = cva(
 interface SheetContentProps
   extends
     React.ComponentPropsWithoutRef<typeof SheetPrimitive.Content>,
-    VariantProps<typeof sheetVariants> {}
+    VariantProps<typeof sheetVariants> {
+  /** false: no backdrop. Default true. */
+  overlay?: boolean;
+}
 
 const SheetContent = React.forwardRef<
   React.ElementRef<typeof SheetPrimitive.Content>,
   SheetContentProps
->(({ side = "right", className, children, ...props }, ref) => (
+>(({ side = "right", overlay = true, className, children, ...props }, ref) => (
   <SheetPortal>
-    <SheetOverlay />
+    {overlay && <SheetOverlay />}
     <SheetPrimitive.Content
       ref={ref}
       className={cn(sheetVariants({ side }), className)}

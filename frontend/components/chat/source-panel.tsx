@@ -1,6 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
+import Link from "next/link";
 
 import { Badge } from "@/components/ui/badge";
 import {
@@ -12,9 +13,10 @@ import {
 } from "@/components/ui/sheet";
 import { fetchChunk } from "@/lib/api/queries";
 import type { Source } from "@/lib/chat/events";
+import { shouldDismiss } from "@/lib/chat/panel";
+import { formatDate } from "@/lib/format";
+import { arxivAbsUrl, paperPath } from "@/lib/links";
 import { cn } from "@/lib/utils";
-
-const ARXIV_ABS_PREFIX = "https://arxiv.org/abs/";
 
 const KIND_LABEL: Record<Source["chunk_type"], string> = {
   abstract: "Abstract only",
@@ -22,19 +24,14 @@ const KIND_LABEL: Record<Source["chunk_type"], string> = {
   analysis: "Generated analysis",
 };
 
-function formatDate(iso: string): string {
-  const date = new Date(iso);
-  return Number.isNaN(date.getTime())
-    ? iso
-    : date.toLocaleDateString("en", {
-        year: "numeric",
-        month: "short",
-        day: "numeric",
-      });
-}
+const LINK_CLASS =
+  "inline-flex items-center rounded-md border px-3 py-2 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
-// The cited chunk, in full, next to the answer. The chunk text is not in the chat
-// stream, so it is fetched when a chip is opened (and cached by TanStack Query).
+// The cited chunk, in full, beside the answer. The panel is NON-modal: no backdrop, no
+// focus trap, and the chat stays clickable and scrollable. Escape and the close button
+// close it; clicking elsewhere does not (see shouldDismiss), so a click on another chip
+// switches the panel instead of closing it. The chunk text is not in the chat stream, so
+// it is fetched when a chip is opened (and cached by TanStack Query).
 export function SourcePanel({
   source,
   sources,
@@ -52,15 +49,24 @@ export function SourcePanel({
     enabled: source !== null,
   });
   // The link comes from the API; only a real arXiv abstract page is ever linked.
-  const absUrl = source?.abs_url.startsWith(ARXIV_ABS_PREFIX)
-    ? source.abs_url
-    : null;
+  const absUrl = arxivAbsUrl(source?.abs_url);
 
   return (
-    <Sheet open={source !== null} onOpenChange={(open) => !open && onClose()}>
+    <Sheet
+      modal={false}
+      open={source !== null}
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+    >
       <SheetContent
         side="right"
-        className="flex w-full flex-col gap-0 overflow-y-auto p-0 sm:max-w-lg"
+        overlay={false}
+        aria-label="Cited passage"
+        onInteractOutside={(event) => {
+          if (!shouldDismiss("outside")) event.preventDefault();
+        }}
+        className="flex w-full flex-col gap-0 overflow-y-auto border-l p-0 sm:max-w-lg"
       >
         {source && (
           <>
@@ -118,16 +124,21 @@ export function SourcePanel({
                 )}
               </figure>
 
-              {absUrl && (
-                <a
-                  href={absUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center rounded-md border px-3 py-2 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                >
-                  Read the abstract on arXiv
-                </a>
-              )}
+              <div className="flex flex-wrap gap-2">
+                {absUrl && (
+                  <a
+                    href={absUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={LINK_CLASS}
+                  >
+                    Read the abstract on arXiv
+                  </a>
+                )}
+                <Link href={paperPath(source.arxiv_id)} className={LINK_CLASS}>
+                  Open the paper page
+                </Link>
+              </div>
 
               {sources.length > 1 && (
                 <nav
