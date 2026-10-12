@@ -3,3 +3,4 @@ node_modules
 pnpm-lock.yaml
 next-env.d.ts
 openapi.json
+lib/api/schema.d.ts

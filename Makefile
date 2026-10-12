@@ -20,13 +20,14 @@ test:
 lint:
 	cd backend && uv run ruff check . && uv run ruff format --check . && uv run mypy app eval tests
 	cd backend && uv run python -m app.export_openapi ../frontend/openapi.json --check
-	cd frontend && pnpm lint && pnpm format:check
+	cd frontend && pnpm gen:api:check && pnpm lint && pnpm format:check
 
-# Regenerate the API schema the frontend client is built from (frontend/openapi.json).
-# Built from the route definitions only: no api container, no network, no keys.
-# `make lint` fails when the committed file is stale.
+# Regenerate the API schema (frontend/openapi.json) and the TypeScript client types built
+# from it (frontend/lib/api/schema.d.ts). Built from the route definitions only: no api
+# container, no network, no keys. `make lint` fails when either committed file is stale.
 openapi:
 	cd backend && uv run python -m app.export_openapi ../frontend/openapi.json
+	cd frontend && pnpm gen:api
 
 # Apply Alembic migrations to the Postgres from `make up` (published on localhost:5432).
 migrate:
