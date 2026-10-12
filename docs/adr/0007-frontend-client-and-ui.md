@@ -78,6 +78,27 @@ tokens arrived 600 ms apart, as they do when read from the backend directly. An 
 timing log (`localStorage["chat-debug"] = "1"`, then `window.__chatTimeline`) records
 when each event reaches the page, for the same check against the real API.
 
+**The sources panel is non-modal.** A citation opens the cited passage in a side panel
+that has no backdrop and no focus trap, so the answer stays readable, scrollable and
+clickable beside it. Escape and the close button close it; clicking elsewhere does not, so
+a click on another chip switches the panel instead of closing it (Radix would otherwise
+dismiss on any outside interaction; `onInteractOutside` is prevented, with the rule kept in
+`lib/chat/panel.ts` where it is tested). On wide screens the chat column moves over to make
+room. `components/ui/sheet.tsx` gets a second local change for this: `overlay={false}`.
+
+**Search and paper pages.** `/search` keeps its query in the URL (`?q=&category=&from=&to=`)
+so a search can be linked and the back button works; `lib/search/params.ts` validates it
+against the API's limits. It calls `GET /search` with `rerank=false` (the cross-encoder
+needs about 20 s on a CPU) and a fixed limit of 20, groups the passages by paper in rank
+order, and shows an `abstract` badge on abstract passages. Categories offered are the
+backend's default fetch list. `/paper/[id]` uses only `GET /papers/{id}` and
+`GET /papers/{id}/chunks`, which read Postgres, so opening a paper costs nothing; there is
+no "ask about this paper" yet. Both pages share one expandable `Passage` component. All
+links from API data go through `lib/links.ts`: the arXiv link must start with
+`https://arxiv.org/abs/` (never a PDF), code and project links must be http(s).
+The endpoint functions in `lib/api/endpoints.ts` take the client as an argument, so their
+tests use a mocked `fetch` and check the exact request URL without any network.
+
 **Server state with TanStack Query.** Queries are never retried or refetched on window
 focus, and stay fresh for five minutes, because `/search` embeds the question (a paid
 OpenAI request) and must not repeat behind the user's back.
@@ -93,5 +114,10 @@ committed. Added: `@tanstack/react-query`, `openapi-fetch`, `openapi-typescript`
   manual diff, and the Sheet icon change must be kept.
 - The three new endpoints widen the API surface; they are read-only and unauthenticated,
   like the rest of the local API.
+- The paper route is `/paper/[id]`, one path segment. Old-style arXiv ids contain a slash
+  (`hep-th/9901001`); they work through the API and in links (the id is URL-encoded), but
+  are not tested, and the index holds recent papers only.
+- Answers are shown as pre-wrapped text, not rendered markdown: no markdown library was
+  added. A list or emphasis in an answer appears as the characters the model wrote.
 - Because the proxy target is fixed at build time, running the frontend in a container
   needs `API_ORIGIN=http://api:8000` at build.
