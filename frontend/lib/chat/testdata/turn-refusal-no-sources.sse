@@ -1,0 +1,9 @@
+event: meta
+data: {"conversation_id": "00000000-0000-4000-8000-0000000000bb", "new_conversation": false, "intent": "qa", "standalone_question": "What are the limits of LoRA?", "plan": {"intent": "qa", "rephrasings": ["low-rank adapters", "LoRA finetuning"], "arxiv_ids": [], "categories": ["cs.CL"], "published_from": null, "published_to": null, "dropped": []}}
+
+event: refusal
+data: {"reason": "no_sources", "text": "I could not find enough in the indexed papers to answer this. Try rephrasing the question, or ask about a topic or paper that the index covers."}
+
+event: done
+data: {"conversation_id": "00000000-0000-4000-8000-0000000000bb", "message_id": 42, "refusal": "no_sources", "abstract_only": false, "citations": [], "tokens_in": 500, "tokens_out": 52, "cost_usd": "0.000106", "trace_id": "trace-0001"}
+

@@ -1,4 +1,4 @@
-.PHONY: up down logs test lint migrate ingest-one backfill fetch-reranker eval-retrieval
+.PHONY: up down logs test lint e2e openapi migrate ingest-one backfill fetch-reranker eval-retrieval
 
 # Start the stack and wait until every service's healthcheck passes.
 up:
@@ -10,16 +10,44 @@ down:
 logs:
 	docker compose logs -f --tail=100
 
-# Backend tests are offline (stores mocked); frontend runs typecheck + eslint.
+# Backend tests are offline (stores mocked); frontend runs typecheck, eslint and the unit
+# tests of lib/ (Node's built-in test runner, no browser).
 # PYTHONFAULTHANDLER: if a native library crashes the process (even at exit, after the
 # tests passed), Python prints the stacks, so the culprit can be identified.
 test:
 	cd backend && PYTHONFAULTHANDLER=1 uv run pytest
-	cd frontend && pnpm typecheck && pnpm lint
+	cd frontend && pnpm typecheck && pnpm lint && pnpm test:unit
 
 lint:
 	cd backend && uv run ruff check . && uv run ruff format --check . && uv run mypy app eval tests
-	cd frontend && pnpm lint && pnpm format:check
+	cd backend && uv run python -m app.export_openapi ../frontend/openapi.json --check
+	cd frontend && pnpm gen:api:check && pnpm lint && pnpm format:check
+
+# The browser test (one Playwright test, e2e/chat-citation.spec.ts). Not part of `make test`
+# or `make lint`: it starts the Next dev server and a mock API and drives the Google Chrome
+# installed on this machine. No real API, no OpenAI call, nothing leaves the machine: on
+# macOS everything runs inside sandbox-exec (frontend/e2e/e2e.sb: TCP only to localhost:3999
+# and localhost:18000). Without sandbox-exec it refuses to run, unless E2E_UNSANDBOXED=1
+# (the other containment layers stay: Chrome resolver rules, a route handler that aborts
+# non-local requests, a self-check). See README, "Browser test".
+e2e:
+	@if command -v sandbox-exec >/dev/null 2>&1 && [ -z "$$E2E_UNSANDBOXED" ]; then \
+		cd frontend && COREPACK_ENABLE_NETWORK=0 NEXT_TELEMETRY_DISABLED=1 sandbox-exec -f e2e/e2e.sb pnpm exec playwright test; \
+	elif [ -n "$$E2E_UNSANDBOXED" ]; then \
+		echo "E2E_UNSANDBOXED=1: running without sandbox-exec"; \
+		cd frontend && NEXT_TELEMETRY_DISABLED=1 pnpm exec playwright test; \
+	else \
+		echo "make e2e runs inside sandbox-exec (macOS) so that nothing can leave the machine."; \
+		echo "On a system without it, set E2E_UNSANDBOXED=1 to run without the sandbox."; \
+		exit 2; \
+	fi
+
+# Regenerate the API schema (frontend/openapi.json) and the TypeScript client types built
+# from it (frontend/lib/api/schema.d.ts). Built from the route definitions only: no api
+# container, no network, no keys. `make lint` fails when either committed file is stale.
+openapi:
+	cd backend && uv run python -m app.export_openapi ../frontend/openapi.json
+	cd frontend && pnpm gen:api
 
 # Apply Alembic migrations to the Postgres from `make up` (published on localhost:5432).
 migrate:

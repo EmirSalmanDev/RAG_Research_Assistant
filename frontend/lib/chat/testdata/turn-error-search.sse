@@ -1,0 +1,6 @@
+event: meta
+data: {"conversation_id": "00000000-0000-4000-8000-0000000000bb", "new_conversation": false, "intent": "qa", "standalone_question": "What are the limits of LoRA?", "plan": {"intent": "qa", "rephrasings": ["low-rank adapters", "LoRA finetuning"], "arxiv_ids": [], "categories": [], "published_from": null, "published_to": null, "dropped": []}}
+
+event: error
+data: {"stage": "search", "message": "search failed: ConnectionError"}
+
