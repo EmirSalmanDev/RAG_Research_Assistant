@@ -93,13 +93,20 @@ tracing off; 13 requests were made, none refused, and the real cost was $0.0025.
 - The abstract badge matched `chunk_type` on every chip, and the abstracts-only note showed
   when every source was an abstract. `/search` and `/paper/[id]` matched the database
   (titles, abstracts, chunk lists and texts, the category filter, grouping in rank order).
-- Limits of that run: both turns had only abstract sources, so a full-text (section) chip was
-  not opened against real data; that panel is covered by the browser test with mock data.
-  The first turn's plan added a category filter (`cs.AI`) the question did not name, which
-  kept the full-text paper out of the sources: a planner behaviour, not a frontend one. The
-  run also showed answers containing markdown (`**name**`, numbered lists), which appear as
-  the characters the model wrote (see Consequences), and plan dates in the chips as full
-  timestamps; the chips now show the day (`lib/chat/plan.ts`).
+- Limits of that run: both turns had only abstract sources. The first turn's plan added a
+  category filter (`cs.AI`) the question did not name, which kept the full-text paper out of
+  the sources: a planner behaviour, not a frontend one. The run also showed answers containing
+  markdown (`**name**`, numbered lists), which appear as the characters the model wrote (see
+  Consequences), and plan dates in the chips as full timestamps; the chips now show the day
+  (`lib/chat/plan.ts`).
+- Full-text chips, one more guarded turn (6 OpenAI requests, $0.000746): a question that names
+  the paper and its sections made the plan select that paper, and all three sources were
+  full-text passages. Two section chips were opened. For each, `[n]`, the chunk id in the
+  `sources` event, the id the panel requested, the id in the response and the id stored in the
+  message's citations were the same; the panel showed "Full-text passage" and the section
+  path; its text equalled the stored chunk text byte for byte (1,500 and 1,423 bytes, same
+  sha256); the arXiv link was `https://arxiv.org/abs/1706.03762`. The passage text itself
+  carries raw markdown links from the paper's source, shown as characters like the answers.
 
 **The sources panel is non-modal.** A citation opens the cited passage in a side panel
 that has no backdrop and no focus trap, so the answer stays readable, scrollable and
@@ -163,8 +170,8 @@ committed. Added: `@tanstack/react-query`, `openapi-fetch`, `class-variance-auth
   added. A list or emphasis in an answer appears as the characters the model wrote; real
   answers do contain `**bold**` and numbered lists, so this is visible, not hypothetical.
   Rendering markdown safely is a separate decision (a dependency, and sanitising model output).
-- The `/chat` panel for a full-text passage was verified with mock data only; the real-API
-  run opened abstract chunks. How often an answer has section sources depends on the query
-  plan (see above), which is outside this milestone.
+- Whether an answer has full-text sources depends on the query plan: a question that names no
+  paper can get a category filter that leaves only abstracts (see above). That is outside
+  this milestone; the panel handles both kinds.
 - Because the proxy target is fixed at build time, running the frontend in a container
   needs `API_ORIGIN=http://api:8000` at build.
