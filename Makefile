@@ -10,12 +10,13 @@ down:
 logs:
 	docker compose logs -f --tail=100
 
-# Backend tests are offline (stores mocked); frontend runs typecheck + eslint.
+# Backend tests are offline (stores mocked); frontend runs typecheck, eslint and the unit
+# tests of lib/ (Node's built-in test runner, no browser).
 # PYTHONFAULTHANDLER: if a native library crashes the process (even at exit, after the
 # tests passed), Python prints the stacks, so the culprit can be identified.
 test:
 	cd backend && PYTHONFAULTHANDLER=1 uv run pytest
-	cd frontend && pnpm typecheck && pnpm lint
+	cd frontend && pnpm typecheck && pnpm lint && pnpm test:unit
 
 lint:
 	cd backend && uv run ruff check . && uv run ruff format --check . && uv run mypy app eval tests

@@ -2,6 +2,7 @@
   "name": "frontend",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -11,7 +12,8 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "gen:api": "openapi-typescript openapi.json -o lib/api/schema.d.ts",
-    "gen:api:check": "openapi-typescript openapi.json -o lib/api/schema.d.ts --check"
+    "gen:api:check": "openapi-typescript openapi.json -o lib/api/schema.d.ts --check",
+    "test:unit": "node --test \"lib/**/*.test.ts\""
   },
   "dependencies": {
     "@radix-ui/react-dialog": "1.3.0",
