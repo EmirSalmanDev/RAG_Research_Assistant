@@ -1,4 +1,4 @@
-.PHONY: up down logs test lint migrate ingest-one backfill fetch-reranker eval-retrieval
+.PHONY: up down logs test lint openapi migrate ingest-one backfill fetch-reranker eval-retrieval
 
 # Start the stack and wait until every service's healthcheck passes.
 up:
@@ -19,7 +19,14 @@ test:
 
 lint:
 	cd backend && uv run ruff check . && uv run ruff format --check . && uv run mypy app eval tests
+	cd backend && uv run python -m app.export_openapi ../frontend/openapi.json --check
 	cd frontend && pnpm lint && pnpm format:check
+
+# Regenerate the API schema the frontend client is built from (frontend/openapi.json).
+# Built from the route definitions only: no api container, no network, no keys.
+# `make lint` fails when the committed file is stale.
+openapi:
+	cd backend && uv run python -m app.export_openapi ../frontend/openapi.json
 
 # Apply Alembic migrations to the Postgres from `make up` (published on localhost:5432).
 migrate:
