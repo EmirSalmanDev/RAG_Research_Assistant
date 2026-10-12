@@ -99,14 +99,31 @@ links from API data go through `lib/links.ts`: the arXiv link must start with
 The endpoint functions in `lib/api/endpoints.ts` take the client as an argument, so their
 tests use a mocked `fetch` and check the exact request URL without any network.
 
+**One browser test, against a mock API, contained.** `make e2e` (not part of `make test`)
+runs a single Playwright test of the chat flow with the installed Google Chrome
+(`channel: "chrome"`: nothing is downloaded). The API behind `/api` is a small mock with
+invented data (`frontend/e2e/mock-api.ts`) that holds the event stream open after the
+first tokens until the test releases it, so "text is on screen while the turn is still
+running" is asserted, not timed. It is reached through the real Next rewrite, which
+therefore is exercised in a real browser; the real backend is not (the event shapes are
+checked by `backend/tests/unit/test_sse_fixtures.py` and `lib/chat/recorded.test.ts`).
+Nothing may leave the machine: the run is inside `sandbox-exec` (TCP only to the two
+loopback ports; `frontend/e2e/e2e.sb`), Chrome gets resolver rules and a dead proxy, a
+route handler aborts every non-local request, and the test makes one request to a
+`.invalid` name to show it is blocked. Chrome's own sandbox cannot start inside
+`sandbox-exec` (macOS does not nest profiles), so it runs with `--no-sandbox`; the profile
+is the containment. The dev server runs with `--webpack` because Turbopack's worker
+cannot bind a port in the sandbox. `make e2e` refuses to run without `sandbox-exec`
+unless `E2E_UNSANDBOXED=1`. Playwright in CI is out of scope here.
+
 **Server state with TanStack Query.** Queries are never retried or refetched on window
 focus, and stay fresh for five minutes, because `/search` embeds the question (a paid
 OpenAI request) and must not repeat behind the user's back.
 
 **Pinned dependencies.** Exact versions with install scripts disabled; the lockfile is
-committed. Added: `@tanstack/react-query`, `openapi-fetch`, `openapi-typescript` (dev),
-`class-variance-authority`, `clsx`, `tailwind-merge`, `tw-animate-css`,
-`@radix-ui/react-slot`, `@radix-ui/react-dialog`.
+committed. Added: `@tanstack/react-query`, `openapi-fetch`, `class-variance-authority`,
+`clsx`, `tailwind-merge`, `tw-animate-css`, `@radix-ui/react-slot`,
+`@radix-ui/react-dialog`; dev: `openapi-typescript` and `@playwright/test`.
 
 ## Consequences
 - A route change in the API shows up as a type error in the frontend after `make openapi`.
@@ -114,6 +131,8 @@ committed. Added: `@tanstack/react-query`, `openapi-fetch`, `openapi-typescript`
   manual diff, and the Sheet icon change must be kept.
 - The three new endpoints widen the API surface; they are read-only and unauthenticated,
   like the rest of the local API.
+- The browser test needs Google Chrome installed and macOS `sandbox-exec` (or the explicit
+  override). Chrome's own renderer sandbox is off during the test.
 - The paper route is `/paper/[id]`, one path segment. Old-style arXiv ids contain a slash
   (`hep-th/9901001`); they work through the API and in links (the id is URL-encoded), but
   are not tested, and the index holds recent papers only.

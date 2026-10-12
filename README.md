@@ -21,14 +21,15 @@ Langfuse is not connected yet.
    in your OpenAI account). Other settings have defaults, listed in `.env.example`.
 2. `make up` starts Postgres, Qdrant, Redis, the API, the Celery worker and Beat.
 3. `make migrate` creates the database schema.
-4. The frontend runs natively: `cd frontend && pnpm dev`.
+4. The frontend runs natively: `cd frontend && pnpm dev` (see "Frontend").
 
 ## Commands
 | Command | What it does |
 | --- | --- |
 | `make up` / `make down` / `make logs` | start, stop, tail the stack |
 | `make migrate` | apply database migrations |
-| `make test` / `make lint` | backend tests (offline) and frontend checks / linters |
+| `make test` / `make lint` | backend tests (offline) and frontend checks and unit tests / linters |
+| `make e2e` | the browser test: one Playwright test of the chat page (see "Browser test"); not part of `make test` |
 | `make ingest-one ID=<arxiv_id> [SOURCE=hf\|html\|pdf] [METADATA_ONLY=1]` | ingest one paper end to end: metadata, abstract, full text, chunks, embeddings |
 | `make backfill DAYS=7 [CONFIRM=1]` | fetch the last N days of the configured categories and index abstracts only; more than 7 days needs `CONFIRM=1` |
 | `make fetch-reranker` | download the reranker model once (about 1 GB) into `~/.cache/fastembed` |
@@ -93,6 +94,53 @@ Six stages, each a function in `backend/app/rag/` with its own setting (see
 If nothing in the index matches, or the sources do not answer the question, the reply is
 a fixed refusal instead of a guess. A turn makes up to four chat requests (`gpt-4o-mini`)
 and up to three small embedding requests; each one is logged in `llm_usage`.
+
+## Frontend
+The web app is Next.js (App Router) and runs natively: `cd frontend && pnpm dev`, then
+open http://localhost:3000. It talks to the API through a same-origin proxy (`/api/*` is
+rewritten to `API_ORIGIN`, default `http://127.0.0.1:8000`), so the API needs no CORS
+setup. Pages:
+
+- `/chat`: ask a question; the answer streams in, and every `[n]` is a chip. A chip opens
+  the cited passage in a side panel (it stays open beside the chat; Escape or the close
+  button closes it) with a link to the paper's arXiv abstract page. A dashed chip marked
+  "abstract" means the source is only the paper's abstract.
+- `/search`: find passages by topic, category and date, grouped by paper. Each search
+  costs one embedding request.
+- `/paper/[id]`: one paper's metadata, abstract and indexed passages (no model call).
+
+The TypeScript client is generated from the API's OpenAPI schema: `make openapi`
+rewrites `frontend/openapi.json` and `frontend/lib/api/schema.d.ts`, and `make lint`
+fails if they are stale. The chat stream (server-sent events) cannot be described in
+OpenAPI, so its event types are written by hand in `frontend/lib/chat/events.ts`; the
+backend test `tests/unit/test_sse_fixtures.py` writes real streams from the real route
+into `frontend/lib/chat/testdata/`, and the frontend tests replay them.
+Answers are shown as pre-wrapped text, not rendered markdown. Decisions: `docs/adr/0007`.
+
+### Browser test
+`make e2e` runs one Playwright test (`frontend/e2e/chat-citation.spec.ts`): ask a question,
+watch the answer stream in, open a citation, read the cited passage. It starts the Next
+dev server (with `--webpack`) and a small **mock API** with invented data
+(`frontend/e2e/mock-api.ts`), and drives the Google Chrome that is already installed
+(Playwright `channel: "chrome"`, so no browser is downloaded). The mock API is reached
+through the real `/api` rewrite, so the test proves the UI and that the rewrite passes the
+stream through unbuffered. It proves nothing about the real backend. It makes no OpenAI
+call and costs nothing.
+
+Nothing can leave the machine, by four layers: (1) on macOS everything runs inside
+`sandbox-exec` with the profile `frontend/e2e/e2e.sb`, which allows TCP only to
+`localhost:3999` (Next) and `localhost:18000` (the mock API); (2) Chrome starts with a
+resolver rule under which no name except loopback resolves, and a dead proxy; (3) the test
+aborts every request that is not local; (4) the test makes one external request on purpose
+(to a `.invalid` name) and expects it to be blocked. The test never opens or clicks an
+external link: the arXiv link is checked by its `href` only. Chrome runs with
+`--no-sandbox` because Chrome's own sandbox cannot start inside `sandbox-exec`; the profile
+is what contains it, and the page loads only the local app.
+
+Without `sandbox-exec` (Linux, for instance) `make e2e` refuses to run. `E2E_UNSANDBOXED=1
+make e2e` runs it without the sandbox profile; layers 2 to 4 still apply, but layer 1 does
+not, so use it only on a machine where you are comfortable with that. It needs Google
+Chrome installed. Playwright is not run in CI yet.
 
 ## The daily pipeline
 Celery Beat starts it every day at **07:00 Europe/Istanbul**:
