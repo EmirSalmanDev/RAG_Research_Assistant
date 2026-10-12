@@ -1,0 +1,16 @@
+;; sandbox-exec profile for `make e2e` (macOS). Everything the browser test starts (the
+;; Next dev server, the mock API, Playwright, Chrome) runs inside it. All network is
+;; denied except unix sockets (Chrome locks its profile with one) and TCP on two loopback
+;; ports: 3999 (Next) and 18000 (mock API). DNS and the rest of the internet fail.
+;; The ports must match e2e/containment.ts.
+(version 1)
+(allow default)
+(deny network*)
+(allow network* (local unix-socket))
+(allow network* (remote unix-socket))
+(allow network-bind (local ip "localhost:3999"))
+(allow network-inbound (local ip "localhost:3999"))
+(allow network-outbound (remote ip "localhost:3999"))
+(allow network-bind (local ip "localhost:18000"))
+(allow network-inbound (local ip "localhost:18000"))
+(allow network-outbound (remote ip "localhost:18000"))
