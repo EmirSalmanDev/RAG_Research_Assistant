@@ -125,3 +125,18 @@ selected papers and the cost bound without any API call.
   miss late results, and the prompt asks the model not to guess them.
 - The schema conversion uses an SDK-internal helper (`type_to_response_format_param`);
   a test pins its output shape, so an SDK upgrade that changes it fails the tests.
+- **Retrieval effect of analysis chunks (measured, not tuned).** After the first three
+  analyses were indexed (12 analysis points), the retrieval evaluation on the golden set
+  dropped: MRR dense 0.735 -> 0.667, bm25 0.825 -> 0.784, hybrid 0.863 -> 0.775,
+  hybrid+rerank 0.765 -> 0.667 (eval_runs 9-12 -> 13-16; Recall@8 hybrid unchanged at
+  0.912). In 11 of 13 changed results an analysis chunk of the right paper now ranks
+  above the reference passage; in 2 the per-paper cap (3 chunks) is filled by analysis
+  chunks and pushes a reference section out. The golden references are full-text
+  passages, so a generated summary of the same paper counts as a miss. Nothing was tuned
+  against the golden set; whether analysis chunks should be searched, down-weighted or
+  kept out of the per-paper cap is a separate decision with its own evaluation.
+- **Checked with real data** (egress guard on every run): enrichment of the three
+  full-text papers, one Batch job of three analyses (real cost $0.002462, under the
+  $0.003187 bound computed before submitting), and the paper pages of all three papers
+  in a real browser with no external request.
+
