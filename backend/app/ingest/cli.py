@@ -2,11 +2,15 @@
 
     python -m app.ingest.cli one <arxiv_id> [--force-source hf|html|pdf] [--metadata-only]
     python -m app.ingest.cli backfill --days N [--confirm] [--max-papers M]
+    python -m app.ingest.cli enrich <arxiv_id>
 
 `one` ingests a paper end to end: metadata and enrichment, the abstract chunk, the full
 text (Hugging Face .md, then arXiv HTML, then the PDF; or only the forced source),
 cleaning, chunking, embedding and indexing. `--metadata-only` keeps the old behaviour
 (metadata and enrichment only: no full text, no OpenAI calls).
+
+`enrich` refreshes GitHub, Hugging Face and Semantic Scholar data for a paper we already
+hold (no arXiv call, no full text, no OpenAI call; used by `make enrich-one`).
 
 `backfill` fetches the last N days of the configured categories (new papers and new
 versions) and indexes their abstracts only. More than 7 days needs --confirm.
@@ -44,7 +48,12 @@ def main(argv: list[str] | None = None) -> int:
     back.add_argument("--days", type=int, required=True)
     back.add_argument("--confirm", action="store_true", help="required for more than 7 days")
     back.add_argument("--max-papers", type=int, default=20_000, help="stop paging after this many")
+    enrich = sub.add_parser("enrich", help="GitHub, HF and S2 data for a paper we hold")
+    enrich.add_argument("arxiv_id")
     args = parser.parse_args(argv)
+    if args.command == "enrich":
+        logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
+        return _enrich(args.arxiv_id)
     if args.command == "backfill":
         if args.days < 1 or (args.days > MAX_DAYS_WITHOUT_CONFIRM and not args.confirm):
             parser.error(f"--days must be 1..{MAX_DAYS_WITHOUT_CONFIRM} (more needs --confirm)")
@@ -126,6 +135,21 @@ def _backfill(days: int, max_papers: int) -> dict[str, Any]:
             max_papers=max_papers,
             before_index=estimate,
         )
+
+
+def _enrich(raw_arxiv_id: str) -> int:
+    from app.ingest.enrich import NotHeldError, default_enrich_clients, enrich_paper
+    from app.sources.arxiv import validate_arxiv_id
+
+    try:
+        arxiv_id = validate_arxiv_id(raw_arxiv_id)
+        with session_scope() as session:
+            result = enrich_paper(session, default_enrich_clients(), arxiv_id)
+    except (NotHeldError, ValueError) as err:
+        print(f"enrich-one failed: {err}", file=sys.stderr)
+        return 1
+    print(json.dumps({"arxiv_id": arxiv_id, **asdict(result)}, indent=2, default=str))
+    return 0  # a source that failed is listed in "errors" but does not fail the command
 
 
 def _run_full(session: Any, arxiv_id: str, force_source: str | None) -> dict[str, Any]:

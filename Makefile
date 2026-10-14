@@ -1,4 +1,4 @@
-.PHONY: up down logs test lint e2e openapi migrate ingest-one backfill fetch-reranker eval-retrieval
+.PHONY: up down logs test lint e2e openapi migrate ingest-one enrich-one backfill fetch-reranker eval-retrieval
 
 # Start the stack and wait until every service's healthcheck passes.
 up:
@@ -63,6 +63,14 @@ ingest-one:
 	@test -n "$(ID)" || (echo "usage: make ingest-one ID=<arxiv_id> [SOURCE=hf|html|pdf] [METADATA_ONLY=1]"; exit 2)
 	docker compose exec -T worker python -m app.ingest.cli one "$(ID)" \
 		$(if $(SOURCE),--force-source "$(SOURCE)") $(if $(METADATA_ONLY),--metadata-only)
+
+# Refresh a held paper's enrichment: its GitHub repo (1 call), Hugging Face models,
+# datasets and Spaces (3 calls) and Semantic Scholar data (1 call). Free, but real
+# network calls; no OpenAI call. Runs in the worker container like ingest-one:
+#   make enrich-one ID=1706.03762
+enrich-one:
+	@test -n "$(ID)" || (echo "usage: make enrich-one ID=<arxiv_id>"; exit 2)
+	docker compose exec -T worker python -m app.ingest.cli enrich "$(ID)"
 
 # Seed the corpus: fetch the last DAYS days of the configured arXiv categories (new
 # papers and new versions) and index their abstracts only (no full text):

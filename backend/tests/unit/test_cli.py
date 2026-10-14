@@ -69,3 +69,37 @@ def test_force_source_with_metadata_only_is_refused() -> None:
 def test_unknown_source_is_refused() -> None:
     with pytest.raises(SystemExit):
         cli.main(["one", "2601.00001", "--force-source", "web"])
+
+
+def test_enrich_prints_the_result(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from app.ingest import enrich
+
+    seen: list[str] = []
+
+    def fake(session: object, clients: object, arxiv_id: str) -> enrich.EnrichResult:
+        seen.append(arxiv_id)
+        return enrich.EnrichResult(counts={"repos": 1}, errors={"s2": "HTTP 429"})
+
+    monkeypatch.setattr(enrich, "enrich_paper", fake)
+    monkeypatch.setattr(enrich, "default_enrich_clients", lambda: None)
+    assert cli.main(["enrich", "2601.00001v2"]) == 0
+    assert seen == ["2601.00001"]  # the version suffix is stripped
+    out = json.loads(capsys.readouterr().out)
+    assert out == {"arxiv_id": "2601.00001", "counts": {"repos": 1}, "errors": {"s2": "HTTP 429"}}
+
+
+@pytest.mark.parametrize("arxiv_id", ["2601.00001", "not-an-id/../x"])
+def test_enrich_fails_for_unknown_papers_and_bad_ids(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], arxiv_id: str
+) -> None:
+    from app.ingest import enrich
+
+    def not_held(*a: object) -> None:
+        raise enrich.NotHeldError("paper 2601.00001 is not in the database (ingest it first)")
+
+    monkeypatch.setattr(enrich, "enrich_paper", not_held)
+    monkeypatch.setattr(enrich, "default_enrich_clients", lambda: None)
+    assert cli.main(["enrich", arxiv_id]) == 1
+    assert "enrich-one failed" in capsys.readouterr().err

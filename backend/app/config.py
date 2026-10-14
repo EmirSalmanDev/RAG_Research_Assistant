@@ -42,6 +42,12 @@ class Settings(BaseSettings):
     sparse_model: str = "Qdrant/bm25"  # FastEmbed model for the `text-sparse` vector
     qdrant_collection: str = "chunks"
 
+    # Enrichment (GitHub, Hugging Face Hub, Semantic Scholar) in the daily chain.
+    enrich_max_papers: int = 500  # papers looked at per run (bounds a first or late run)
+    # Papers added within this many days are looked at again while S2 has not answered for
+    # them yet, or while they have a GitHub link but no repo row (both cheap retries).
+    enrich_recheck_days: int = 7
+
     # Chunking, measured in tokens of the embedding model's tokenizer.
     chunk_tokens: int = 512  # target size of a chunk inside a long section
     chunk_overlap: int = 64  # tokens repeated between neighbouring windows

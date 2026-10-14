@@ -52,7 +52,7 @@ class FakeGitHub:
         return self._repo
 
     def readme(self, full_name: str) -> str | None:
-        return "R" * 5000
+        raise AssertionError("READMEs are not fetched (1 GitHub call per repo)")
 
 
 class FakeS2:
@@ -108,7 +108,7 @@ def test_happy_path_fills_every_table(migrated_session: Session) -> None:
     assert p.authors == [{"name": "Ada Example"}]
     repo = migrated_session.get(Repo, (ID, "a/b"))
     assert repo is not None and repo.stars == 7 and repo.license == "MIT"
-    assert repo.readme_summary is not None and len(repo.readme_summary) == 2000  # truncated
+    assert repo.readme_summary is None  # READMEs are not fetched
     assert migrated_session.scalar(select(func.count()).select_from(HFArtifact)) == 3
     assert _counts(migrated_session) == {
         "papers": 1, "repos": 1, "hf_artifacts": 3, "citations": 2, "ingest_runs": 1,
