@@ -2,10 +2,19 @@
 
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
+import type { ReactNode } from "react";
 
+import { AnalysisSection } from "@/components/paper/analysis-section";
+import { RelatedTabs } from "@/components/paper/related-tabs";
+import { ResourcesSection } from "@/components/paper/resources-section";
 import { Passage } from "@/components/passage";
 import { Badge } from "@/components/ui/badge";
-import { fetchPaper, fetchPaperChunks } from "@/lib/api/queries";
+import {
+  fetchPaper,
+  fetchPaperChunks,
+  fetchPaperDetails,
+  fetchPaperRelated,
+} from "@/lib/api/queries";
 import { ApiError } from "@/lib/api/errors";
 import { formatDate, fulltextLabel } from "@/lib/format";
 import { arxivAbsUrl, safeHttpUrl } from "@/lib/links";
@@ -14,8 +23,10 @@ const MAX_AUTHORS = 12;
 const EXTERNAL_LINK =
   "text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
-// One paper: metadata and abstract from GET /papers/{id}, and its passages from
-// GET /papers/{id}/chunks. Both read Postgres only (no embedding call, no cost).
+// One paper: metadata and abstract (GET /papers/{id}), its analysis, code and Hugging
+// Face artifacts (GET /papers/{id}/details), related papers (GET /papers/{id}/related)
+// and its passages (GET /papers/{id}/chunks). None of them calls OpenAI: opening a page
+// costs nothing. "Similar" papers come from Qdrant, the rest from Postgres.
 export function PaperView({ id }: { id: string }) {
   const paper = useQuery({
     queryKey: ["paper", id],
@@ -24,6 +35,14 @@ export function PaperView({ id }: { id: string }) {
   const chunks = useQuery({
     queryKey: ["paper-chunks", id],
     queryFn: () => fetchPaperChunks(id),
+  });
+  const details = useQuery({
+    queryKey: ["paper-details", id],
+    queryFn: () => fetchPaperDetails(id),
+  });
+  const related = useQuery({
+    queryKey: ["paper-related", id],
+    queryFn: () => fetchPaperRelated(id),
   });
 
   if (paper.isPending) {
@@ -154,6 +173,23 @@ export function PaperView({ id }: { id: string }) {
         </p>
       </section>
 
+      <Loaded what="analysis" query={details}>
+        {(d) => (
+          <AnalysisSection
+            details={d}
+            fulltextIndexed={p.fulltext_status === "indexed"}
+          />
+        )}
+      </Loaded>
+
+      <Loaded what="code and models" query={details}>
+        {(d) => <ResourcesSection details={d} />}
+      </Loaded>
+
+      <Loaded what="related papers" query={related}>
+        {(r) => <RelatedTabs related={r} />}
+      </Loaded>
+
       <section aria-labelledby="passages-heading" className="space-y-4">
         <div className="space-y-1">
           <h2 id="passages-heading" className="text-lg font-semibold">
@@ -194,4 +230,38 @@ export function PaperView({ id }: { id: string }) {
       </section>
     </article>
   );
+}
+
+// A section that waits for its own query: a loading line, its error, or its content.
+// Each section fails on its own, so one slow or broken endpoint never hides the others.
+function Loaded<T>({
+  what,
+  query,
+  children,
+}: {
+  what: string;
+  query: {
+    isPending: boolean;
+    isError: boolean;
+    error: Error | null;
+    data?: T;
+  };
+  children: (data: T) => ReactNode;
+}) {
+  if (query.isPending) {
+    return (
+      <p role="status" className="text-muted-foreground">
+        Loading the {what}&hellip;
+      </p>
+    );
+  }
+  if (query.isError || query.data === undefined) {
+    return (
+      <p role="alert" className="text-sm text-destructive">
+        The {what} could not be loaded
+        {query.error ? `: ${query.error.message}` : "."}
+      </p>
+    );
+  }
+  return <>{children(query.data)}</>;
 }

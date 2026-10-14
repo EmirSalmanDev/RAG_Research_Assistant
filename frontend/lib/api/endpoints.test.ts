@@ -10,6 +10,8 @@ import {
   fetchChunk,
   fetchPaper,
   fetchPaperChunks,
+  fetchPaperDetails,
+  fetchPaperRelated,
   fetchSearch,
 } from "./endpoints.ts";
 import type { paths } from "./schema";
@@ -155,4 +157,40 @@ test("an unknown paper or chunk is a readable 404", async () => {
     fetchChunk(noDetail.client, "00000000-0000-4000-8000-000000000000"),
     /passage was not found/,
   );
+});
+
+test("paper details and related papers ask the right paths; 404 is an ApiError", async () => {
+  const { client, calls } = mocked((url) =>
+    url.pathname.endsWith("/details")
+      ? Response.json({
+          arxiv_id: "2609.00001",
+          analysis_status: "none",
+          analysis: null,
+          repos: [],
+          models: [],
+          datasets: [],
+          spaces: [],
+        })
+      : url.pathname.includes("0000.00000")
+        ? Response.json({ detail: "unknown paper" }, { status: 404 })
+        : Response.json({
+            arxiv_id: "2609.00001",
+            similar_status: "ok",
+            similar: [],
+            cites: [],
+            cited_by: [],
+          }),
+  );
+  const details = await fetchPaperDetails(client, "2609.00001");
+  assert.equal(details.analysis_status, "none");
+  const related = await fetchPaperRelated(client, "2609.00001");
+  assert.equal(related.similar_status, "ok");
+  assert.equal(calls[0]!.url.pathname, "/api/papers/2609.00001/details");
+  assert.equal(calls[1]!.url.pathname, "/api/papers/2609.00001/related");
+  assert.equal(calls[1]!.url.searchParams.get("limit"), "10");
+  await assert.rejects(
+    fetchPaperRelated(client, "0000.00000"),
+    (err) => err instanceof ApiError && err.status === 404,
+  );
+  assert.equal(calls.length, 3, "one request each, no retries");
 });

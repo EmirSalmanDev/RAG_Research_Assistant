@@ -127,8 +127,10 @@ To look at the real data in a browser, start the stack (`make up`), then `pnpm d
 makes about six small OpenAI requests (about $0.001), and each search one embedding request.
 
 ### Browser test
-`make e2e` runs one Playwright test (`frontend/e2e/chat-citation.spec.ts`): ask a question,
-watch the answer stream in, open a citation, read the cited passage. It starts the Next
+`make e2e` runs two Playwright tests. `frontend/e2e/chat-citation.spec.ts`: ask a question,
+watch the answer stream in, open a citation, read the cited passage.
+`frontend/e2e/paper-page.spec.ts`: a paper page shows its analysis, code, Hugging Face
+models and datasets, and the three related-paper tabs (keyboard included). It starts the Next
 dev server (with `--webpack`) and a small **mock API** with invented data
 (`frontend/e2e/mock-api.ts`), and drives the Google Chrome that is already installed
 (Playwright `channel: "chrome"`, so no browser is downloaded). The mock API is reached

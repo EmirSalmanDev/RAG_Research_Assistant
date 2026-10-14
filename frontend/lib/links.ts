@@ -36,6 +36,26 @@ export function safeHttpUrl(url: string | null | undefined): string | null {
   }
 }
 
+/**
+ * A link to a code or model page, or null: only https URLs on the given site (exact
+ * origin, no credentials) qualify. Used for GitHub repos and Hugging Face artifacts.
+ */
+export function siteUrl(
+  url: string | null | undefined,
+  origin: "https://github.com" | "https://huggingface.co",
+): string | null {
+  if (!url) return null;
+  try {
+    const parsed = new URL(url);
+    if (parsed.origin !== origin || parsed.username || parsed.password)
+      return null;
+    if (parsed.pathname === "/" || parsed.pathname === "") return null;
+    return parsed.href;
+  } catch {
+    return null;
+  }
+}
+
 /** The page of one paper in this app. */
 export function paperPath(arxivId: string): string {
   return `/paper/${encodeURIComponent(arxivId)}`;

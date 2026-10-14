@@ -54,6 +54,13 @@ and "cited by" read `citations`; a referenced paper we do not hold is listed by 
 arXiv id without a title. If Qdrant fails, "similar" reports `unavailable` and the
 citation lists are still returned.
 
+**The paper page** (`/paper/[id]`) gets three sections: the analysis (or "queued" / "not analysed yet") from `GET /papers/{id}/details`, code
+repos and Hugging Face models, datasets and Spaces (same endpoint, most downloaded first,
+eight shown per kind), and the three related tabs from `GET /papers/{id}/related`.
+`/details` reads Postgres only and never returns `repos.readme_summary`. Links from
+third-party data are rendered only when they are https pages on github.com or
+huggingface.co (or arxiv.org/abs). Each section loads and fails on its own.
+
 **Paper analyses through the Batch API** (`app/llm/batch.py`). `submit()` picks
 full-text papers (indexed, text stored) without an analysis from the current prompt
 version, at most `analysis_max_papers` (20), newest first. It commits our own batch row

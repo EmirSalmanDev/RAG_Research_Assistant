@@ -43,3 +43,15 @@ const FULLTEXT_LABELS: Record<string, string> = {
 export function fulltextLabel(status: string): string {
   return FULLTEXT_LABELS[status] ?? status;
 }
+
+/** "950", "1.2k", "3.4M": short counts for downloads, likes and stars. */
+export function formatCount(n: number | null | undefined): string | null {
+  if (n == null || !Number.isFinite(n) || n < 0) return null;
+  if (n < 1000) return String(Math.round(n));
+  const [value, unit] = n < 1_000_000 ? [n / 1000, "k"] : [n / 1_000_000, "M"];
+  const shown =
+    value < 10
+      ? value.toFixed(1).replace(/\.0$/, "")
+      : String(Math.round(value));
+  return `${shown}${unit}`;
+}

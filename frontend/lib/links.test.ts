@@ -6,6 +6,7 @@ import {
   decodeRouteParam,
   paperPath,
   safeHttpUrl,
+  siteUrl,
 } from "./links.ts";
 
 test("arxivAbsUrl accepts only https://arxiv.org/abs/ pages", () => {
@@ -68,4 +69,21 @@ test("paperPath encodes the id and decodeRouteParam reverses it", () => {
   assert.equal(decodeRouteParam("hep-th%2F9901001"), "hep-th/9901001");
   assert.equal(decodeRouteParam("2609.00001"), "2609.00001");
   assert.equal(decodeRouteParam("100%"), "100%"); // malformed escape: kept as written
+});
+
+test("siteUrl accepts only https pages on the named site", () => {
+  const gh = "https://github.com";
+  const hf = "https://huggingface.co";
+  assert.equal(siteUrl("https://github.com/a/b", gh), "https://github.com/a/b");
+  assert.equal(
+    siteUrl("https://huggingface.co/datasets/org/x", hf),
+    "https://huggingface.co/datasets/org/x",
+  );
+  assert.equal(siteUrl("http://github.com/a/b", gh), null);
+  assert.equal(siteUrl("https://github.com.evil.test/a", gh), null);
+  assert.equal(siteUrl("https://user:pw@github.com/a/b", gh), null);
+  assert.equal(siteUrl("https://github.com/", gh), null);
+  assert.equal(siteUrl("https://huggingface.co/org/m", gh), null);
+  assert.equal(siteUrl("javascript:alert(1)", gh), null);
+  assert.equal(siteUrl(null, hf), null);
 });
