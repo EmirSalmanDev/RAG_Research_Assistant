@@ -6,8 +6,14 @@ Nothing here is urgent, and the Batch API costs half the chat price. Two steps:
    version (at most `analysis_max_papers`), writes our `analysis_batches` row and one
    `analysis_batch_items` row per paper ('pending') and commits, then uploads a JSONL
    file (one chat request per paper, Structured Outputs with a strict JSON schema) and
-   creates the batch. Our row is committed before OpenAI hears of it, so a crash leaves
-   a 'created' row that the next `submit()` finishes instead of starting over.
+   creates the batch. Our row is committed before OpenAI hears of it.
+   Creating the batch is the request that spends money, so it is sent ONCE, never
+   retried. If it fails in a way that leaves open whether OpenAI got it (a timeout, a
+   connection error, a 5xx), the batch stays 'created', its items stay 'pending',
+   `AmbiguousSubmitError` names the row and nothing is resubmitted: a person checks
+   OpenAI's batch list and resolves the row. A clear refusal (4xx, or the egress guard)
+   marks the batch 'submit_failed' and frees its papers. `submit()` never resumes a
+   'created' row on its own; it lists them as `unresolved_created`.
 2. `collect()` (periodic) asks OpenAI about every open batch. When one has ended, it
    reads the output file: each answer is validated against the schema and stored in
    `paper_analyses` (one per paper, replacing an older one), together with its
@@ -42,6 +48,7 @@ from app.db.models import (
     PaperText,
 )
 from app.db.models import Chunk as ChunkRow
+from app.egress_guard import EgressRefused
 from app.ingest.chunk import ANALYSIS_SECTIONS, FIRST_ANALYSIS_ORD, analysis_chunks
 from app.ingest.embed import DenseEncoder, SparseEncoder
 from app.ingest.tokens import count_tokens, get_encoding
@@ -57,6 +64,37 @@ COMPLETION_WINDOW = "24h"  # the only window the Batch API offers
 ENDED = frozenset({"completed", "failed", "expired", "cancelled"})  # OpenAI's final states
 CREATED, COLLECTED, SUBMIT_FAILED = "created", "collected", "submit_failed"  # our states
 PENDING, DONE, FAILED = "pending", "done", "failed"  # item states
+UPLOAD_ATTEMPTS = 5  # the input file upload is free and safe to retry; creation is not
+
+
+class AmbiguousSubmitError(RuntimeError):
+    """`batches.create` failed, but OpenAI may have received it: the batch row is left
+    'created' (items 'pending') for a person to resolve. Never retried."""
+
+    def __init__(self, batch_row_id: int, cause: BaseException) -> None:
+        super().__init__(
+            f"analysis batch row {batch_row_id}: batches.create failed ambiguously "
+            f"({type(cause).__name__}: {cause}); it may exist at OpenAI. The row is left "
+            "'created' and nothing was resubmitted: check OpenAI's batch list."
+        )
+        self.batch_row_id = batch_row_id
+
+
+def is_ambiguous(err: BaseException) -> bool:
+    """Could the request have reached OpenAI? A refusal by the egress guard happens before
+    sending (the SDK wraps it in APIConnectionError, so the cause chain is checked first);
+    a timeout, another connection error (the SDK does not say whether bytes were sent)
+    or a 5xx may come after OpenAI accepted it. A 4xx is a clear refusal."""
+    import openai
+
+    cause: BaseException | None = err
+    while cause is not None:
+        if isinstance(cause, EgressRefused):
+            return False
+        cause = cause.__cause__ or cause.__context__
+    if isinstance(err, openai.APIConnectionError):  # includes APITimeoutError
+        return True
+    return isinstance(err, openai.APIStatusError) and err.status_code >= 500
 
 
 class PaperAnalysisOut(BaseModel):
@@ -214,31 +252,38 @@ def jsonl(lines: Sequence[dict[str, Any]]) -> bytes:
 # --- submit -----------------------------------------------------------------------------------
 
 
-def _call[T](fn: Callable[[], T]) -> T:
+def _call[T](fn: Callable[[], T], attempts: int = 5) -> T:
     """One OpenAI request with the chat client's retry rules (429, 5xx, network)."""
     from app.llm.client import _as_retryable
 
-    return call_with_retry(_as_retryable(fn))
+    return call_with_retry(_as_retryable(fn), max_attempts=attempts)
 
 
 def _send(session: Session, client: Any, batch: AnalysisBatch, prompt: Prompt) -> None:
-    """Upload the batch's input file (unless done before a crash), then create the
-    OpenAI batch. Each id is committed as soon as OpenAI returns it."""
+    """Upload the batch's input file, then create the OpenAI batch with ONE request.
+    Each id is committed as soon as OpenAI returns it. An ambiguous creation failure
+    raises AmbiguousSubmitError and leaves the row 'created'."""
     if batch.input_file_id is None:
         ids = [i.arxiv_id for i in batch_items(session, batch.id, PENDING)]
         data = jsonl(build_lines(session, ids, prompt))
         uploaded = _call(
-            lambda: client.files.create(file=(f"analyses-{batch.id}.jsonl", data), purpose="batch")
+            lambda: client.files.create(file=(f"analyses-{batch.id}.jsonl", data), purpose="batch"),
+            attempts=UPLOAD_ATTEMPTS,
         )
         batch.input_file_id = uploaded.id
         session.commit()
-    created = _call(
-        lambda: client.batches.create(
+    try:  # no retry: a second attempt could start a second, paid batch
+        created = client.batches.create(
             input_file_id=batch.input_file_id, endpoint=ENDPOINT,
             completion_window=COMPLETION_WINDOW,
             metadata={"feature": FEATURE, "batch_row": str(batch.id)},
-        )
-    )  # fmt: skip
+        )  # fmt: skip
+    except Exception as err:
+        if not is_ambiguous(err):
+            raise
+        batch.errors = {"create": f"ambiguous: {type(err).__name__}: {err}"[:500]}
+        session.commit()
+        raise AmbiguousSubmitError(batch.id, err) from err
     batch.openai_batch_id, batch.status = created.id, created.status
     batch.submitted_at = datetime.now(UTC)
     session.commit()
@@ -270,18 +315,15 @@ def submit(
     max_papers: int | None = None,
     dry_run: bool = False,
 ) -> dict[str, Any]:
-    """Finish batches a crash left 'created', then submit one new batch (if any paper
-    needs an analysis). `dry_run` only selects and estimates: no write, no API call."""
+    """Submit one new batch (if any paper needs an analysis). Rows left 'created' by an
+    ambiguous failure or a crash are listed, never resumed. `dry_run` only selects and
+    estimates: no write, no API call."""
     s = get_settings()
     prompt = load_prompt(s.analysis_prompt)
-    out: dict[str, Any] = {"prompt_version": prompt.id, "resumed": 0}
-    if not dry_run:
-        for stale in session.scalars(select(AnalysisBatch).where(AnalysisBatch.status == CREATED)):
-            try:
-                _send(session, client, stale, prompt)
-                out["resumed"] += 1
-            except Exception as err:
-                _submit_failed(session, stale, err)
+    unresolved = session.scalars(
+        select(AnalysisBatch.id).where(AnalysisBatch.status == CREATED).order_by(AnalysisBatch.id)
+    ).all()
+    out: dict[str, Any] = {"prompt_version": prompt.id, "unresolved_created": list(unresolved)}
     ids = select_papers(
         session, prompt.id, max_papers=max_papers or s.analysis_max_papers,
         max_attempts=s.analysis_max_attempts, arxiv_ids=arxiv_ids,
@@ -304,6 +346,8 @@ def submit(
     session.commit()  # our record first: a crash after this is finished by the next submit
     try:
         _send(session, client, batch, prompt)
+    except AmbiguousSubmitError:
+        raise  # the row stays 'created' and its papers stay queued
     except Exception as err:
         _submit_failed(session, batch, err)
         raise

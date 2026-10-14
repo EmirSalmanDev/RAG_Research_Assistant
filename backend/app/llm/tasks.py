@@ -25,7 +25,14 @@ def _openai() -> Any:
     return default_openai_client()
 
 
-@celery_app.task(name="analysis.submit", **RETRY_OPTIONS)
+def _submit_retry_options() -> dict[str, Any]:
+    """Like every task, except that an ambiguous batch creation is never retried."""
+    from app.llm.batch import AmbiguousSubmitError
+
+    return {**RETRY_OPTIONS, "dont_autoretry_for": (ValueError, AmbiguousSubmitError)}
+
+
+@celery_app.task(name="analysis.submit", **_submit_retry_options())
 def submit_analyses() -> dict[str, Any]:
     from app.llm.batch import submit
 

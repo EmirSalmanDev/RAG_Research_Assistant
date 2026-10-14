@@ -14,6 +14,7 @@ the analysis chunks: small embedding requests).
 import argparse
 import json
 import logging
+import sys
 from typing import Any
 
 from app.db.session import session_scope
@@ -30,8 +31,14 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("collect", help="store and index the results of finished batches")
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
+    from app.llm.batch import AmbiguousSubmitError
+
     try:
         output = _submit(args) if args.command == "submit" else _collect()
+    except AmbiguousSubmitError as err:
+        print(f"submit stopped: {err}", file=sys.stderr)
+        print(json.dumps({"ambiguous_batch_row_id": err.batch_row_id}))
+        return 2
     finally:
         close_qdrant()
     print(json.dumps(output, indent=2, default=str))

@@ -44,3 +44,17 @@ def test_collect_without_open_batches_creates_no_client(
     monkeypatch.setattr(cli, "_client", lambda: pytest.fail("nothing to collect"))
     assert cli.main(["collect"]) == 0
     assert json.loads(capsys.readouterr().out) == {"open": 0}
+
+
+def test_an_ambiguous_submit_prints_the_row_and_exits_2(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    def ambiguous(session: object, client: object, **kw: Any) -> dict[str, Any]:
+        raise batch.AmbiguousSubmitError(7, TimeoutError("invented timeout"))
+
+    monkeypatch.setattr(batch, "submit", ambiguous)
+    monkeypatch.setattr(cli, "_client", lambda: object())
+    assert cli.main(["submit", "--arxiv-id", "2601.00001"]) == 2
+    captured = capsys.readouterr()
+    assert json.loads(captured.out) == {"ambiguous_batch_row_id": 7}
+    assert "row 7" in captured.err and "nothing was resubmitted" in captured.err

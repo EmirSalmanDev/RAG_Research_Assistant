@@ -228,12 +228,10 @@ def test_a_failed_submission_frees_the_papers_until_max_attempts(
     assert batch.pending_batch_id(s, a) is None
 
 
-def test_a_batch_left_created_by_a_crash_is_finished_not_restarted(
-    migrated_session: Session,
-) -> None:
+def test_a_created_row_is_reported_and_never_resubmitted(migrated_session: Session) -> None:
     s = migrated_session
     a = _paper(s, 1)
-    # A crash after the upload: our row has the input file but no OpenAI batch.
+    # A crash (or an ambiguous creation) left a row with the input file but no batch.
     row = AnalysisBatch(status="created", model="gpt-4o-mini", prompt_version="analyze_v1",
                         request_count=1, input_file_id="file-in-9", errors={})  # fmt: skip
     s.add(row)
@@ -242,11 +240,68 @@ def test_a_batch_left_created_by_a_crash_is_finished_not_restarted(
     s.commit()
     client = FakeOpenAI()
     out = batch.submit(s, client)
-    assert out["resumed"] == 1 and out["selected"] == []
-    assert client.calls == ["batches.create"]  # no second upload
-    assert client.batches_made[0]["input_file_id"] == "file-in-9"
+    assert out["unresolved_created"] == [row.id] and out["selected"] == []
+    assert client.calls == []  # nothing resubmitted, and its paper is still queued
     s.refresh(row)
-    assert (row.openai_batch_id, row.status) == ("batch_1", "validating")
+    assert row.status == "created" and batch.pending_batch_id(s, a) == row.id
+
+
+def _openai_error(kind: str) -> Exception:
+    """A real SDK exception, as the client would raise it."""
+    import httpx2
+    import openai
+
+    from app.egress_guard import EgressRefused
+
+    request = httpx2.Request("POST", "https://api.openai.com/v1/batches")
+    if kind == "timeout":
+        return openai.APITimeoutError(request=request)
+    if kind == "guard":  # the SDK wraps a transport exception, keeping it as the cause
+        err = openai.APIConnectionError(request=request)
+        err.__cause__ = EgressRefused("egress guard refused POST api.openai.com/v1/batches")
+        return err
+    status = {"502": 502, "400": 400, "429": 429}[kind]
+    cls = {502: openai.InternalServerError, 400: openai.BadRequestError,
+           429: openai.RateLimitError}[status]  # fmt: skip
+    return cls(f"invented {status}", response=httpx2.Response(status, request=request), body=None)
+
+
+@pytest.mark.parametrize("kind", ["timeout", "502"])
+def test_an_ambiguous_creation_leaves_the_row_created_and_stops(
+    migrated_session: Session, kind: str
+) -> None:
+    s = migrated_session
+    a, b = _paper(s, 1), _paper(s, 2)
+    client = FakeOpenAI(fail_create=_openai_error(kind))
+    with pytest.raises(batch.AmbiguousSubmitError) as raised:
+        batch.submit(s, client)
+    row = s.scalars(select(AnalysisBatch)).one()
+    assert raised.value.batch_row_id == row.id and f"row {row.id}" in str(raised.value)
+    assert client.calls == ["files.create", "batches.create"]  # created once, no retry
+    s.refresh(row)
+    assert (row.status, row.openai_batch_id, row.input_file_id) == ("created", None, "file-in-1")
+    assert row.errors["create"].startswith("ambiguous: ")
+    assert {i.status for i in batch.batch_items(s, row.id)} == {"pending"}
+    # The next submit does not resubmit it, and its papers stay queued.
+    again = batch.submit(s, FakeOpenAI())
+    assert again["unresolved_created"] == [row.id] and again["selected"] == []
+    assert batch.pending_batch_id(s, a) == batch.pending_batch_id(s, b) == row.id
+
+
+@pytest.mark.parametrize("kind", ["400", "429", "guard"])
+def test_a_clear_refusal_marks_the_batch_failed_without_retry(
+    migrated_session: Session, kind: str
+) -> None:
+    s = migrated_session
+    a = _paper(s, 1)
+    client = FakeOpenAI(fail_create=_openai_error(kind))
+    with pytest.raises(Exception) as raised:
+        batch.submit(s, client)
+    assert not isinstance(raised.value, batch.AmbiguousSubmitError)
+    assert client.calls == ["files.create", "batches.create"]  # no retry, also for 429
+    row = s.scalars(select(AnalysisBatch)).one()
+    assert row.status == "submit_failed" and batch.pending_batch_id(s, a) is None
+    assert batch.batch_items(s, row.id)[0].status == "failed"
 
 
 # --- collect --------------------------------------------------------------------------------

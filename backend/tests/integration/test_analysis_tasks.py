@@ -35,3 +35,9 @@ def test_scheduled_submit_is_off_by_default(migrated_session: Session) -> None:
 def test_collect_without_open_batches_does_nothing(migrated_session: Session) -> None:
     assert tasks.collect_analyses.run() == {"open": 0}
     assert migrated_session.scalars(select(IngestRun)).all() == []  # nothing recorded
+
+
+def test_an_ambiguous_submit_is_never_retried_by_celery() -> None:
+    from app.llm.batch import AmbiguousSubmitError
+
+    assert AmbiguousSubmitError in tasks.submit_analyses.dont_autoretry_for

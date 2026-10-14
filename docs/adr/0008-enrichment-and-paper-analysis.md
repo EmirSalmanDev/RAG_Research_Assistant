@@ -21,7 +21,10 @@ source for one paper; `make ingest-one` and the new `make enrich-one` use it.
 There is no search by title and no "official" flag. READMEs are not fetched, so
 `repos.readme_summary` stays empty (a value written before this change is kept, not
 shown). Hugging Face Hub: one call per kind (model, dataset, space), at most 100 each.
-S2: the batch endpoint, one request per 500 papers.
+S2: the batch endpoint, one request per 500 papers. **Deviation (accepted by the owner,
+DP-D1):** the Hub's artifact searches get 2 attempts instead of the usual 5. In the
+first real run `/api/models` answered 504 for two papers, and five attempts per kind
+used the whole request budget; the paper page call keeps 5 attempts.
 
 **Which papers the daily step looks at.** No column marks a paper as enriched. The step
 keeps a cursor in `ingest_runs` (source `enrich-daily`), like the arXiv step. Papers
@@ -65,8 +68,13 @@ huggingface.co (or arxiv.org/abs). Each section loads and fails on its own.
 full-text papers (indexed, text stored) without an analysis from the current prompt
 version, at most `analysis_max_papers` (20), newest first. It commits our own batch row
 and one item per paper first, then uploads one JSONL file (one chat request per paper)
-and creates the batch; a crash in between leaves a 'created' row that the next
-`submit()` finishes rather than repeats. Each request sends the `analyze_v1` system
+and creates the batch. Creating the batch is the request that spends money, so it is
+sent once and never retried (decided by the owner). If it fails in a way that leaves
+open whether OpenAI received it (a timeout, a connection error, a 5xx), the row stays
+'created', its papers stay queued, the command prints the row id and stops, and nothing
+is resubmitted: a person checks OpenAI's batch list. A clear refusal (a 4xx, or the
+egress guard, which refuses before sending) marks the batch 'submit_failed' and frees
+its papers. `submit()` never resumes a 'created' row; it lists such rows. Each request sends the `analyze_v1` system
 prompt, the paper inside one `<source>` block (cut to `analysis_max_input_tokens`,
 12,000, and marked when cut), a strict JSON schema (the SDK's own conversion of a
 pydantic model, as `chat.completions.parse` sends it) and `analysis_max_output_tokens`
