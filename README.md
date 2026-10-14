@@ -32,6 +32,8 @@ Langfuse is not connected yet.
 | `make e2e` | the browser test: one Playwright test of the chat page (see "Browser test"); not part of `make test` |
 | `make ingest-one ID=<arxiv_id> [SOURCE=hf\|html\|pdf] [METADATA_ONLY=1]` | ingest one paper end to end: metadata, abstract, full text, chunks, embeddings |
 | `make enrich-one ID=<arxiv_id>` | refresh a held paper's GitHub repo, Hugging Face models, datasets and Spaces, and Semantic Scholar citations (5 free calls, no OpenAI call) |
+| `make analyze-submit [DRY_RUN=1] [IDS="<id> ..."] [MAX=N]` | submit one OpenAI Batch job of paper analyses for full-text papers; `DRY_RUN=1` only prints the papers and the cost bound |
+| `make analyze-collect` | store and index the analyses of finished Batch jobs |
 | `make backfill DAYS=7 [CONFIRM=1]` | fetch the last N days of the configured categories and index abstracts only; more than 7 days needs `CONFIRM=1` |
 | `make fetch-reranker` | download the reranker model once (about 1 GB) into `~/.cache/fastembed` |
 | `make eval-retrieval [EMBED=1]` | retrieval metrics on the golden set for four configurations, stored in `eval_runs` |
