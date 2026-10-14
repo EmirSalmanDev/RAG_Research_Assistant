@@ -19,8 +19,10 @@ Nothing here is urgent, and the Batch API costs half the chat price. Two steps:
    `paper_analyses` (one per paper, replacing an older one), together with its
    'analysis' chunks and one `llm_usage` row at Batch prices, in one transaction per
    paper. Then the analysis chunks are embedded and indexed, and the batch is marked
-   'collected'. Re-running `collect()` stores nothing twice: a paper whose item is no
-   longer 'pending' is skipped, and unchanged chunks are not embedded again.
+   'collected' (only once every stored paper is indexed). Re-running `collect()` stores
+   nothing twice: a batch already seen to end is not asked about again, its files are
+   downloaded only while an item is still 'pending', and only papers whose analysis
+   chunks lack Qdrant points are embedded.
 
 The paper text is untrusted third-party input (rule 8): it goes inside one delimited
 <source> block and the prompt tells the model to ignore instructions found in it.
@@ -510,18 +512,24 @@ def collect(
     open_batches = session.scalars(_open_batches().order_by(AnalysisBatch.id)).all()
     for batch in open_batches:
         counts["checked"] += 1
-        remote = _retrieve(client, batch.openai_batch_id)
-        batch.status = remote.status
-        batch.output_file_id, batch.error_file_id = remote.output_file_id, remote.error_file_id
-        session.commit()
-        if remote.status not in ENDED:
-            continue
+        # Once a batch has ended its status and files never change, so a batch a previous
+        # run already saw end (and then failed while indexing) is not asked about again.
+        if batch.status not in ENDED:
+            remote = _retrieve(client, batch.openai_batch_id)
+            batch.status = remote.status
+            batch.output_file_id, batch.error_file_id = remote.output_file_id, remote.error_file_id
+            session.commit()
+            if remote.status not in ENDED:
+                continue
         counts["ended"] += 1
-        results = read_results(client, batch.output_file_id, batch.error_file_id)
-        for item in batch_items(session, batch.id, PENDING):
-            stored = _finish_item(session, batch, item, results.get(custom_id(item.arxiv_id)))
-            counts["stored" if stored else "failed"] += 1
-        # Index after storing (a re-run embeds nothing that is already indexed).
+        pending = batch_items(session, batch.id, PENDING)
+        if pending:  # results are downloaded only while a paper still waits for them
+            results = read_results(client, batch.output_file_id, batch.error_file_id)
+            for item in pending:
+                stored = _finish_item(session, batch, item, results.get(custom_id(item.arxiv_id)))
+                counts["stored" if stored else "failed"] += 1
+        # Index after storing. A re-run embeds only papers whose analysis chunks have no
+        # Qdrant points yet (upsert_analysis_chunks skips unchanged points).
         for item in batch_items(session, batch.id, DONE):
             counts["embedded"] += index_chunks(session, item.arxiv_id, dense=dense, sparse=sparse)
             session.commit()

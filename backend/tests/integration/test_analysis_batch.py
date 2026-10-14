@@ -3,6 +3,7 @@ Qdrant collection, with a fake OpenAI client (files + batches) and fake embedder
 No network, no OpenAI; the real collection is checked to be untouched."""
 
 import json
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -428,3 +429,48 @@ def test_analysis_chunks_are_indexed_once_and_survive_a_reindex_of_the_paper(
     points, _ = qdrant.scroll(collection, with_payload=True, limit=20)
     types = sorted(p.payload["chunk_type"] for p in points if p.payload)
     assert types == ["abstract"] + ["analysis"] * 4
+
+
+def test_a_rerun_after_an_indexing_failure_downloads_nothing_and_embeds_only_the_rest(
+    migrated_session: Session,
+    qdrant: QdrantClient,
+    collection: str,  # noqa: F811
+) -> None:
+    s = migrated_session
+    client, (a, b) = _submitted(s, 1, 2)
+    client.finish("batch_1", out=[answer(a), answer(b)], err=[])
+
+    class FailsForB(FakeDense):
+        """The embeddings request for paper B fails once (B's title is 'Invented 2')."""
+
+        fail = True
+
+        def embed(self, texts: Sequence[str], feature: str) -> list[list[float]]:
+            if self.fail and texts[0].startswith("Invented 2 >"):
+                raise RuntimeError("invented embeddings failure")
+            return super().embed(texts, feature)
+
+    dense = FailsForB()
+    kw: dict[str, Any] = {"dense": dense, "sparse": FakeSparse(), "client": qdrant,
+                          "collection": collection}  # fmt: skip
+
+    def index(session: Session, arxiv_id: str, **_: Any) -> int:
+        return upsert_analysis_chunks(session, arxiv_id, **kw)
+
+    with pytest.raises(RuntimeError, match="invented embeddings failure"):
+        batch.collect(s, client, dense=dense, sparse=FakeSparse(), index=index)
+    row = s.scalars(select(AnalysisBatch)).one()
+    assert row.status == "completed"  # not collected: B is not indexed
+    assert _count(s, PaperAnalysis) == 2  # both analyses were stored before indexing
+    assert [len(t) for f, t in dense.calls] == [4]  # A embedded, B failed
+    calls_before = list(client.calls)
+
+    dense.fail = False
+    counts = batch.collect(s, client, dense=dense, sparse=FakeSparse(), index=index)
+    assert client.calls == calls_before  # no retrieve, no file download this time
+    assert counts == {"checked": 1, "ended": 1, "stored": 0, "failed": 0, "embedded": 4}
+    assert len(dense.calls) == 2 and dense.calls[1][1][0].startswith("Invented 2 >")  # only B
+    s.refresh(row)
+    assert row.status == "collected" and _count(s, LLMUsage) == 2  # no usage logged twice
+    points, _ = qdrant.scroll(collection, limit=20)
+    assert len(points) == 8  # four analysis chunks each for A and B
