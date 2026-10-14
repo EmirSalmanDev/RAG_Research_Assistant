@@ -206,6 +206,11 @@ def build_lines(session: Session, arxiv_ids: Sequence[str], prompt: Prompt) -> l
     return [request_line(paper, markdown, prompt) for paper, markdown in rows]
 
 
+def jsonl(lines: Sequence[dict[str, Any]]) -> bytes:
+    """The input file exactly as uploaded: one JSON request per line."""
+    return "".join(json.dumps(line, ensure_ascii=False) + "\n" for line in lines).encode()
+
+
 # --- submit -----------------------------------------------------------------------------------
 
 
@@ -221,8 +226,7 @@ def _send(session: Session, client: Any, batch: AnalysisBatch, prompt: Prompt) -
     OpenAI batch. Each id is committed as soon as OpenAI returns it."""
     if batch.input_file_id is None:
         ids = [i.arxiv_id for i in batch_items(session, batch.id, PENDING)]
-        lines = build_lines(session, ids, prompt)
-        data = "".join(json.dumps(line, ensure_ascii=False) + "\n" for line in lines).encode()
+        data = jsonl(build_lines(session, ids, prompt))
         uploaded = _call(
             lambda: client.files.create(file=(f"analyses-{batch.id}.jsonl", data), purpose="batch")
         )
@@ -282,10 +286,11 @@ def submit(
         session, prompt.id, max_papers=max_papers or s.analysis_max_papers,
         max_attempts=s.analysis_max_attempts, arxiv_ids=arxiv_ids,
     )  # fmt: skip
-    est = estimate(build_lines(session, ids, prompt)) if ids else Estimate(0, 0, 0)
+    lines = build_lines(session, ids, prompt) if ids else []
+    est = estimate(lines)
     out.update(
-        selected=ids, tokens_in=est.tokens_in, max_tokens_out=est.max_tokens_out,
-        max_cost_usd=str(est.max_cost_usd),
+        selected=ids, file_bytes=len(jsonl(lines)) if lines else 0, tokens_in=est.tokens_in,
+        max_tokens_out=est.max_tokens_out, max_cost_usd=str(est.max_cost_usd),
     )  # fmt: skip
     if dry_run or not ids:
         return out

@@ -184,7 +184,10 @@ def test_dry_run_estimates_without_writing_or_calling(migrated_session: Session)
     out = batch.submit(s, None, dry_run=True)
     assert out["selected"] == [a] and out["tokens_in"] > 0
     assert Decimal(out["max_cost_usd"]) > 0
-    assert _count(s, AnalysisBatch) == 0
+    assert _count(s, AnalysisBatch) == 0  # nothing written
+    client = FakeOpenAI()
+    batch.submit(s, client)  # the real submission uploads exactly the bytes measured
+    assert out["file_bytes"] == len(client.uploads["file-in-1"])
 
 
 def test_submit_uploads_one_file_and_creates_one_batch(migrated_session: Session) -> None:
