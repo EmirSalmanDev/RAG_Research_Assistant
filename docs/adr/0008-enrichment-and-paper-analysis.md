@@ -37,10 +37,13 @@ the next run picks the papers up through the rechecks above (S2, GitHub) or not 
 (Hub artifacts, until `make enrich-one`). Per-paper errors are counted in the run's
 `counts`; they do not fail the run, so the cursor moves on.
 
-**"Cited by" comes from the papers we hold.** `citations.citing_id` references
-`papers`, so a citing paper we do not hold cannot be stored. The "cited by" list is
-therefore read from the references of held papers; S2's own citing-paper list is not
-fetched.
+**DEVIATION PROPOSAL (pending the owner's decision): "cited by" from held papers only.**
+The data-source plan lists S2's citing papers. `citations.citing_id` references
+`papers`, so a citing paper we do not hold cannot be stored there. As implemented, the
+"cited by" list is read from the references of held papers, and S2's citing-paper list
+is not fetched. The alternative keeps the plan: one extra S2 request per paper
+(`fields=citations.externalIds`, up to 1000 citing ids) stored in a table without a
+foreign key to `papers`. Until the owner decides, the code stays as implemented.
 
 ## Consequences
 - The daily step makes about one S2 request, one GitHub call per linked new paper and
@@ -49,5 +52,5 @@ fetched.
   stops GitHub early and the rest follow on the next runs (7-day recheck).
 - The 6,653 papers indexed before this step are not enriched by it (their `created_at`
   is older than the first cursor). Enriching them is a separate backfill decision.
-- "Cited by" stays short for a recent corpus: most citing papers are newer than the
-  papers we hold, or not held at all.
+- With the held-papers-only proposal, "cited by" stays short for a recent corpus: most
+  citing papers are newer than the papers we hold, or not held at all.
