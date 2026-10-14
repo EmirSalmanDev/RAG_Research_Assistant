@@ -89,6 +89,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/papers/{arxiv_id}/related": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Paper Related
+         * @description The paper page's three related-paper tabs. `limit` caps "similar"; the citation
+         *     lists hold up to 200 papers each.
+         */
+        get: operations["paper_related_papers__arxiv_id__related_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/search": {
         parameters: {
             query?: never;
@@ -207,6 +228,37 @@ export interface components {
             title: string;
             /** Version */
             version: number;
+        };
+        /** RelatedOut */
+        RelatedOut: {
+            /** Arxiv Id */
+            arxiv_id: string;
+            /** Cited By */
+            cited_by: components["schemas"]["RelatedPaperOut"][];
+            /** Cites */
+            cites: components["schemas"]["RelatedPaperOut"][];
+            /** Similar */
+            similar: components["schemas"]["RelatedPaperOut"][];
+            /**
+             * Similar Status
+             * @enum {string}
+             */
+            similar_status: "ok" | "not_indexed" | "unavailable";
+        };
+        /** RelatedPaperOut */
+        RelatedPaperOut: {
+            /** Abs Url */
+            abs_url: string;
+            /** Arxiv Id */
+            arxiv_id: string;
+            /** Held */
+            held: boolean;
+            /** Published At */
+            published_at: string | null;
+            /** Score */
+            score: number | null;
+            /** Title */
+            title: string | null;
         };
         /** SearchHitOut */
         SearchHitOut: {
@@ -404,6 +456,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PaperChunksOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    paper_related_papers__arxiv_id__related_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                arxiv_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RelatedOut"];
                 };
             };
             /** @description Validation Error */

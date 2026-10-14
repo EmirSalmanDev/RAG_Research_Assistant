@@ -47,6 +47,13 @@ the references of held papers, and S2's citing-paper list is not fetched. The re
 alternative was one extra S2 request per paper (`fields=citations.externalIds`) stored
 in a table without a foreign key to `papers`.
 
+**Related papers** (`GET /papers/{id}/related`, `app/features/related.py`). "Similar"
+queries Qdrant with the id of the paper's abstract point, so Qdrant searches with that
+stored vector (no embedding request), over other papers' abstract points only. "Cites"
+and "cited by" read `citations`; a referenced paper we do not hold is listed by its
+arXiv id without a title. If Qdrant fails, "similar" reports `unavailable` and the
+citation lists are still returned.
+
 **Paper analyses through the Batch API** (`app/llm/batch.py`). `submit()` picks
 full-text papers (indexed, text stored) without an analysis from the current prompt
 version, at most `analysis_max_papers` (20), newest first. It commits our own batch row

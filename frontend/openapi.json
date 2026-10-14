@@ -279,6 +279,113 @@
         "title": "PaperOut",
         "type": "object"
       },
+      "RelatedOut": {
+        "properties": {
+          "arxiv_id": {
+            "title": "Arxiv Id",
+            "type": "string"
+          },
+          "cited_by": {
+            "items": {
+              "$ref": "#/components/schemas/RelatedPaperOut"
+            },
+            "title": "Cited By",
+            "type": "array"
+          },
+          "cites": {
+            "items": {
+              "$ref": "#/components/schemas/RelatedPaperOut"
+            },
+            "title": "Cites",
+            "type": "array"
+          },
+          "similar": {
+            "items": {
+              "$ref": "#/components/schemas/RelatedPaperOut"
+            },
+            "title": "Similar",
+            "type": "array"
+          },
+          "similar_status": {
+            "enum": [
+              "ok",
+              "not_indexed",
+              "unavailable"
+            ],
+            "title": "Similar Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "arxiv_id",
+          "similar_status",
+          "similar",
+          "cites",
+          "cited_by"
+        ],
+        "title": "RelatedOut",
+        "type": "object"
+      },
+      "RelatedPaperOut": {
+        "properties": {
+          "abs_url": {
+            "title": "Abs Url",
+            "type": "string"
+          },
+          "arxiv_id": {
+            "title": "Arxiv Id",
+            "type": "string"
+          },
+          "held": {
+            "title": "Held",
+            "type": "boolean"
+          },
+          "published_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published At"
+          },
+          "score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          }
+        },
+        "required": [
+          "arxiv_id",
+          "title",
+          "published_at",
+          "held",
+          "score",
+          "abs_url"
+        ],
+        "title": "RelatedPaperOut",
+        "type": "object"
+      },
       "SearchHitOut": {
         "properties": {
           "abs_url": {
@@ -603,6 +710,58 @@
           }
         },
         "summary": "Paper Chunks"
+      }
+    },
+    "/papers/{arxiv_id}/related": {
+      "get": {
+        "description": "The paper page's three related-paper tabs. `limit` caps \"similar\"; the citation\nlists hold up to 200 papers each.",
+        "operationId": "paper_related_papers__arxiv_id__related_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "arxiv_id",
+            "required": true,
+            "schema": {
+              "title": "Arxiv Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 10,
+              "maximum": 50,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RelatedOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Paper Related"
       }
     },
     "/search": {
