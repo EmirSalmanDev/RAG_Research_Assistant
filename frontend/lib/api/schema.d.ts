@@ -89,6 +89,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/papers/{arxiv_id}/details": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Paper Details
+         * @description The paper page's analysis, code and Hugging Face sections (Postgres only).
+         */
+        get: operations["paper_details_papers__arxiv_id__details_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/papers/{arxiv_id}/related": {
         parameters: {
             query?: never;
@@ -131,6 +151,28 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AnalysisOut */
+        AnalysisOut: {
+            /** Contributions */
+            contributions: string[];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Limitations */
+            limitations: string | null;
+            /** Method */
+            method: string | null;
+            /** Model */
+            model: string;
+            /** Prompt Version */
+            prompt_version: string | null;
+            /** Results */
+            results: string | null;
+            /** Tldr */
+            tldr: string | null;
+        };
         /** ChatRequest */
         ChatRequest: {
             /** Conversation Id */
@@ -165,6 +207,19 @@ export interface components {
             /** Title */
             title: string;
         };
+        /** HFArtifactOut */
+        HFArtifactOut: {
+            /** Downloads */
+            downloads: number | null;
+            /** Likes */
+            likes: number | null;
+            /** Pipeline Tag */
+            pipeline_tag: string | null;
+            /** Repo Id */
+            repo_id: string;
+            /** Url */
+            url: string;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -194,6 +249,25 @@ export interface components {
             arxiv_id: string;
             /** Chunks */
             chunks: components["schemas"]["ChunkOut"][];
+        };
+        /** PaperDetailsOut */
+        PaperDetailsOut: {
+            analysis: components["schemas"]["AnalysisOut"] | null;
+            /**
+             * Analysis Status
+             * @enum {string}
+             */
+            analysis_status: "available" | "queued" | "none";
+            /** Arxiv Id */
+            arxiv_id: string;
+            /** Datasets */
+            datasets: components["schemas"]["HFArtifactOut"][];
+            /** Models */
+            models: components["schemas"]["HFArtifactOut"][];
+            /** Repos */
+            repos: components["schemas"]["RepoOut"][];
+            /** Spaces */
+            spaces: components["schemas"]["HFArtifactOut"][];
         };
         /** PaperOut */
         PaperOut: {
@@ -259,6 +333,19 @@ export interface components {
             score: number | null;
             /** Title */
             title: string | null;
+        };
+        /** RepoOut */
+        RepoOut: {
+            /** Full Name */
+            full_name: string;
+            /** Last Push */
+            last_push: string | null;
+            /** License */
+            license: string | null;
+            /** Stars */
+            stars: number | null;
+            /** Url */
+            url: string;
         };
         /** SearchHitOut */
         SearchHitOut: {
@@ -456,6 +543,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PaperChunksOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    paper_details_papers__arxiv_id__details_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                arxiv_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaperDetailsOut"];
                 };
             };
             /** @description Validation Error */

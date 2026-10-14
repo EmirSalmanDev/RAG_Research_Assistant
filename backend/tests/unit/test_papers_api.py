@@ -11,6 +11,7 @@ from httpx import ASGITransport, AsyncClient
 from app.api.papers import (
     ChunkOut,
     PaperChunksOut,
+    PaperDetailsOut,
     PaperOut,
     RelatedOut,
     RelatedPaperOut,
@@ -78,6 +79,14 @@ class FakeStore:
 
     def get_chunk(self, chunk_id: uuid.UUID) -> ChunkOut | None:
         return CHUNK if chunk_id == CHUNK_ID else None
+
+    def details(self, arxiv_id: str) -> PaperDetailsOut | None:
+        if arxiv_id != PAPER.arxiv_id:
+            return None
+        return PaperDetailsOut(
+            arxiv_id=arxiv_id, analysis_status="queued", analysis=None, repos=[], models=[],
+            datasets=[], spaces=[],
+        )  # fmt: skip
 
     def related(self, arxiv_id: str, limit: int) -> RelatedOut | None:
         self.limits.append(limit)
@@ -169,3 +178,11 @@ async def test_related_is_404_for_unknown_papers_and_bounds_its_limit(
     assert (await client.get("/papers/hep-th/9901001/related")).status_code == 404  # not 405
     assert (await client.get("/papers/2609.00001/related?limit=0")).status_code == 422
     assert (await client.get("/papers/2609.00001/related?limit=51")).status_code == 422
+
+
+async def test_details_route_and_404(client: AsyncClient) -> None:
+    r = await client.get("/papers/2609.00001/details")
+    assert r.status_code == 200
+    assert r.json()["analysis_status"] == "queued" and r.json()["analysis"] is None
+    assert (await client.get("/papers/0000.00000/details")).status_code == 404
+    assert (await client.get("/papers/hep-th/9901001/details")).status_code == 404

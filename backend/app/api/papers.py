@@ -3,6 +3,8 @@
     GET /papers/{arxiv_id}           the paper's metadata and abstract
     GET /papers/{arxiv_id}/chunks    its chunks in reading order (Postgres only)
     GET /papers/{arxiv_id}/related   similar papers, papers it cites, papers citing it
+    GET /papers/{arxiv_id}/details   its analysis (or whether one is queued), repos and
+                                     Hugging Face models, datasets and Spaces
     GET /chunks/{chunk_id}           one chunk with its text: what a citation chip opens
 
 Nothing here calls OpenAI or costs anything. Everything reads Postgres only, except
@@ -19,7 +21,7 @@ the route tests run without a database.
 import logging
 import uuid
 from datetime import datetime
-from typing import Annotated, Protocol
+from typing import Annotated, Literal, Protocol
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
@@ -27,7 +29,7 @@ from sqlalchemy import select
 from starlette.concurrency import run_in_threadpool
 
 from app.config import get_settings
-from app.db.models import Chunk, Paper
+from app.db.models import AnalysisBatchItem, Chunk, HFArtifact, Paper, PaperAnalysis, Repo
 from app.db.session import session_scope
 from app.features import related as related_papers
 from app.features.related import RelatedPaper, SimilarStatus
@@ -93,6 +95,45 @@ class RelatedOut(BaseModel):
     cited_by: list[RelatedPaperOut]
 
 
+class AnalysisOut(BaseModel):
+    tldr: str | None
+    contributions: list[str]  # stored one per line
+    method: str | None
+    results: str | None
+    limitations: str | None
+    model: str
+    prompt_version: str | None
+    created_at: datetime
+
+
+class RepoOut(BaseModel):
+    full_name: str
+    stars: int | None
+    last_push: datetime | None
+    license: str | None
+    url: str
+
+
+class HFArtifactOut(BaseModel):
+    repo_id: str
+    downloads: int | None
+    likes: int | None
+    pipeline_tag: str | None
+    url: str
+
+
+class PaperDetailsOut(BaseModel):
+    arxiv_id: str
+    # available: `analysis` is set; queued: a Batch job holds the paper (results within
+    # 24 hours); none: no analysis yet (only full-text papers are analysed)
+    analysis_status: Literal["available", "queued", "none"]
+    analysis: AnalysisOut | None
+    repos: list[RepoOut]
+    models: list[HFArtifactOut]  # most downloaded first
+    datasets: list[HFArtifactOut]
+    spaces: list[HFArtifactOut]
+
+
 class PaperStore(Protocol):
     def get_paper(self, arxiv_id: str) -> PaperOut | None: ...
 
@@ -104,6 +145,10 @@ class PaperStore(Protocol):
 
     def related(self, arxiv_id: str, limit: int) -> RelatedOut | None:
         """Similar (at most `limit`), cites and cited by; None when the paper does not exist."""
+        ...
+
+    def details(self, arxiv_id: str) -> PaperDetailsOut | None:
+        """Analysis, repos and HF artifacts; None when the paper does not exist."""
         ...
 
 
@@ -205,6 +250,65 @@ class SqlPaperStore:
             cited_by=[_related_out(p) for p in cited_by],
         )  # fmt: skip
 
+    def details(self, arxiv_id: str) -> PaperDetailsOut | None:
+        with session_scope() as session:
+            if session.get(Paper, arxiv_id) is None:
+                return None
+            row = session.scalar(select(PaperAnalysis).where(PaperAnalysis.arxiv_id == arxiv_id))
+            queued = session.scalar(
+                select(AnalysisBatchItem.batch_id).where(
+                    AnalysisBatchItem.arxiv_id == arxiv_id, AnalysisBatchItem.status == "pending"
+                )
+            )
+            repos = session.scalars(
+                select(Repo)
+                .where(Repo.arxiv_id == arxiv_id)
+                .order_by(Repo.stars.desc().nulls_last())
+            ).all()
+            artifacts = session.scalars(
+                select(HFArtifact)
+                .where(HFArtifact.arxiv_id == arxiv_id)
+                .order_by(HFArtifact.downloads.desc().nulls_last(), HFArtifact.repo_id)
+            ).all()
+            return PaperDetailsOut(
+                arxiv_id=arxiv_id,
+                analysis_status="available" if row else "queued" if queued else "none",
+                analysis=_analysis_out(row) if row else None,
+                repos=[_repo_out(r) for r in repos],
+                **{
+                    f"{kind}s": [_artifact_out(a) for a in artifacts if a.kind == kind]
+                    for kind in ("model", "dataset", "space")
+                },
+            )
+
+
+def _analysis_out(row: PaperAnalysis) -> AnalysisOut:
+    contributions = [c for c in (row.contributions or "").splitlines() if c.strip()]
+    return AnalysisOut(
+        tldr=row.tldr, contributions=contributions, method=row.method, results=row.results,
+        limitations=row.limitations, model=row.model, prompt_version=row.prompt_version,
+        created_at=row.created_at,
+    )  # fmt: skip
+
+
+def _repo_out(row: Repo) -> RepoOut:
+    # `readme_summary` is deliberately not exposed (READMEs are not fetched; docs/adr/0008).
+    return RepoOut(
+        full_name=row.full_name, stars=row.stars, last_push=row.last_push, license=row.license,
+        url=f"https://github.com/{row.full_name}",
+    )  # fmt: skip
+
+
+HF_URL = {"model": "https://huggingface.co/{}", "dataset": "https://huggingface.co/datasets/{}",
+          "space": "https://huggingface.co/spaces/{}"}  # fmt: skip
+
+
+def _artifact_out(row: HFArtifact) -> HFArtifactOut:
+    return HFArtifactOut(
+        repo_id=row.repo_id, downloads=row.downloads, likes=row.likes,
+        pipeline_tag=row.pipeline_tag, url=HF_URL[row.kind].format(row.repo_id),
+    )  # fmt: skip
+
 
 def get_paper_store() -> PaperStore:
     """The real store (tests override this dependency)."""
@@ -236,6 +340,15 @@ async def paper_related(
     """The paper page's three related-paper tabs. `limit` caps "similar"; the citation
     lists hold up to 200 papers each."""
     result = await run_in_threadpool(store.related, arxiv_id, limit)
+    if result is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "unknown paper")
+    return result
+
+
+@router.get("/papers/{arxiv_id:path}/details", response_model=PaperDetailsOut)
+async def paper_details(arxiv_id: str, store: Store) -> PaperDetailsOut:
+    """The paper page's analysis, code and Hugging Face sections (Postgres only)."""
+    result = await run_in_threadpool(store.details, arxiv_id)
     if result is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "unknown paper")
     return result
