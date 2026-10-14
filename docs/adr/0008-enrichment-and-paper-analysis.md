@@ -68,9 +68,11 @@ the owner).** `analysis_batches` (one row per Batch job: OpenAI batch and file i
 or OpenAI's status, model, prompt version, request count, timestamps, errors);
 `analysis_batch_items` (one row per paper and batch; a paper's queued batch is its
 'pending' item, and a partial unique index allows one pending item per paper);
-`paper_analyses.prompt_version` and `paper_analyses.batch_id` (with an index, as every
-foreign key has one). **One analysis per paper**: `paper_analyses.arxiv_id` is unique,
-and an analysis is replaced when a newer `prompt_version` analyses the paper again.
+`paper_analyses.prompt_version` and `paper_analyses.batch_id`. The index
+`ix_paper_analyses_batch_id` is a further non-plan addition: the repo indexes every
+foreign key (a rule its migration test checks). **One analysis per paper**:
+`paper_analyses.arxiv_id` is unique, and an analysis is replaced when a newer
+`prompt_version` analyses the paper again.
 
 **Analysis chunks.** Each analysis becomes up to four `analysis` chunks with fixed ords
 from 10000: Summary (TL;DR and contributions; the TL;DR alone is too short to be a
