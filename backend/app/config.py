@@ -94,6 +94,20 @@ class Settings(BaseSettings):
     plan_rephrasings_enabled: bool = True  # also search the planner's two rephrasings
     verify_enabled: bool = True  # second call: is each cited sentence supported?
 
+    # --- Paper analysis (OpenAI Batch API; docs/adr/0008) ----------------------------
+    # Full-text papers are analysed in the background: results arrive within 24 hours at
+    # half the chat price. The Batch prices are only used to write `llm_usage.cost_usd`.
+    analysis_model: str = "gpt-4o-mini"
+    analysis_prompt: str = "analyze_v1"  # the prompt file (app/rag/prompts/<name>.txt)
+    batch_price_in_per_1m: float = 0.075  # USD per 1M input tokens on the Batch API
+    batch_price_out_per_1m: float = 0.30  # USD per 1M output tokens on the Batch API
+    analysis_max_papers: int = 20  # papers per submission (one submission a day)
+    analysis_max_input_tokens: int = 12_000  # the paper text is cut to this many tokens
+    analysis_max_output_tokens: int = 1200  # per analysis (a cut-off answer is a failure)
+    analysis_max_attempts: int = 2  # failed batches per paper and prompt before giving up
+    # The scheduled daily submission spends money, so it is off until the owner turns it on.
+    analysis_auto_submit: bool = False
+
     @field_validator(
         "openai_api_key", "langfuse_public_key", "langfuse_secret_key", "github_token",
         "s2_api_key", mode="before",

@@ -50,7 +50,7 @@ ignore_missing_imports = true
 
 # Celery ships no type hints, so its task decorators are untyped.
 [[tool.mypy.overrides]]
-module = ["app.ingest.tasks"]
+module = ["app.ingest.tasks", "app.llm.tasks"]
 disallow_untyped_decorators = false
 
 [tool.pytest.ini_options]

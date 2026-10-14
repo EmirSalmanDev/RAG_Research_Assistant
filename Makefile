@@ -1,4 +1,4 @@
-.PHONY: up down logs test lint e2e openapi migrate ingest-one enrich-one backfill fetch-reranker eval-retrieval
+.PHONY: up down logs test lint e2e openapi migrate ingest-one enrich-one analyze-submit analyze-collect backfill fetch-reranker eval-retrieval
 
 # Start the stack and wait until every service's healthcheck passes.
 up:
@@ -71,6 +71,18 @@ ingest-one:
 enrich-one:
 	@test -n "$(ID)" || (echo "usage: make enrich-one ID=<arxiv_id>"; exit 2)
 	docker compose exec -T worker python -m app.ingest.cli enrich "$(ID)"
+
+# Paper analyses on the OpenAI Batch API (results within 24 hours, half the chat price):
+#   make analyze-submit DRY_RUN=1            # which papers, tokens, cost bound; no API call
+#   make analyze-submit IDS="1706.03762"     # one batch for these papers (PAID; ask first)
+#   make analyze-collect                      # store and index finished batches (embeds)
+analyze-submit:
+	docker compose exec -T worker python -m app.llm.cli submit \
+		$(foreach id,$(IDS),--arxiv-id "$(id)") $(if $(MAX),--max-papers "$(MAX)") \
+		$(if $(DRY_RUN),--dry-run)
+
+analyze-collect:
+	docker compose exec -T worker python -m app.llm.cli collect
 
 # Seed the corpus: fetch the last DAYS days of the configured arXiv categories (new
 # papers and new versions) and index their abstracts only (no full text):
