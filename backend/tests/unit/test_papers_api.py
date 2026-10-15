@@ -11,7 +11,10 @@ from httpx import ASGITransport, AsyncClient
 from app.api.papers import (
     ChunkOut,
     PaperChunksOut,
+    PaperDetailsOut,
     PaperOut,
+    RelatedOut,
+    RelatedPaperOut,
     _author_names,
     get_paper_store,
 )
@@ -48,6 +51,18 @@ CHUNK = ChunkOut(
     abs_url="https://arxiv.org/abs/2609.00001",
 )
 
+SIMILAR = RelatedPaperOut(
+    arxiv_id="2609.00002", title="A Similar Invented Paper", published_at=PUBLISHED, held=True,
+    score=0.91, abs_url="https://arxiv.org/abs/2609.00002",
+)  # fmt: skip
+NOT_HELD = RelatedPaperOut(
+    arxiv_id="1706.00000", title=None, published_at=None, held=False, score=None,
+    abs_url="https://arxiv.org/abs/1706.00000",
+)  # fmt: skip
+RELATED = RelatedOut(
+    arxiv_id="2609.00001", similar_status="ok", similar=[SIMILAR], cites=[NOT_HELD], cited_by=[]
+)
+
 
 class FakeStore:
     def __init__(self) -> None:
@@ -64,6 +79,20 @@ class FakeStore:
 
     def get_chunk(self, chunk_id: uuid.UUID) -> ChunkOut | None:
         return CHUNK if chunk_id == CHUNK_ID else None
+
+    def details(self, arxiv_id: str) -> PaperDetailsOut | None:
+        if arxiv_id != PAPER.arxiv_id:
+            return None
+        return PaperDetailsOut(
+            arxiv_id=arxiv_id, analysis_status="queued", analysis=None, repos=[], models=[],
+            datasets=[], spaces=[],
+        )  # fmt: skip
+
+    def related(self, arxiv_id: str, limit: int) -> RelatedOut | None:
+        self.limits.append(limit)
+        if arxiv_id != PAPER.arxiv_id:
+            return None
+        return RELATED
 
 
 @pytest.fixture
@@ -127,3 +156,33 @@ async def test_unknown_or_malformed_chunk_id(client: AsyncClient) -> None:
 
 def test_author_names_accepts_objects_and_plain_strings() -> None:
     assert _author_names([{"name": "A"}, "B", {"x": 1}, 3]) == ["A", "B"]
+
+
+async def test_related_returns_three_lists(client: AsyncClient, store: FakeStore) -> None:
+    r = await client.get("/papers/2609.00001/related", params={"limit": 5})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["similar_status"] == "ok" and store.limits == [5]
+    assert [p["arxiv_id"] for p in body["similar"]] == ["2609.00002"]
+    assert body["cites"][0] == {
+        "arxiv_id": "1706.00000", "title": None, "published_at": None, "held": False,
+        "score": None, "abs_url": "https://arxiv.org/abs/1706.00000",
+    }  # fmt: skip
+    assert body["cited_by"] == []
+
+
+async def test_related_is_404_for_unknown_papers_and_bounds_its_limit(
+    client: AsyncClient,
+) -> None:
+    assert (await client.get("/papers/0000.00000/related")).status_code == 404
+    assert (await client.get("/papers/hep-th/9901001/related")).status_code == 404  # not 405
+    assert (await client.get("/papers/2609.00001/related?limit=0")).status_code == 422
+    assert (await client.get("/papers/2609.00001/related?limit=51")).status_code == 422
+
+
+async def test_details_route_and_404(client: AsyncClient) -> None:
+    r = await client.get("/papers/2609.00001/details")
+    assert r.status_code == 200
+    assert r.json()["analysis_status"] == "queued" and r.json()["analysis"] is None
+    assert (await client.get("/papers/0000.00000/details")).status_code == 404
+    assert (await client.get("/papers/hep-th/9901001/details")).status_code == 404

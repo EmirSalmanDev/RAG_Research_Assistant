@@ -21,7 +21,7 @@ How a paper is split:
    its context even when it is retrieved alone.
 
 Chunk ids: uuid5(NAMESPACE, '<arxiv_id>v<version>#<ord>'). ord 0 is the abstract chunk,
-section chunks are numbered from 1, and analysis chunks (added later) from 10000.
+section chunks are numbered from 1, and analysis chunks (`analysis_chunks`) from 10000.
 """
 
 import re
@@ -39,7 +39,7 @@ ABSTRACT_ORD = 0
 FIRST_SECTION_ORD = 1
 FIRST_ANALYSIS_ORD = 10_000
 
-ChunkType = Literal["abstract", "section"]
+ChunkType = Literal["abstract", "section", "analysis"]
 
 
 def chunk_id(arxiv_id: str, version: int, ord: int) -> uuid.UUID:
@@ -94,6 +94,43 @@ def abstract_chunk(arxiv_id: str, version: int, title: str, abstract: str) -> Ch
         token_count=count_tokens(text),
         embedding_text=embedding_text(title, "Abstract", text),
     )
+
+
+# The analysis chunks of a paper, in ord order from FIRST_ANALYSIS_ORD: (section_path,
+# fields of the analysis joined into its text). The TL;DR is too short to be a useful
+# search hit alone, so it opens the summary chunk together with the contributions.
+ANALYSIS_SECTIONS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("Analysis > Summary", ("tldr", "contributions")),
+    ("Analysis > Method", ("method",)),
+    ("Analysis > Results", ("results",)),
+    ("Analysis > Limitations", ("limitations",)),
+)
+
+
+def analysis_chunks(
+    arxiv_id: str, version: int, title: str, fields: dict[str, str | None]
+) -> list[Chunk]:
+    """The 'analysis' chunks of a generated paper analysis (ord 10000, 10001, ...).
+    The ord of each section is fixed, so a new analysis overwrites the old chunks.
+    A section whose fields are all empty gets no chunk."""
+    chunks: list[Chunk] = []
+    for n, (path, names) in enumerate(ANALYSIS_SECTIONS):
+        text = "\n\n".join(v.strip() for name in names if (v := fields.get(name)) and v.strip())
+        if not text:
+            continue
+        ord = FIRST_ANALYSIS_ORD + n
+        chunks.append(
+            Chunk(
+                id=chunk_id(arxiv_id, version, ord),
+                ord=ord,
+                chunk_type="analysis",
+                section_path=path,
+                text=text,
+                token_count=count_tokens(text),
+                embedding_text=embedding_text(title, path, text),
+            )
+        )
+    return chunks
 
 
 def chunk_paper(

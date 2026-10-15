@@ -8,7 +8,7 @@ from app.rag.prompts import PROMPTS_DIR, escape_block, load_prompt
 
 SYSTEM_PROMPTS = [
     "condense_v1", "plan_v1", "generate_v1", "generate_explain_v1", "generate_v2",
-    "generate_explain_v2", "verify_v1",
+    "generate_explain_v2", "verify_v1", "analyze_v1",
 ]  # fmt: skip
 NOTES = ["generate_abstract_note_v1"]  # request-side text, not a system prompt
 PROMPT_IDS = SYSTEM_PROMPTS + NOTES

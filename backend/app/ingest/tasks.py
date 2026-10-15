@@ -1,8 +1,9 @@
 """Celery tasks: one per pipeline step, each a thin wrapper around a function from
-`daily.py`, `fulltext.py`, `pipeline.py` or `index.py` (no logic is duplicated here).
+`daily.py`, `enrich.py`, `fulltext.py`, `pipeline.py` or `index.py` (no logic is
+duplicated here).
 
 The daily chain (Beat, 07:00 Europe/Istanbul):
-    fetch_arxiv -> fetch_hf_daily -> index_abstracts -> select_fulltext
+    fetch_arxiv -> fetch_hf_daily -> index_abstracts -> enrich_new -> select_fulltext
 and `select_fulltext` starts, for every selected paper, its own chain:
     fetch_fulltext -> clean_paper -> chunk_paper -> embed_paper
 
@@ -101,6 +102,16 @@ def index_abstracts() -> dict[str, Any]:
     return counts
 
 
+@celery_app.task(name="ingest.enrich_new", **RETRY_OPTIONS)
+def enrich_new() -> dict[str, Any]:
+    """GitHub, Hugging Face Hub and Semantic Scholar data for the papers added since the
+    last run (records its own 'enrich-daily' run; see app/ingest/enrich.py)."""
+    from app.ingest.enrich import default_enrich_clients, enrich_daily
+
+    with session_scope() as session:
+        return enrich_daily(session, default_enrich_clients())
+
+
 @celery_app.task(name="ingest.select_fulltext", **RETRY_OPTIONS)
 def select_fulltext() -> dict[str, Any]:
     """Start one full-text chain per selected paper (library or requested)."""
@@ -122,7 +133,13 @@ def paper_chain(arxiv_id: str) -> Signature:
 
 
 def daily_chain() -> Signature:
-    return chain(fetch_arxiv.si(), fetch_hf_daily.si(), index_abstracts.si(), select_fulltext.si())
+    return chain(
+        fetch_arxiv.si(),
+        fetch_hf_daily.si(),
+        index_abstracts.si(),
+        enrich_new.si(),
+        select_fulltext.si(),
+    )
 
 
 @celery_app.task(name="ingest.daily_pipeline")

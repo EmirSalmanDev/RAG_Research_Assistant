@@ -42,6 +42,12 @@ class Settings(BaseSettings):
     sparse_model: str = "Qdrant/bm25"  # FastEmbed model for the `text-sparse` vector
     qdrant_collection: str = "chunks"
 
+    # Enrichment (GitHub, Hugging Face Hub, Semantic Scholar) in the daily chain.
+    enrich_max_papers: int = 500  # papers looked at per run (bounds a first or late run)
+    # Papers added within this many days are looked at again while S2 has not answered for
+    # them yet, or while they have a GitHub link but no repo row (both cheap retries).
+    enrich_recheck_days: int = 7
+
     # Chunking, measured in tokens of the embedding model's tokenizer.
     chunk_tokens: int = 512  # target size of a chunk inside a long section
     chunk_overlap: int = 64  # tokens repeated between neighbouring windows
@@ -87,6 +93,20 @@ class Settings(BaseSettings):
     plan_enabled: bool = True  # filters, intent and rephrasings from one structured call
     plan_rephrasings_enabled: bool = True  # also search the planner's two rephrasings
     verify_enabled: bool = True  # second call: is each cited sentence supported?
+
+    # --- Paper analysis (OpenAI Batch API; docs/adr/0008) ----------------------------
+    # Full-text papers are analysed in the background: results arrive within 24 hours at
+    # half the chat price. The Batch prices are only used to write `llm_usage.cost_usd`.
+    analysis_model: str = "gpt-4o-mini"
+    analysis_prompt: str = "analyze_v1"  # the prompt file (app/rag/prompts/<name>.txt)
+    batch_price_in_per_1m: float = 0.075  # USD per 1M input tokens on the Batch API
+    batch_price_out_per_1m: float = 0.30  # USD per 1M output tokens on the Batch API
+    analysis_max_papers: int = 20  # papers per submission (one submission a day)
+    analysis_max_input_tokens: int = 12_000  # the paper text is cut to this many tokens
+    analysis_max_output_tokens: int = 1200  # per analysis (a cut-off answer is a failure)
+    analysis_max_attempts: int = 2  # failed batches per paper and prompt before giving up
+    # The scheduled daily submission spends money, so it is off until the owner turns it on.
+    analysis_auto_submit: bool = False
 
     @field_validator(
         "openai_api_key", "langfuse_public_key", "langfuse_secret_key", "github_token",

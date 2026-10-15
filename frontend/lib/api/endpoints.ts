@@ -15,6 +15,12 @@ export type SearchHit = components["schemas"]["SearchHitOut"];
 export type PaperOut = components["schemas"]["PaperOut"];
 export type ChunkOut = components["schemas"]["ChunkOut"];
 export type PaperChunksOut = components["schemas"]["PaperChunksOut"];
+export type PaperDetailsOut = components["schemas"]["PaperDetailsOut"];
+export type RelatedOut = components["schemas"]["RelatedOut"];
+export type RelatedPaperOut = components["schemas"]["RelatedPaperOut"];
+
+/** How many similar papers the paper page asks for. */
+export const SIMILAR_LIMIT = 10;
 
 /**
  * GET /search. `rerank=false` is sent explicitly: the cross-encoder takes about 20 s on a
@@ -69,6 +75,49 @@ export async function fetchPaperChunks(
     "/papers/{arxiv_id}/chunks",
     {
       params: { path: { arxiv_id: arxivId } },
+    },
+  );
+  if (data) return data;
+  throw new ApiError(
+    response.status,
+    apiErrorMessage(response.status, detailOf(error), "paper"),
+  );
+}
+
+/**
+ * GET /papers/{arxiv_id}/details: the analysis (or whether one is queued), repos and
+ * Hugging Face models, datasets and Spaces. Postgres only: opening a page costs nothing.
+ */
+export async function fetchPaperDetails(
+  client: ApiClient,
+  arxivId: string,
+): Promise<PaperDetailsOut> {
+  const { data, error, response } = await client.GET(
+    "/papers/{arxiv_id}/details",
+    { params: { path: { arxiv_id: arxivId } } },
+  );
+  if (data) return data;
+  throw new ApiError(
+    response.status,
+    apiErrorMessage(response.status, detailOf(error), "paper"),
+  );
+}
+
+/**
+ * GET /papers/{arxiv_id}/related: similar papers (Qdrant neighbours of the stored abstract
+ * vector, no embedding call), the papers it cites and the papers citing it.
+ */
+export async function fetchPaperRelated(
+  client: ApiClient,
+  arxivId: string,
+): Promise<RelatedOut> {
+  const { data, error, response } = await client.GET(
+    "/papers/{arxiv_id}/related",
+    {
+      params: {
+        path: { arxiv_id: arxivId },
+        query: { limit: SIMILAR_LIMIT },
+      },
     },
   );
   if (data) return data;

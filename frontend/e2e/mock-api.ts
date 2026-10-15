@@ -77,6 +77,101 @@ async function chat(res: ServerResponse): Promise<void> {
   res.end();
 }
 
+// --- the paper page (e2e/paper-page.spec.ts): one invented paper with everything ---
+const PAPER_ID = "2609.00001";
+const PUBLISHED = "2026-09-01T12:00:00+00:00";
+const abs = (id: string) => `https://arxiv.org/abs/${id}`;
+const PAPER = {
+  arxiv_id: PAPER_ID,
+  version: 1,
+  title: "An Invented Paper About Adapters",
+  abstract: "An invented abstract about adapters.",
+  authors: ["Ada Example"],
+  categories: ["cs.CL"],
+  primary_category: "cs.CL",
+  published_at: PUBLISHED,
+  hf_upvotes: 12,
+  citation_count: 3,
+  github_url: "https://github.com/invented-org/adapters",
+  project_url: null,
+  fulltext_status: "indexed",
+  abs_url: abs(PAPER_ID),
+};
+const model = (i: number) => ({
+  repo_id: `invented-org/adapter-model-${i}`,
+  downloads: 1000 * (12 - i),
+  likes: 12 - i,
+  pipeline_tag: "text-generation",
+  url: `https://huggingface.co/invented-org/adapter-model-${i}`,
+});
+const DETAILS = {
+  arxiv_id: PAPER_ID,
+  analysis_status: "available",
+  analysis: {
+    tldr: "Invented TL;DR: small adapters match full fine-tuning.",
+    contributions: ["An invented adapter.", "An invented evaluation."],
+    method: "An invented method.",
+    results: "Invented results.",
+    limitations: "An invented limitation.",
+    model: "gpt-4o-mini",
+    prompt_version: "analyze_v1",
+    created_at: PUBLISHED,
+  },
+  repos: [
+    {
+      full_name: "invented-org/adapters",
+      stars: 1497,
+      last_push: PUBLISHED,
+      license: "Apache-2.0",
+      url: "https://github.com/invented-org/adapters",
+    },
+  ],
+  models: Array.from({ length: 11 }, (_, i) => model(i + 1)),
+  datasets: [
+    {
+      repo_id: "invented-org/adapter-data",
+      downloads: 50,
+      likes: 1,
+      pipeline_tag: null,
+      url: "https://huggingface.co/datasets/invented-org/adapter-data",
+    },
+  ],
+  spaces: [],
+};
+const related = (id: string, title: string | null, score: number | null) => ({
+  arxiv_id: id,
+  title,
+  published_at: title ? PUBLISHED : null,
+  held: title !== null,
+  score,
+  abs_url: abs(id),
+});
+const RELATED = {
+  arxiv_id: PAPER_ID,
+  similar_status: "ok",
+  similar: [related("2609.00002", "A Similar Invented Paper", 0.91)],
+  cites: [related("1706.00000", null, null)],
+  cited_by: [related("2609.00003", "A Citing Invented Paper", null)],
+};
+
+function paperRoute(res: ServerResponse, url: string): boolean {
+  const m = /^\/papers\/([^/?]+)(?:\/(chunks|details|related))?(?:\?.*)?$/.exec(
+    url,
+  );
+  if (!m) return false;
+  if (m[1] !== PAPER_ID) {
+    json(res, 404, { detail: "unknown paper" });
+    return true;
+  }
+  const bodies = {
+    chunks: { arxiv_id: PAPER_ID, chunks: [] },
+    details: DETAILS,
+    related: RELATED,
+  };
+  json(res, 200, m[2] ? bodies[m[2] as keyof typeof bodies] : PAPER);
+  return true;
+}
+
 createServer((req, res) => {
   const url = req.url ?? "";
   if (req.method === "GET" && url === "/health")
@@ -91,6 +186,7 @@ createServer((req, res) => {
     onRelease?.();
     return json(res, 200, { released: true });
   }
+  if (req.method === "GET" && paperRoute(res, url)) return;
   const chunk = /^\/chunks\/([0-9a-f-]+)$/.exec(url);
   if (req.method === "GET" && chunk) {
     const source = SOURCES.find((s) => s.chunk_id === chunk[1]);

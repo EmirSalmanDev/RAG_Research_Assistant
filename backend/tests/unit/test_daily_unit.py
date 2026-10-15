@@ -95,6 +95,7 @@ def test_daily_chain_order_with_immutable_signatures() -> None:
         ("ingest.fetch_arxiv", (), True),
         ("ingest.fetch_hf_daily", (), True),
         ("ingest.index_abstracts", (), True),
+        ("ingest.enrich_new", (), True),
         ("ingest.select_fulltext", (), True),
     ]
 
@@ -115,14 +116,23 @@ def test_beat_runs_the_daily_pipeline_at_7_istanbul_time() -> None:
     assert celery_app.conf.timezone == "Europe/Istanbul"
 
 
+def test_beat_submits_analyses_daily_and_collects_every_30_minutes() -> None:
+    schedule = celery_app.conf.beat_schedule
+    assert schedule["analysis-submit"]["task"] == "analysis.submit"
+    assert schedule["analysis-submit"]["schedule"] == crontab(hour=9, minute=0)
+    assert schedule["analysis-collect"]["task"] == "analysis.collect"
+    assert schedule["analysis-collect"]["schedule"] == crontab(minute="*/30")
+    assert {"analysis.submit", "analysis.collect"} <= set(celery_app.tasks)
+
+
 def test_celery_settings_for_one_small_worker() -> None:
     conf = celery_app.conf
     assert conf.worker_concurrency == 1 and conf.worker_prefetch_multiplier == 1
     assert conf.task_acks_late is True
     names = set(celery_app.tasks)
-    for name in ("fetch_arxiv", "fetch_hf_daily", "index_abstracts", "select_fulltext",
-                 "fetch_fulltext", "clean_paper", "chunk_paper", "embed_paper", "paper",
-                 "daily_pipeline"):  # fmt: skip
+    for name in ("fetch_arxiv", "fetch_hf_daily", "index_abstracts", "enrich_new",
+                 "select_fulltext", "fetch_fulltext", "clean_paper", "chunk_paper",
+                 "embed_paper", "paper", "daily_pipeline"):  # fmt: skip
         assert f"ingest.{name}" in names
 
 

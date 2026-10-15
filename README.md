@@ -31,12 +31,15 @@ Langfuse is not connected yet.
 | `make test` / `make lint` | backend tests (offline) and frontend checks and unit tests / linters |
 | `make e2e` | the browser test: one Playwright test of the chat page (see "Browser test"); not part of `make test` |
 | `make ingest-one ID=<arxiv_id> [SOURCE=hf\|html\|pdf] [METADATA_ONLY=1]` | ingest one paper end to end: metadata, abstract, full text, chunks, embeddings |
+| `make enrich-one ID=<arxiv_id>` | refresh a held paper's GitHub repo, Hugging Face models, datasets and Spaces, and Semantic Scholar citations (5 free calls, no OpenAI call) |
+| `make analyze-submit [DRY_RUN=1] [IDS="<id> ..."] [MAX=N]` | submit one OpenAI Batch job of paper analyses for full-text papers; `DRY_RUN=1` only prints the papers and the cost bound |
+| `make analyze-collect` | store and index the analyses of finished Batch jobs |
 | `make backfill DAYS=7 [CONFIRM=1]` | fetch the last N days of the configured categories and index abstracts only; more than 7 days needs `CONFIRM=1` |
 | `make fetch-reranker` | download the reranker model once (about 1 GB) into `~/.cache/fastembed` |
 | `make eval-retrieval [EMBED=1]` | retrieval metrics on the golden set for four configurations, stored in `eval_runs` |
 
-`make ingest-one` and `make backfill` run inside the worker container and make real
-network and (small) embedding calls. `make fetch-reranker` downloads from Hugging Face.
+`make ingest-one`, `make enrich-one` and `make backfill` run inside the worker container
+and make real network calls (`ingest-one` and `backfill` also small embedding calls). `make fetch-reranker` downloads from Hugging Face.
 `make eval-retrieval` makes no paid calls: it stops if a golden question has no cached
 embedding and prints what embedding it would cost; `EMBED=1` embeds those questions.
 
@@ -124,8 +127,10 @@ To look at the real data in a browser, start the stack (`make up`), then `pnpm d
 makes about six small OpenAI requests (about $0.001), and each search one embedding request.
 
 ### Browser test
-`make e2e` runs one Playwright test (`frontend/e2e/chat-citation.spec.ts`): ask a question,
-watch the answer stream in, open a citation, read the cited passage. It starts the Next
+`make e2e` runs two Playwright tests. `frontend/e2e/chat-citation.spec.ts`: ask a question,
+watch the answer stream in, open a citation, read the cited passage.
+`frontend/e2e/paper-page.spec.ts`: a paper page shows its analysis, code, Hugging Face
+models and datasets, and the three related-paper tabs (keyboard included). It starts the Next
 dev server (with `--webpack`) and a small **mock API** with invented data
 (`frontend/e2e/mock-api.ts`), and drives the Google Chrome that is already installed
 (Playwright `channel: "chrome"`, so no browser is downloaded). The mock API is reached

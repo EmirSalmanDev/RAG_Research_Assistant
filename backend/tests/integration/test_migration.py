@@ -14,7 +14,8 @@ pytestmark = pytest.mark.integration
 EXPECTED_TABLES = {
     "papers", "paper_texts", "paper_analyses", "chunks", "repos", "hf_artifacts",
     "citations", "interests", "library_items", "conversations", "messages",
-    "ingest_runs", "eval_items", "eval_runs", "eval_results", "llm_usage",
+    "ingest_runs", "eval_items", "eval_runs", "eval_results", "llm_usage", "analysis_batches",
+    "analysis_batch_items",
 }  # fmt: skip
 
 

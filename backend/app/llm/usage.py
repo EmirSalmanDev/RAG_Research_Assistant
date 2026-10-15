@@ -72,6 +72,18 @@ def chat_cost(tokens_in: int, tokens_out: int) -> Decimal:
     return cost.quantize(_MICRO_DOLLAR, ROUND_HALF_UP)
 
 
+def batch_cost(tokens_in: int, tokens_out: int) -> Decimal:
+    """USD for one Batch API request at the configured Batch prices (half the chat
+    prices). The Batch API reports each request's usage in its output file; this is
+    what `llm_usage.cost_usd` records for it."""
+    s = get_settings()
+    cost = (
+        Decimal(tokens_in) * Decimal(str(s.batch_price_in_per_1m))
+        + Decimal(tokens_out) * Decimal(str(s.batch_price_out_per_1m))
+    ) / 1_000_000
+    return cost.quantize(_MICRO_DOLLAR, ROUND_HALF_UP)
+
+
 # (feature, model, tokens_in, tokens_out) -> the cost written, so a caller can add it up.
 ChatUsageRecorder = Callable[[str, str, int, int], Decimal]
 

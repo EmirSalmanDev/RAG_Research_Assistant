@@ -8,7 +8,10 @@ import type { SearchParams } from "../search/params";
 export type {
   ChunkOut,
   PaperChunksOut,
+  PaperDetailsOut,
   PaperOut,
+  RelatedOut,
+  RelatedPaperOut,
   SearchHit,
   SearchResponse,
 } from "./endpoints";
@@ -19,5 +22,9 @@ export const fetchPaper = (arxivId: string) =>
   endpoints.fetchPaper(api, arxivId);
 export const fetchPaperChunks = (arxivId: string) =>
   endpoints.fetchPaperChunks(api, arxivId);
+export const fetchPaperDetails = (arxivId: string) =>
+  endpoints.fetchPaperDetails(api, arxivId);
+export const fetchPaperRelated = (arxivId: string) =>
+  endpoints.fetchPaperRelated(api, arxivId);
 export const fetchSearch = (params: SearchParams, signal?: AbortSignal) =>
   endpoints.fetchSearch(api, params, signal);

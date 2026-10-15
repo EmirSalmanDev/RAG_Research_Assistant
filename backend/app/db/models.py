@@ -24,6 +24,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -105,6 +106,9 @@ class PaperText(Base):
 
 
 class PaperAnalysis(Base):
+    """One analysis per paper (unique `arxiv_id`), replaced when a newer prompt version
+    analyses the paper again. Written by the Batch API collector (app/llm/batch.py)."""
+
     __tablename__ = "paper_analyses"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
@@ -116,6 +120,63 @@ class PaperAnalysis(Base):
     limitations: Mapped[str | None] = mapped_column(Text)
     model: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=_now())
+    prompt_version: Mapped[str | None] = mapped_column(Text)  # e.g. "analyze_v1" (rule 7)
+    batch_id: Mapped[int | None] = mapped_column(
+        ForeignKey("analysis_batches.id", ondelete="SET NULL"), index=True
+    )
+
+    __table_args__ = (UniqueConstraint("arxiv_id", name="uq_paper_analyses_arxiv_id"),)
+
+
+class AnalysisBatch(Base):
+    """One OpenAI Batch API job of paper analyses.
+
+    status: 'created' (our row exists, OpenAI does not know the batch yet), then OpenAI's
+    own status ('validating', 'in_progress', 'finalizing', 'completed', 'failed',
+    'expired', 'cancelling', 'cancelled'), then 'collected' once its results are stored.
+    No CHECK constraint: the values after 'created' are OpenAI's, not ours.
+    """
+
+    __tablename__ = "analysis_batches"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    openai_batch_id: Mapped[str | None] = mapped_column(Text, unique=True)
+    input_file_id: Mapped[str | None] = mapped_column(Text)
+    output_file_id: Mapped[str | None] = mapped_column(Text)
+    error_file_id: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(Text)
+    model: Mapped[str] = mapped_column(Text)
+    prompt_version: Mapped[str] = mapped_column(Text)
+    request_count: Mapped[int] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=_now())
+    submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    collected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    errors: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, default=dict, server_default=text("'{}'::jsonb")
+    )
+
+
+class AnalysisBatchItem(Base):
+    """One paper in a batch. status: 'pending' (queued; at most one per paper, by the
+    partial unique index), 'done' (analysis stored) or 'failed' (`error` says why)."""
+
+    __tablename__ = "analysis_batch_items"
+
+    batch_id: Mapped[int] = mapped_column(
+        ForeignKey("analysis_batches.id", ondelete="CASCADE"), primary_key=True
+    )
+    arxiv_id: Mapped[str] = mapped_column(_paper_fk(), primary_key=True)
+    status: Mapped[str] = mapped_column(Text, default="pending", server_default="pending")
+    error: Mapped[str | None] = mapped_column(Text)
+
+    __table_args__ = (
+        Index(
+            "uq_batch_items_one_pending",
+            "arxiv_id",
+            unique=True,
+            postgresql_where=text("status = 'pending'"),
+        ),
+    )
 
 
 class Chunk(Base):

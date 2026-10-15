@@ -68,11 +68,12 @@ def recorded_run(session: Session, source: str) -> Iterator[dict[str, Any]]:
 # --- the arXiv window ----------------------------------------------------------------------
 
 
-def last_cursor(session: Session) -> datetime | None:
-    """`counts["cursor"]` of the latest successful arXiv run (daily or backfill)."""
+def last_cursor(session: Session, sources: Sequence[str] = ARXIV_SOURCES) -> datetime | None:
+    """`counts["cursor"]` of the latest successful run of `sources` (by default the arXiv
+    runs, daily or backfill; the enrichment step keeps its own cursor the same way)."""
     runs = session.scalars(
         select(IngestRun)
-        .where(IngestRun.source.in_(ARXIV_SOURCES), IngestRun.finished_at.is_not(None))
+        .where(IngestRun.source.in_(sources), IngestRun.finished_at.is_not(None))
         .order_by(IngestRun.finished_at.desc())
     )
     for run in runs:

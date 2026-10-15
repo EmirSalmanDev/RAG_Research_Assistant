@@ -19,6 +19,10 @@ logger = logging.getLogger(__name__)
 BASE_URL = "https://huggingface.co"
 ArtifactKind = Literal["model", "dataset", "space"]
 _KIND_PATH: dict[ArtifactKind, str] = {"model": "models", "dataset": "datasets", "space": "spaces"}
+# The Hub's artifact search (`/api/models?filter=arxiv:<id>`, ...) can answer 504 for a
+# while; five attempts per kind then cost five requests for nothing. One retry is enough
+# (docs/adr/0008); the paper page and markdown keep the default five attempts.
+ARTIFACT_ATTEMPTS = 2
 
 
 class HFPaper(BaseModel):
@@ -62,10 +66,10 @@ class HFClient:
         self._limiter = limiter  # HF publishes no strict limit; calls are sequential anyway
         self._send_kwargs: dict[str, object] = {} if sleep is None else {"sleep": sleep}
 
-    def _get(self, url: str, **params: object) -> httpx.Response:
+    def _get(self, url: str, max_attempts: int = 5, **params: object) -> httpx.Response:
         return send(
-            self._http, "GET", url, limiter=self._limiter, params=params or None,
-            **self._send_kwargs,  # type: ignore[arg-type]
+            self._http, "GET", url, limiter=self._limiter, max_attempts=max_attempts,
+            params=params or None, **self._send_kwargs,  # type: ignore[arg-type]
         )  # fmt: skip
 
     def daily_papers(self, day: date) -> list[HFPaper]:
@@ -92,7 +96,10 @@ class HFClient:
 
     def artifacts(self, arxiv_id: str, kind: ArtifactKind) -> list[HFArtifact]:
         """Models, datasets or spaces that cite this paper (`filter=arxiv:<id>`)."""
-        resp = self._get(f"/api/{_KIND_PATH[kind]}", filter=f"arxiv:{arxiv_id}", limit=100)
+        resp = self._get(
+            f"/api/{_KIND_PATH[kind]}", max_attempts=ARTIFACT_ATTEMPTS,
+            filter=f"arxiv:{arxiv_id}", limit=100,
+        )  # fmt: skip
         resp.raise_for_status()
         return [
             HFArtifact(

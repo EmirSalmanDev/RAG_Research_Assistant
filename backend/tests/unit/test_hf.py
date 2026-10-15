@@ -4,6 +4,7 @@ import httpx
 import pytest
 
 from app.sources.hf import HFClient
+from app.sources.http import RetryableError
 from tests.helpers import mock_client
 
 
@@ -79,3 +80,14 @@ def test_server_errors_are_retried_then_raised() -> None:
     with pytest.raises(Exception, match="HTTP 500"):
         client.paper("2601.00001")
     assert len(calls) == 5
+
+
+def test_artifact_searches_get_two_attempts_and_the_paper_page_five() -> None:
+    client, seen = _hf(lambda r: httpx.Response(504))
+    with pytest.raises(RetryableError):
+        client.artifacts("2601.00001", "model")
+    assert len(seen) == 2  # one retry only (DP-D1)
+    seen.clear()
+    with pytest.raises(RetryableError):
+        client.paper("2601.00001")
+    assert len(seen) == 5  # the page keeps the default

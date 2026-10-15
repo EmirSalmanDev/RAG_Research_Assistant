@@ -1,6 +1,93 @@
 {
   "components": {
     "schemas": {
+      "AnalysisOut": {
+        "properties": {
+          "contributions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Contributions",
+            "type": "array"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "limitations": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Limitations"
+          },
+          "method": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Method"
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "prompt_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prompt Version"
+          },
+          "results": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Results"
+          },
+          "tldr": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tldr"
+          }
+        },
+        "required": [
+          "tldr",
+          "contributions",
+          "method",
+          "results",
+          "limitations",
+          "model",
+          "prompt_version",
+          "created_at"
+        ],
+        "title": "AnalysisOut",
+        "type": "object"
+      },
       "ChatRequest": {
         "properties": {
           "conversation_id": {
@@ -90,6 +177,60 @@
         "title": "ChunkOut",
         "type": "object"
       },
+      "HFArtifactOut": {
+        "properties": {
+          "downloads": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Downloads"
+          },
+          "likes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Likes"
+          },
+          "pipeline_tag": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pipeline Tag"
+          },
+          "repo_id": {
+            "title": "Repo Id",
+            "type": "string"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "repo_id",
+          "downloads",
+          "likes",
+          "pipeline_tag",
+          "url"
+        ],
+        "title": "HFArtifactOut",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -157,6 +298,72 @@
           "chunks"
         ],
         "title": "PaperChunksOut",
+        "type": "object"
+      },
+      "PaperDetailsOut": {
+        "properties": {
+          "analysis": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AnalysisOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "analysis_status": {
+            "enum": [
+              "available",
+              "queued",
+              "none"
+            ],
+            "title": "Analysis Status",
+            "type": "string"
+          },
+          "arxiv_id": {
+            "title": "Arxiv Id",
+            "type": "string"
+          },
+          "datasets": {
+            "items": {
+              "$ref": "#/components/schemas/HFArtifactOut"
+            },
+            "title": "Datasets",
+            "type": "array"
+          },
+          "models": {
+            "items": {
+              "$ref": "#/components/schemas/HFArtifactOut"
+            },
+            "title": "Models",
+            "type": "array"
+          },
+          "repos": {
+            "items": {
+              "$ref": "#/components/schemas/RepoOut"
+            },
+            "title": "Repos",
+            "type": "array"
+          },
+          "spaces": {
+            "items": {
+              "$ref": "#/components/schemas/HFArtifactOut"
+            },
+            "title": "Spaces",
+            "type": "array"
+          }
+        },
+        "required": [
+          "arxiv_id",
+          "analysis_status",
+          "analysis",
+          "repos",
+          "models",
+          "datasets",
+          "spaces"
+        ],
+        "title": "PaperDetailsOut",
         "type": "object"
       },
       "PaperOut": {
@@ -277,6 +484,168 @@
           "abs_url"
         ],
         "title": "PaperOut",
+        "type": "object"
+      },
+      "RelatedOut": {
+        "properties": {
+          "arxiv_id": {
+            "title": "Arxiv Id",
+            "type": "string"
+          },
+          "cited_by": {
+            "items": {
+              "$ref": "#/components/schemas/RelatedPaperOut"
+            },
+            "title": "Cited By",
+            "type": "array"
+          },
+          "cites": {
+            "items": {
+              "$ref": "#/components/schemas/RelatedPaperOut"
+            },
+            "title": "Cites",
+            "type": "array"
+          },
+          "similar": {
+            "items": {
+              "$ref": "#/components/schemas/RelatedPaperOut"
+            },
+            "title": "Similar",
+            "type": "array"
+          },
+          "similar_status": {
+            "enum": [
+              "ok",
+              "not_indexed",
+              "unavailable"
+            ],
+            "title": "Similar Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "arxiv_id",
+          "similar_status",
+          "similar",
+          "cites",
+          "cited_by"
+        ],
+        "title": "RelatedOut",
+        "type": "object"
+      },
+      "RelatedPaperOut": {
+        "properties": {
+          "abs_url": {
+            "title": "Abs Url",
+            "type": "string"
+          },
+          "arxiv_id": {
+            "title": "Arxiv Id",
+            "type": "string"
+          },
+          "held": {
+            "title": "Held",
+            "type": "boolean"
+          },
+          "published_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published At"
+          },
+          "score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          }
+        },
+        "required": [
+          "arxiv_id",
+          "title",
+          "published_at",
+          "held",
+          "score",
+          "abs_url"
+        ],
+        "title": "RelatedPaperOut",
+        "type": "object"
+      },
+      "RepoOut": {
+        "properties": {
+          "full_name": {
+            "title": "Full Name",
+            "type": "string"
+          },
+          "last_push": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Push"
+          },
+          "license": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "License"
+          },
+          "stars": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stars"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "full_name",
+          "stars",
+          "last_push",
+          "license",
+          "url"
+        ],
+        "title": "RepoOut",
         "type": "object"
       },
       "SearchHitOut": {
@@ -603,6 +972,98 @@
           }
         },
         "summary": "Paper Chunks"
+      }
+    },
+    "/papers/{arxiv_id}/details": {
+      "get": {
+        "description": "The paper page's analysis, code and Hugging Face sections (Postgres only).",
+        "operationId": "paper_details_papers__arxiv_id__details_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "arxiv_id",
+            "required": true,
+            "schema": {
+              "title": "Arxiv Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaperDetailsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Paper Details"
+      }
+    },
+    "/papers/{arxiv_id}/related": {
+      "get": {
+        "description": "The paper page's three related-paper tabs. `limit` caps \"similar\"; the citation\nlists hold up to 200 papers each.",
+        "operationId": "paper_related_papers__arxiv_id__related_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "arxiv_id",
+            "required": true,
+            "schema": {
+              "title": "Arxiv Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 10,
+              "maximum": 50,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RelatedOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Paper Related"
       }
     },
     "/search": {
