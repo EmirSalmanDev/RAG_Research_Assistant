@@ -140,3 +140,30 @@ still passes `chat-turn`), so the chat turn's six spans are unchanged.
 - Rule-10 retrieval evaluation is not owed: no file under `app/rag/search.py`, `rerank.py`,
   `retrieve.py`, `app/ingest/chunk.py` or `embed.py` changed. Nothing was tuned against the
   golden set.
+
+## Checks against the real data (2026-10-19)
+Two runs through the egress guard (`api.openai.com` only), then one real-browser pass; 8
+OpenAI requests in all, $0.0056, and the only rows written were in `llm_usage`.
+- Comparing the three full-text papers (1706.03762, 2609.24972, 1301.3781) on all six
+  dimensions: 1 embeddings request and 1 chat request each time (11,851 tokens in, 676 out,
+  $0.0022; the printed upper bound was 28,209 tokens in). 16 of the 19 citations pointed at
+  full-text passages and 3 at an abstract. First run: 18 of 18 cells cited. Second run, in the
+  browser: 17 of 18 cited and one cell (compute of 2609.24972) converted to "Not stated in the
+  sources." because the model returned text without a valid source, which is the rule working.
+- Every citation of the first run exists in `chunks`, belongs to its cell's paper, is never an
+  `analysis` chunk, and the text `GET /chunks/{id}` returns equals the stored text. In the
+  browser, one chip per paper column opened the side panel and the panel text equalled
+  `chunks.text` byte for byte (three chips, including an abstract chip).
+- A citation that resolves does not always support the claim. The "limitations" cells of
+  1706.03762 and 1301.3781 restate a motivation ("RNNs struggled in small-data regimes",
+  "previous architectures struggled with larger datasets") as a limitation of the paper: the
+  cited passage is real, the reading is wrong. The code cannot catch this; the reader can, by
+  opening the chip. A later prompt version should tell the model to leave a cell unstated
+  when the passage only describes motivation.
+- The topic "transformer attention mechanisms": 30 papers from 2017-06-12 to 2026-10-01 (a year
+  axis), 8 key papers, 8 of 8 lines written by the model, none replaced. A citation count is
+  known for 1 of the 30 papers (3 of 6,653 in the database), so the key papers are chosen
+  almost only by their match to the topic.
+- Not captured: the guard's own log of the browser run (the proof container was started with
+  `--rm`, which removes its log when it stops). The four `llm_usage` rows of that run
+  (2 embeddings, 2 chat) are the evidence of what it sent.
