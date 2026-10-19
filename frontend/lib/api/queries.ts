@@ -7,6 +7,13 @@ import type { SearchParams } from "../search/params";
 
 export type {
   ChunkOut,
+  DigestEntryOut,
+  DigestOut,
+  EntryAction,
+  InterestIn,
+  InterestOut,
+  SettingsIn,
+  SettingsOut,
   PaperChunksOut,
   PaperDetailsOut,
   PaperOut,
@@ -28,3 +35,18 @@ export const fetchPaperRelated = (arxivId: string) =>
   endpoints.fetchPaperRelated(api, arxivId);
 export const fetchSearch = (params: SearchParams, signal?: AbortSignal) =>
   endpoints.fetchSearch(api, params, signal);
+export const fetchDigest = (date?: string) => endpoints.fetchDigest(api, date);
+export const actOnEntry = (
+  action: endpoints.EntryAction,
+  date: string,
+  arxivId: string,
+) => endpoints.actOnEntry(api, action, date, arxivId);
+export const fetchInterests = () => endpoints.fetchInterests(api);
+export const createInterest = (body: endpoints.InterestIn) =>
+  endpoints.createInterest(api, body);
+export const updateInterest = (id: number, body: endpoints.InterestIn) =>
+  endpoints.updateInterest(api, id, body);
+export const deleteInterest = (id: number) => endpoints.deleteInterest(api, id);
+export const fetchSettings = () => endpoints.fetchSettings(api);
+export const saveSettings = (body: endpoints.SettingsIn) =>
+  endpoints.saveSettings(api, body);

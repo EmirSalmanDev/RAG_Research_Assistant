@@ -13,6 +13,14 @@ import {
   fetchPaperDetails,
   fetchPaperRelated,
   fetchSearch,
+  actOnEntry,
+  createInterest,
+  deleteInterest,
+  fetchDigest,
+  fetchInterests,
+  fetchSettings,
+  saveSettings,
+  updateInterest,
 } from "./endpoints.ts";
 import type { paths } from "./schema";
 
@@ -193,4 +201,143 @@ test("paper details and related papers ask the right paths; 404 is an ApiError",
     (err) => err instanceof ApiError && err.status === 404,
   );
   assert.equal(calls.length, 3, "one request each, no retries");
+});
+
+// --- digest, interests and settings -----------------------------------------------------
+
+test("digest: the date is sent only when given", async () => {
+  const body = {
+    requested_date: "2026-10-19",
+    digest_date: null,
+    is_fallback: false,
+    has_interests: false,
+    recent_dates: [],
+    entries: [],
+  };
+  const { client, calls } = mocked(() => Response.json(body));
+  assert.deepEqual(await fetchDigest(client), body);
+  await fetchDigest(client, "2026-10-17");
+  assert.equal(calls[0].method, "GET");
+  assert.equal(calls[0].url.pathname, "/api/digest");
+  assert.equal(calls[0].url.search, "");
+  assert.equal(calls[1].url.searchParams.get("date"), "2026-10-17");
+});
+
+test("save, dismiss and undo are POSTs to their own path with the digest date", async () => {
+  const { client, calls } = mocked(() =>
+    Response.json({ arxiv_id: "2610.00001", status: "saved" }),
+  );
+  await actOnEntry(client, "save", "2026-10-19", "2610.00001");
+  await actOnEntry(client, "dismiss", "2026-10-19", "2610.00001");
+  await actOnEntry(client, "undo", "2026-10-19", "2610.00001");
+  assert.deepEqual(
+    calls.map((c) => [
+      c.method,
+      c.url.pathname,
+      c.url.searchParams.get("date"),
+    ]),
+    [
+      ["POST", "/api/digest/2610.00001/save", "2026-10-19"],
+      ["POST", "/api/digest/2610.00001/dismiss", "2026-10-19"],
+      ["POST", "/api/digest/2610.00001/undo", "2026-10-19"],
+    ],
+  );
+});
+
+test("an action on an entry that is not in the digest is an ApiError with the status", async () => {
+  const { client } = mocked(() =>
+    Response.json(
+      { detail: "that paper is not in this digest" },
+      { status: 404 },
+    ),
+  );
+  await assert.rejects(
+    actOnEntry(client, "save", "2026-10-19", "2610.99999"),
+    (error: unknown) =>
+      error instanceof ApiError &&
+      error.status === 404 &&
+      /not in this digest/.test(error.message),
+  );
+});
+
+test("interests: create, update, delete and list use the right verbs and bodies", async () => {
+  const row = { id: 3, name: "Alpha" };
+  const { client, calls } = mocked((url) =>
+    url.pathname === "/api/interests/3" && calls.at(-1)?.method === "DELETE"
+      ? new Response(null, { status: 204 })
+      : Response.json(
+          url.pathname === "/api/interests" && calls.at(-1)?.method === "GET"
+            ? [row]
+            : row,
+        ),
+  );
+  const body = {
+    name: "Alpha",
+    description: null,
+    keywords: ["a"],
+    categories: [],
+    is_active: true,
+  };
+  assert.deepEqual(await createInterest(client, body), row);
+  await updateInterest(client, 3, body);
+  await deleteInterest(client, 3);
+  await fetchInterests(client);
+  assert.deepEqual(
+    calls.map((c) => [c.method, c.url.pathname]),
+    [
+      ["POST", "/api/interests"],
+      ["PUT", "/api/interests/3"],
+      ["DELETE", "/api/interests/3"],
+      ["GET", "/api/interests"],
+    ],
+  );
+});
+
+test("a duplicate interest name shows the server's sentence", async () => {
+  const { client } = mocked(() =>
+    Response.json(
+      { detail: "an interest with this name exists" },
+      { status: 409 },
+    ),
+  );
+  await assert.rejects(
+    createInterest(client, {
+      name: "Alpha",
+      description: null,
+      keywords: [],
+      categories: [],
+      is_active: true,
+    }),
+    (error: unknown) =>
+      error instanceof ApiError &&
+      error.status === 409 &&
+      error.message === "an interest with this name exists",
+  );
+});
+
+test("settings: read and save", async () => {
+  const settings = {
+    digest_size: 20,
+    categories: ["cs.CL"],
+    categories_default: ["cs.CL"],
+    categories_overridden: false,
+    fulltext_top_n: 20,
+    budget_cap_usd: null,
+    month_to_date_usd: 0.5,
+  };
+  const { client, calls } = mocked(() => Response.json(settings));
+  assert.deepEqual(await fetchSettings(client), settings);
+  await saveSettings(client, {
+    digest_size: 5,
+    fulltext_top_n: 5,
+    categories: [],
+    budget_cap_usd: null,
+  });
+  assert.deepEqual(
+    calls.map((c) => [c.method, c.url.pathname]),
+    [
+      ["GET", "/api/settings"],
+      ["PUT", "/api/settings"],
+    ],
+  );
 });
