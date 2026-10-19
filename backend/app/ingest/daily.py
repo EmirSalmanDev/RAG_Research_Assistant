@@ -24,8 +24,8 @@ from typing import Any, Protocol
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
-from app.config import get_settings
 from app.db.models import IngestRun, Paper
+from app.features import app_settings
 from app.ingest.paper import upsert_paper
 from app.sources.arxiv import ArxivPaper
 from app.sources.hf import HFPaper
@@ -120,9 +120,11 @@ def fetch_arxiv_window(
     *,
     max_papers: int = DEFAULT_MAX_PAPERS,
 ) -> dict[str, Any]:
-    """Fetch and store one window. Returns counts, with the window and the new cursor."""
+    """Fetch and store one window. Returns counts, with the window and the new cursor.
+    The categories are the ones saved on the settings page, else the config list; a
+    category added there is fetched from now on (older papers are not backfilled)."""
     papers = arxiv.updated_papers(
-        get_settings().arxiv_categories, since, until, max_papers=max_papers
+        app_settings.arxiv_categories(session), since, until, max_papers=max_papers
     )
     counts: dict[str, Any] = {"fetched": len(papers), **store_papers(session, papers)}
     counts.update(since=since.isoformat(), until=until.isoformat(), cursor=until.isoformat())

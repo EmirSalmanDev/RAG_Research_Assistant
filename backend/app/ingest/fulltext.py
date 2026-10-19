@@ -17,6 +17,7 @@ as data and may only enter prompts inside delimited data blocks.
 import logging
 from collections.abc import Sequence
 from dataclasses import dataclass, field
+from datetime import UTC, datetime, timedelta
 from typing import Literal, Protocol
 
 from bs4 import BeautifulSoup
@@ -25,7 +26,8 @@ from sqlalchemy import exists, func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
-from app.db.models import LibraryItem, Paper, PaperText
+from app.config import get_settings
+from app.db.models import DigestEntry, LibraryItem, Paper, PaperText
 
 logger = logging.getLogger(__name__)
 
@@ -311,10 +313,20 @@ def request_fulltext(session: Session, arxiv_id: str) -> None:
     paper.fulltext_status = "requested"
 
 
-def select_for_fulltext(session: Session) -> Sequence[str]:
-    """Papers that need (new) full text: in the library or requested by hand, and with no
-    stored text or text of an older version. 'failed' papers are left out (no automatic
-    retry); a manual request resets them to 'requested'."""
+def select_for_fulltext(
+    session: Session, *, top_n: int = 0, now: datetime | None = None
+) -> Sequence[str]:
+    """Papers that need (new) full text: first those in the library or requested by hand,
+    then (when `top_n` > 0) the best papers by `relevance_score`. A paper is left out when
+    it has stored text of its current version. 'failed' papers are left out too (no
+    automatic retry; a manual request resets them to 'requested'), and so are
+    'unavailable' ones among the top N (no source had text, and retrying every night
+    would only repeat the downloads).
+
+    The top N are the N best-scored papers of the digest window (published within
+    `digest_window_days`, never a dismissed one), so each night only the papers that newly
+    entered the top N cost a download. Selection only: nothing is fetched here.
+    """
     has_current_text = exists().where(
         PaperText.arxiv_id == Paper.arxiv_id, PaperText.version >= Paper.version
     )
@@ -326,4 +338,36 @@ def select_for_fulltext(session: Session) -> Sequence[str]:
         .where(~has_current_text)
         .order_by(Paper.arxiv_id)
     )
-    return session.scalars(query).all()
+    chosen = list(session.scalars(query).all())
+    if top_n > 0:
+        taken = set(chosen)
+        chosen += [i for i in _top_by_relevance(session, top_n, now) if i not in taken]
+    return chosen
+
+
+def _top_by_relevance(session: Session, top_n: int, now: datetime | None) -> list[str]:
+    """The top `top_n` scored papers of the window that still need text, best first
+    (ties: newer first, then arXiv id)."""
+    start = (now or datetime.now(UTC)) - timedelta(days=get_settings().digest_window_days)
+    dismissed = exists().where(
+        DigestEntry.arxiv_id == Paper.arxiv_id, DigestEntry.status == "dismissed"
+    )
+    top = session.execute(
+        select(Paper.arxiv_id, Paper.fulltext_status)
+        .where(Paper.relevance_score.is_not(None), Paper.published_at >= start, ~dismissed)
+        .order_by(Paper.relevance_score.desc(), Paper.published_at.desc(), Paper.arxiv_id)
+        .limit(top_n)
+    ).all()
+    has_current_text = exists().where(
+        PaperText.arxiv_id == Paper.arxiv_id, PaperText.version >= Paper.version
+    )
+    holding_text = set(
+        session.scalars(
+            select(Paper.arxiv_id).where(Paper.arxiv_id.in_([r[0] for r in top]), has_current_text)
+        )
+    )
+    return [
+        arxiv_id
+        for arxiv_id, status in top
+        if arxiv_id not in holding_text and status not in ("failed", "unavailable")
+    ]

@@ -41,12 +41,14 @@ class FakeArxiv:
     def __init__(self, window: list[ArxivPaper], by_id: dict[str, ArxivPaper] | None = None):
         self.window, self.by_id = window, by_id or {}
         self.calls: list[tuple[datetime, datetime | None]] = []
+        self.categories: list[list[str]] = []
         self.id_requests: list[list[str]] = []
 
     def updated_papers(self, categories: Sequence[str], since: datetime,
                        until: datetime | None = None, page_size: int = 100,
                        max_papers: int = 20_000) -> list[ArxivPaper]:  # fmt: skip
         self.calls.append((since, until))
+        self.categories.append(list(categories))
         return self.window[:max_papers]
 
     def get_papers(self, arxiv_ids: Sequence[str]) -> list[ArxivPaper]:
@@ -249,3 +251,26 @@ def test_select_fulltext_starts_one_chain_per_selected_paper(
     monkeypatch.setattr(tasks, "paper_chain", Started)
     assert tasks.select_fulltext.run()["selected"] == 1
     assert started == ["2609.00002"]
+
+
+def test_the_fetch_uses_the_categories_saved_on_the_settings_page(
+    migrated_session: Session,
+) -> None:
+    from app.config import get_settings
+    from app.features import app_settings
+
+    s = migrated_session
+    arxiv = FakeArxiv([])
+    daily.fetch_arxiv_daily(s, arxiv, NOW)
+    assert arxiv.categories[-1] == get_settings().arxiv_categories  # nothing saved: config
+
+    app_settings.save(s, {"categories": ["cs.CV", "stat.ML"]})
+    s.commit()
+    daily.fetch_arxiv_daily(s, arxiv, NOW)
+    assert arxiv.categories[-1] == ["cs.CV", "stat.ML"]  # the override, no backfill is done
+    assert len(arxiv.calls) == 2 and arxiv.calls[1][0] == arxiv.calls[1][1] - timedelta(days=4)  # type: ignore[operator]
+
+    app_settings.save(s, {"categories": None})  # cleared: back to the config list
+    s.commit()
+    daily.fetch_arxiv_daily(s, arxiv, NOW)
+    assert arxiv.categories[-1] == get_settings().arxiv_categories

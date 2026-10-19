@@ -3,8 +3,10 @@
 duplicated here).
 
 The daily chain (Beat, 07:00 Europe/Istanbul):
-    fetch_arxiv -> fetch_hf_daily -> index_abstracts -> enrich_new -> select_fulltext
-and `select_fulltext` starts, for every selected paper, its own chain:
+    fetch_arxiv -> fetch_hf_daily -> index_abstracts -> enrich_new -> score_relevance
+    -> select_fulltext
+(`score_relevance` is in app/features/tasks.py; the digest is built by its own Beat entry
+at 08:00) and `select_fulltext` starts, for every selected paper, its own chain:
     fetch_fulltext -> clean_paper -> chunk_paper -> embed_paper
 
 Rules every task follows:
@@ -114,12 +116,16 @@ def enrich_new() -> dict[str, Any]:
 
 @celery_app.task(name="ingest.select_fulltext", **RETRY_OPTIONS)
 def select_fulltext() -> dict[str, Any]:
-    """Start one full-text chain per selected paper (library or requested)."""
+    """Start one full-text chain per selected paper: in the library, requested by hand, or
+    among the `fulltext_top_n` best by relevance."""
+    from app.features import app_settings
+
     with session_scope() as session, daily.recorded_run(session, "select-fulltext") as counts:
-        selected = list(select_for_fulltext(session))
+        top_n = app_settings.load(session).fulltext_top_n
+        selected = list(select_for_fulltext(session, top_n=top_n))
         for arxiv_id in selected:
             paper_chain(arxiv_id).apply_async()
-        counts.update(selected=len(selected), arxiv_ids=selected[:50])
+        counts.update(selected=len(selected), top_n=top_n, arxiv_ids=selected[:50])
     return counts
 
 
@@ -138,6 +144,7 @@ def daily_chain() -> Signature:
         fetch_hf_daily.si(),
         index_abstracts.si(),
         enrich_new.si(),
+        celery_app.signature("digest.score_relevance", immutable=True),  # by name: no import cycle
         select_fulltext.si(),
     )
 

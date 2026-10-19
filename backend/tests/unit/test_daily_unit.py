@@ -9,6 +9,7 @@ from urllib.parse import parse_qs, urlparse
 import pytest
 from celery.schedules import crontab
 
+from app.features import tasks as digest_tasks
 from app.ingest import cli, daily, tasks
 from app.sources.arxiv import ArxivClient
 from app.worker.celery_app import celery_app
@@ -96,6 +97,7 @@ def test_daily_chain_order_with_immutable_signatures() -> None:
         ("ingest.fetch_hf_daily", (), True),
         ("ingest.index_abstracts", (), True),
         ("ingest.enrich_new", (), True),
+        ("digest.score_relevance", (), True),  # score before the top-N selection reads scores
         ("ingest.select_fulltext", (), True),
     ]
 
@@ -114,6 +116,17 @@ def test_beat_runs_the_daily_pipeline_at_7_istanbul_time() -> None:
     assert entry["task"] == "ingest.daily_pipeline"
     assert entry["schedule"] == crontab(hour=7, minute=0)
     assert celery_app.conf.timezone == "Europe/Istanbul"
+
+
+def test_beat_builds_the_digest_at_8_istanbul_time_after_the_7_o_clock_chain() -> None:
+    schedule = celery_app.conf.beat_schedule
+    assert schedule["digest-build"]["task"] == "digest.build"
+    assert schedule["digest-build"]["schedule"] == crontab(hour=8, minute=0)
+    assert digest_tasks.build_digest.name == "digest.build"  # importing registers the tasks
+    assert {"digest.build", "digest.score_relevance"} <= set(celery_app.tasks)
+    # the entry names a registered task, and its time is read in Istanbul time
+    assert celery_app.conf.timezone == "Europe/Istanbul"
+    assert schedule["daily-ingest"]["schedule"] == crontab(hour=7, minute=0)
 
 
 def test_beat_submits_analyses_daily_and_collects_every_30_minutes() -> None:
