@@ -8,13 +8,15 @@ Conventions:
 """
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     CheckConstraint,
+    Date,
     DateTime,
     Float,
     ForeignKey,
@@ -26,7 +28,7 @@ from sqlalchemy import (
     func,
     text,
 )
-from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB, REAL, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -231,6 +233,14 @@ class Citation(Base):
 
 
 class Interest(Base):
+    """A topic the owner follows. The digest ranks papers against the active ones.
+
+    `weight` starts at 1.0 and is nudged by Save and Dismiss (app/features/digest.py).
+    `embedding` is made by the scoring task, never by an API request: it embeds
+    name + description + keywords and records the model and a hash of that text, so
+    editing the text triggers a new embedding (app/features/relevance.py).
+    """
+
     __tablename__ = "interests"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -238,6 +248,64 @@ class Interest(Base):
     description: Mapped[str | None] = mapped_column(Text)
     keywords: Mapped[list[str]] = mapped_column(ARRAY(Text), default=list)
     categories: Mapped[list[str]] = mapped_column(ARRAY(Text), default=list)
+    weight: Mapped[float] = mapped_column(Float, default=1.0, server_default="1.0")
+    embedding: Mapped[list[float] | None] = mapped_column(ARRAY(REAL))
+    embedding_model: Mapped[str | None] = mapped_column(Text)
+    embedding_hash: Mapped[str | None] = mapped_column(Text)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("true"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=_now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=_now(), onupdate=_now()
+    )
+
+
+class AppSetting(Base):
+    """Settings the owner edits on /settings: key -> JSON value. A missing key means the
+    default from app/config.py (see app/features/app_settings.py for the keys)."""
+
+    __tablename__ = "app_settings"
+
+    key: Mapped[str] = mapped_column(Text, primary_key=True)
+    value: Mapped[Any] = mapped_column(JSONB)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=_now(), onupdate=_now()
+    )
+
+
+# digest_entries.status: new (not acted on), saved or dismissed.
+DIGEST_STATUSES = ("new", "saved", "dismissed")
+
+
+class DigestEntry(Base):
+    """One paper in one day's digest. `digest_date` is the Europe/Istanbul date.
+
+    `weight_delta` is the exact change this entry's Save or Dismiss made to the weight of
+    `best_interest_id` (0 when new, or when the weight was already at its limit), so that
+    Undo can reverse exactly that amount.
+    """
+
+    __tablename__ = "digest_entries"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    digest_date: Mapped[date] = mapped_column(Date)
+    arxiv_id: Mapped[str] = mapped_column(_paper_fk(), index=True)
+    rank: Mapped[int] = mapped_column(Integer)  # 1 = best
+    score: Mapped[float] = mapped_column(Float)
+    best_interest_id: Mapped[int | None] = mapped_column(
+        ForeignKey("interests.id", ondelete="SET NULL"), index=True
+    )
+    status: Mapped[str] = mapped_column(Text, default="new", server_default="new")
+    weight_delta: Mapped[float] = mapped_column(Float, default=0.0, server_default="0")
+    actioned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=_now())
+
+    __table_args__ = (
+        UniqueConstraint("digest_date", "arxiv_id", name="uq_digest_entries_digest_date_arxiv_id"),
+        CheckConstraint(
+            "status IN (" + ", ".join(f"'{s}'" for s in DIGEST_STATUSES) + ")",
+            name="status",
+        ),
+    )
 
 
 class LibraryItem(Base):

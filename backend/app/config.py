@@ -108,6 +108,30 @@ class Settings(BaseSettings):
     # The scheduled daily submission spends money, so it is off until the owner turns it on.
     analysis_auto_submit: bool = False
 
+    # --- Daily digest (docs/adr/0009) ------------------------------------------------
+    # The settings page can override digest_size, the categories, fulltext_top_n and the
+    # budget cap (table app_settings); these are the defaults when nothing is stored.
+    digest_size: int = 20  # papers in one day's digest
+    digest_window_days: int = 7  # only papers published within this many days are candidates
+    digest_trending_upvotes: int = 10  # hf_upvotes at or above this show a "trending" badge
+    digest_timezone: str = "Europe/Istanbul"  # a digest's date is the date in this zone
+    digest_summary_max_chars: int = 200  # fallback card summary: first sentence, cut here
+    fulltext_top_n: int = 20  # top papers by relevance that get full text each night
+    # Relevance score of a paper against one interest i (app/features/relevance.py):
+    #   w_i * (cosine_weight * cos + keyword_weight * keyword_share) + category_bonus * match
+    # and the paper's score is the best interest's value plus the upvote boost.
+    relevance_cosine_weight: float = 0.8
+    relevance_keyword_weight: float = 0.2
+    relevance_category_bonus: float = 0.05
+    relevance_upvote_boost: float = 0.05  # largest boost; reached at relevance_upvote_cap
+    relevance_upvote_cap: int = 100  # upvotes at which the boost stops growing (log scale)
+    # Feedback: Save and Dismiss nudge the weight of the paper's best interest.
+    interest_save_delta: float = 0.10
+    interest_dismiss_delta: float = -0.05
+    interest_weight_min: float = 0.5
+    interest_weight_max: float = 2.0
+    interest_weight_decimals: int = 6  # weights are rounded so that Undo returns exactly
+
     @field_validator(
         "openai_api_key", "langfuse_public_key", "langfuse_secret_key", "github_token",
         "s2_api_key", mode="before",
