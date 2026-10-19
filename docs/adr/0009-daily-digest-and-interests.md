@@ -100,6 +100,20 @@ digest size, full-text papers per night, categories and budget cap with the mont
 spend. The form rules are mirrored in plain TypeScript (`lib/settings/form.ts`) so they
 are unit-tested without a browser.
 
+## Checked against the real data
+On 2026-10-19, against the real stores (6,653 papers, 6,773 chunks): migration 0005 was
+applied once (every row count and the Qdrant point count unchanged), four demo interests
+were added, and the digest was built through `make digest`'s code path. The newest stored
+paper is from 2026-10-01, so the 7-day window of 2026-10-19 is empty (a dry run for that
+date reported no candidates); the digest was built for 2026-10-02 instead, whose window
+holds 3,941 papers. Embedding the four interests took one request of 164 tokens
+($0.000003). The 20 entries are plausible: the top two are retrieval-augmented generation
+papers, and each interest is the best match of between three and eight entries. A browser
+pass over `/` and `/settings` through an API with its outgoing traffic switched off saved
+one card, dismissed another and undid both, and the interest weights came back to exactly
+1.0. These checks show that the chain works on real vectors; they say nothing about the
+quality of the ranking beyond that sanity check, and the scoring was not tuned.
+
 ## Deviations from the original design
 - DEVIATION PROPOSAL (pre-accepted by owner in this prompt): the card's one-line summary
   is the stored analysis TL;DR when there is one, else the abstract's first sentence cut
