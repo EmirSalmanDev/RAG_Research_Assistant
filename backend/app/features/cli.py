@@ -42,6 +42,10 @@ def main(argv: list[str] | None = None) -> int:
 
 def _run(args: argparse.Namespace) -> int:
     now = datetime.now(UTC)
+    day = args.date or digest.today_in_zone(now)
+    # For a past date the score step and the selection preview look at the window that
+    # date could see, like the digest build itself.
+    reference = digest.reference_time(day, now)
     vectors = digest.QdrantAbstractVectors()
     with session_scope() as session:
         report: dict[str, object] = {}
@@ -53,14 +57,14 @@ def _run(args: argparse.Namespace) -> int:
             )
             session.commit()  # the embedding request is paid: keep its result
         if not args.dry_run:
-            report["score"] = digest.score_window(session, vectors, now)
+            report["score"] = digest.score_window(session, vectors, reference)
         result = digest.build_digest(
-            session, vectors, digest_date=args.date, now=now, rebuild=args.rebuild,
+            session, vectors, digest_date=day, now=now, rebuild=args.rebuild,
             dry_run=args.dry_run,
         )  # fmt: skip
         report["digest"] = result.counts()
         top_n = app_settings.load(session).fulltext_top_n
-        selection = list(select_for_fulltext(session, top_n=top_n, now=now))
+        selection = list(select_for_fulltext(session, top_n=top_n, now=reference))
         report["fulltext_selection_would_pick"] = {"top_n": top_n, "arxiv_ids": selection}
         print(json.dumps(report, indent=2, default=str))
         for entry in result.entries[:20]:

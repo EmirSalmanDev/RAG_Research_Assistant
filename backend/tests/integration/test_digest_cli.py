@@ -2,7 +2,7 @@
 a fake embedder: a dry run writes and requests nothing; a real run builds the digest."""
 
 import json
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from sqlalchemy import select
@@ -66,3 +66,26 @@ def test_a_real_run_embeds_scores_builds_and_lists_the_selection(
     assert cli.main(["--no-embed"]) == 0  # a second run: the digest exists, nothing changes
     assert len(dense.calls) == 1
     assert "exists" in capsys.readouterr().out
+
+
+def test_a_past_date_scores_and_previews_the_window_that_date_could_see(
+    migrated_session: Session, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Newest paper 20 days old: today's window is empty, but `--date` a few days after the
+    paper looks at the window of that day, for the score step and the selection preview."""
+    s = migrated_session
+    now = datetime.now(UTC)
+    make_paper(s, "2610.00001", age_days=20, now=now)
+    make_paper(s, "2610.00002", age_days=22, now=now)
+    vectors = FakeVectors()
+    monkeypatch.setattr(digest, "QdrantAbstractVectors", lambda *a, **k: vectors)
+    monkeypatch.setattr(cli, "close_qdrant", lambda: None)
+
+    day = (now - timedelta(days=18)).astimezone(digest.digest_zone()).date()
+    assert cli.main(["--no-embed", "--date", str(day)]) == 0
+    out = capsys.readouterr().out
+    report = json.loads(out[: out.index("\n}\n") + 2])
+    assert report["score"]["papers"] == 2  # not today's empty window
+    assert report["digest"]["entries"] == 2 and report["digest"]["digest_date"] == str(day)
+    assert report["fulltext_selection_would_pick"]["arxiv_ids"] == ["2610.00001", "2610.00002"]
+    assert all(p.relevance_score is not None for p in s.scalars(select(Paper)))

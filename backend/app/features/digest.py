@@ -97,7 +97,7 @@ def today_in_zone(now: datetime | None = None) -> date:
     return (now or datetime.now(UTC)).astimezone(digest_zone()).date()
 
 
-def _reference_time(digest_date: date, now: datetime) -> datetime:
+def reference_time(digest_date: date, now: datetime) -> datetime:
     """The moment a digest is built "as of": now for today's digest, the end of that day
     for an earlier date (so `--date` rebuilds a past day from the papers it could see)."""
     end_of_day = datetime.combine(digest_date + timedelta(days=1), time.min, tzinfo=digest_zone())
@@ -297,7 +297,7 @@ def build_digest(
         )
     )
     interests = _interest_vectors(active_interests(session))
-    papers = [p for p in window_papers(session, _reference_time(digest_date, now))
+    papers = [p for p in window_papers(session, reference_time(digest_date, now))
               if p.arxiv_id not in excluded]  # fmt: skip
     run = score_papers(papers, interests, vectors)
     ranked = sorted(
