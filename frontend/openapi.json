@@ -88,6 +88,24 @@
         "title": "AnalysisOut",
         "type": "object"
       },
+      "BestInterestOut": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "BestInterestOut",
+        "type": "object"
+      },
       "ChatRequest": {
         "properties": {
           "conversation_id": {
@@ -175,6 +193,172 @@
           "abs_url"
         ],
         "title": "ChunkOut",
+        "type": "object"
+      },
+      "DigestEntryOut": {
+        "properties": {
+          "abs_url": {
+            "title": "Abs Url",
+            "type": "string"
+          },
+          "arxiv_id": {
+            "title": "Arxiv Id",
+            "type": "string"
+          },
+          "author_count": {
+            "title": "Author Count",
+            "type": "integer"
+          },
+          "authors": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Authors",
+            "type": "array"
+          },
+          "best_interest": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BestInterestOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "categories": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Categories",
+            "type": "array"
+          },
+          "hf_upvotes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hf Upvotes"
+          },
+          "published_at": {
+            "format": "date-time",
+            "title": "Published At",
+            "type": "string"
+          },
+          "rank": {
+            "title": "Rank",
+            "type": "integer"
+          },
+          "score": {
+            "title": "Score",
+            "type": "number"
+          },
+          "status": {
+            "enum": [
+              "new",
+              "saved",
+              "dismissed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          },
+          "summary_source": {
+            "enum": [
+              "analysis",
+              "abstract"
+            ],
+            "title": "Summary Source",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "trending": {
+            "title": "Trending",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "arxiv_id",
+          "rank",
+          "score",
+          "status",
+          "title",
+          "authors",
+          "author_count",
+          "categories",
+          "published_at",
+          "hf_upvotes",
+          "trending",
+          "best_interest",
+          "summary",
+          "summary_source",
+          "abs_url"
+        ],
+        "title": "DigestEntryOut",
+        "type": "object"
+      },
+      "DigestOut": {
+        "properties": {
+          "digest_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Digest Date"
+          },
+          "entries": {
+            "items": {
+              "$ref": "#/components/schemas/DigestEntryOut"
+            },
+            "title": "Entries",
+            "type": "array"
+          },
+          "has_interests": {
+            "title": "Has Interests",
+            "type": "boolean"
+          },
+          "is_fallback": {
+            "title": "Is Fallback",
+            "type": "boolean"
+          },
+          "recent_dates": {
+            "items": {
+              "format": "date",
+              "type": "string"
+            },
+            "title": "Recent Dates",
+            "type": "array"
+          },
+          "requested_date": {
+            "format": "date",
+            "title": "Requested Date",
+            "type": "string"
+          }
+        },
+        "required": [
+          "requested_date",
+          "digest_date",
+          "is_fallback",
+          "has_interests",
+          "recent_dates",
+          "entries"
+        ],
+        "title": "DigestOut",
         "type": "object"
       },
       "HFArtifactOut": {
@@ -277,6 +461,128 @@
           "redis"
         ],
         "title": "HealthResponse",
+        "type": "object"
+      },
+      "InterestIn": {
+        "properties": {
+          "categories": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 30,
+            "title": "Categories",
+            "type": "array"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "is_active": {
+            "default": true,
+            "title": "Is Active",
+            "type": "boolean"
+          },
+          "keywords": {
+            "items": {
+              "maxLength": 60,
+              "type": "string"
+            },
+            "maxItems": 30,
+            "title": "Keywords",
+            "type": "array"
+          },
+          "name": {
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "InterestIn",
+        "type": "object"
+      },
+      "InterestOut": {
+        "properties": {
+          "categories": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Categories",
+            "type": "array"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "embedded": {
+            "title": "Embedded",
+            "type": "boolean"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "is_active": {
+            "title": "Is Active",
+            "type": "boolean"
+          },
+          "keywords": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Keywords",
+            "type": "array"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "weight": {
+            "title": "Weight",
+            "type": "number"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "description",
+          "keywords",
+          "categories",
+          "is_active",
+          "weight",
+          "embedded",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "InterestOut",
         "type": "object"
       },
       "PaperChunksOut": {
@@ -741,6 +1047,105 @@
         "title": "SearchResponse",
         "type": "object"
       },
+      "SettingsIn": {
+        "properties": {
+          "budget_cap_usd": {
+            "anyOf": [
+              {
+                "maximum": 100000.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Budget Cap Usd"
+          },
+          "categories": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 30,
+            "title": "Categories",
+            "type": "array"
+          },
+          "digest_size": {
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Digest Size",
+            "type": "integer"
+          },
+          "fulltext_top_n": {
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Fulltext Top N",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "digest_size",
+          "fulltext_top_n"
+        ],
+        "title": "SettingsIn",
+        "type": "object"
+      },
+      "SettingsOut": {
+        "properties": {
+          "budget_cap_usd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Budget Cap Usd"
+          },
+          "categories": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Categories",
+            "type": "array"
+          },
+          "categories_default": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Categories Default",
+            "type": "array"
+          },
+          "categories_overridden": {
+            "title": "Categories Overridden",
+            "type": "boolean"
+          },
+          "digest_size": {
+            "title": "Digest Size",
+            "type": "integer"
+          },
+          "fulltext_top_n": {
+            "title": "Fulltext Top N",
+            "type": "integer"
+          },
+          "month_to_date_usd": {
+            "title": "Month To Date Usd",
+            "type": "number"
+          }
+        },
+        "required": [
+          "digest_size",
+          "categories",
+          "categories_default",
+          "categories_overridden",
+          "fulltext_top_n",
+          "budget_cap_usd",
+          "month_to_date_usd"
+        ],
+        "title": "SettingsOut",
+        "type": "object"
+      },
       "ValidationError": {
         "properties": {
           "ctx": {
@@ -866,6 +1271,206 @@
         "summary": "Get Chunk"
       }
     },
+    "/digest": {
+      "get": {
+        "operationId": "read_digest_digest_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "date",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Date"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DigestOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Digest"
+      }
+    },
+    "/digest/{arxiv_id}/dismiss": {
+      "post": {
+        "operationId": "dismiss_entry_digest__arxiv_id__dismiss_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "arxiv_id",
+            "required": true,
+            "schema": {
+              "title": "Arxiv Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "the digest's date (digest_date of GET /digest)",
+            "in": "query",
+            "name": "date",
+            "required": true,
+            "schema": {
+              "description": "the digest's date (digest_date of GET /digest)",
+              "format": "date",
+              "title": "Date",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DigestEntryOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Dismiss Entry"
+      }
+    },
+    "/digest/{arxiv_id}/save": {
+      "post": {
+        "operationId": "save_entry_digest__arxiv_id__save_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "arxiv_id",
+            "required": true,
+            "schema": {
+              "title": "Arxiv Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "the digest's date (digest_date of GET /digest)",
+            "in": "query",
+            "name": "date",
+            "required": true,
+            "schema": {
+              "description": "the digest's date (digest_date of GET /digest)",
+              "format": "date",
+              "title": "Date",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DigestEntryOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Save Entry"
+      }
+    },
+    "/digest/{arxiv_id}/undo": {
+      "post": {
+        "operationId": "undo_entry_digest__arxiv_id__undo_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "arxiv_id",
+            "required": true,
+            "schema": {
+              "title": "Arxiv Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "the digest's date (digest_date of GET /digest)",
+            "in": "query",
+            "name": "date",
+            "required": true,
+            "schema": {
+              "description": "the digest's date (digest_date of GET /digest)",
+              "format": "date",
+              "title": "Date",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DigestEntryOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Undo Entry"
+      }
+    },
     "/health": {
       "get": {
         "operationId": "health_health_get",
@@ -882,6 +1487,143 @@
           }
         },
         "summary": "Health"
+      }
+    },
+    "/interests": {
+      "get": {
+        "operationId": "list_interests_interests_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/InterestOut"
+                  },
+                  "title": "Response List Interests Interests Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Interests"
+      },
+      "post": {
+        "operationId": "create_interest_interests_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InterestIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InterestOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Interest"
+      }
+    },
+    "/interests/{interest_id}": {
+      "delete": {
+        "operationId": "delete_interest_interests__interest_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "interest_id",
+            "required": true,
+            "schema": {
+              "title": "Interest Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Interest"
+      },
+      "put": {
+        "operationId": "update_interest_interests__interest_id__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "interest_id",
+            "required": true,
+            "schema": {
+              "title": "Interest Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InterestIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InterestOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Interest"
       }
     },
     "/papers/{arxiv_id}": {
@@ -1213,6 +1955,60 @@
           }
         },
         "summary": "Search Chunks"
+      }
+    },
+    "/settings": {
+      "get": {
+        "operationId": "read_settings_settings_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SettingsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Read Settings"
+      },
+      "put": {
+        "operationId": "save_settings_settings_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SettingsIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SettingsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Save Settings"
       }
     }
   }

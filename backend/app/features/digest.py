@@ -496,6 +496,40 @@ class DigestView:
 RECENT_DATES = 14
 
 
+def _cards(session: Session, digest_date: date, arxiv_id: str | None = None) -> list[DigestCard]:
+    """The cards of one digest in rank order (or just one paper's card)."""
+    query = (
+        select(DigestEntry, Paper, Interest.name, PaperAnalysis.tldr)
+        .join(Paper, Paper.arxiv_id == DigestEntry.arxiv_id)
+        .outerjoin(Interest, Interest.id == DigestEntry.best_interest_id)
+        .outerjoin(PaperAnalysis, PaperAnalysis.arxiv_id == DigestEntry.arxiv_id)
+        .where(DigestEntry.digest_date == digest_date)
+        .order_by(DigestEntry.rank, DigestEntry.arxiv_id)
+    )
+    if arxiv_id is not None:
+        query = query.where(DigestEntry.arxiv_id == arxiv_id)
+    threshold = get_settings().digest_trending_upvotes
+    cards = []
+    for entry, paper, interest_name, tldr in session.execute(query).all():
+        summary, source = card_summary(tldr, paper.abstract)
+        cards.append(
+            DigestCard(
+                entry=entry,
+                paper=paper,
+                best_interest_name=interest_name,
+                summary=summary,
+                summary_source=source,
+                trending=paper.hf_upvotes is not None and paper.hf_upvotes >= threshold,
+            )  # fmt: skip
+        )
+    return cards
+
+
+def load_card(session: Session, digest_date: date, arxiv_id: str) -> DigestCard | None:
+    cards = _cards(session, digest_date, arxiv_id)
+    return cards[0] if cards else None
+
+
 def load_digest(
     session: Session, requested: date | None = None, now: datetime | None = None
 ) -> DigestView:
@@ -514,27 +548,5 @@ def load_digest(
     has_interests = (
         session.scalar(select(Interest.id).where(Interest.is_active.is_(True)).limit(1)) is not None
     )
-    cards: list[DigestCard] = []
-    if chosen is not None:
-        rows = session.execute(
-            select(DigestEntry, Paper, Interest.name, PaperAnalysis.tldr)
-            .join(Paper, Paper.arxiv_id == DigestEntry.arxiv_id)
-            .outerjoin(Interest, Interest.id == DigestEntry.best_interest_id)
-            .outerjoin(PaperAnalysis, PaperAnalysis.arxiv_id == DigestEntry.arxiv_id)
-            .where(DigestEntry.digest_date == chosen)
-            .order_by(DigestEntry.rank, DigestEntry.arxiv_id)
-        ).all()
-        threshold = get_settings().digest_trending_upvotes
-        for entry, paper, interest_name, tldr in rows:
-            summary, source = card_summary(tldr, paper.abstract)
-            cards.append(
-                DigestCard(
-                    entry=entry,
-                    paper=paper,
-                    best_interest_name=interest_name,
-                    summary=summary,
-                    summary_source=source,
-                    trending=paper.hf_upvotes is not None and paper.hf_upvotes >= threshold,
-                )  # fmt: skip
-            )
+    cards = _cards(session, chosen) if chosen is not None else []
     return DigestView(requested, chosen, cards, dates[:RECENT_DATES], has_interests)
