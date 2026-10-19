@@ -1,5 +1,6 @@
-"""Read-only lookups the frontend needs: one paper, a paper's chunks, one chunk.
+"""Read-only lookups the frontend needs: a paper list, one paper, its chunks, one chunk.
 
+    GET /papers?q=&limit=&has_fulltext=  title/arXiv-id search for the paper pickers
     GET /papers/{arxiv_id}           the paper's metadata and abstract
     GET /papers/{arxiv_id}/chunks    its chunks in reading order (Postgres only)
     GET /papers/{arxiv_id}/related   similar papers, papers it cites, papers citing it
@@ -19,19 +20,21 @@ the route tests run without a database.
 """
 
 import logging
+import re
 import uuid
 from datetime import datetime
 from typing import Annotated, Literal, Protocol
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import not_, or_, select
 from starlette.concurrency import run_in_threadpool
 
 from app.config import get_settings
 from app.db.models import AnalysisBatchItem, Chunk, HFArtifact, Paper, PaperAnalysis, Repo
 from app.db.session import session_scope
 from app.features import related as related_papers
+from app.features.paper_facts import has_section_chunks
 from app.features.related import RelatedPaper, SimilarStatus
 
 logger = logging.getLogger(__name__)
@@ -134,7 +137,24 @@ class PaperDetailsOut(BaseModel):
     spaces: list[HFArtifactOut]
 
 
+class PaperListItemOut(BaseModel):
+    arxiv_id: str
+    title: str
+    published_at: datetime
+    primary_category: str | None
+    has_fulltext: bool  # the paper has full-text passages, not only its abstract
+    abs_url: str
+
+
+class PaperListOut(BaseModel):
+    papers: list[PaperListItemOut]
+
+
 class PaperStore(Protocol):
+    def list_papers(self, q: str, limit: int, has_fulltext: bool | None) -> list[PaperListItemOut]:
+        """Papers by title substring or exact arXiv id, newest first (Postgres only)."""
+        ...
+
     def get_paper(self, arxiv_id: str) -> PaperOut | None: ...
 
     def list_chunks(self, arxiv_id: str, limit: int) -> PaperChunksOut | None:
@@ -183,7 +203,40 @@ def _chunk_out(chunk: Chunk, paper: Paper) -> ChunkOut:
     )
 
 
+_VERSION_SUFFIX = re.compile(r"v\d+$")
+
+
+def _like_pattern(q: str) -> str:
+    """`q` as a LIKE pattern for 'contains', with its own % and _ taken literally."""
+    escaped = q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    return f"%{escaped}%"
+
+
 class SqlPaperStore:
+    def list_papers(self, q: str, limit: int, has_fulltext: bool | None) -> list[PaperListItemOut]:
+        fulltext = has_section_chunks()
+        stmt = select(Paper, fulltext.label("fulltext"))
+        q = q.strip()
+        if q:
+            # An arXiv id (with or without a version) matches exactly; anything else is
+            # a case-insensitive substring of the title.
+            arxiv_id = _VERSION_SUFFIX.sub("", q)
+            stmt = stmt.where(
+                or_(Paper.arxiv_id == arxiv_id, Paper.title.ilike(_like_pattern(q), escape="\\"))
+            )
+        if has_fulltext is not None:
+            stmt = stmt.where(fulltext if has_fulltext else not_(fulltext))
+        stmt = stmt.order_by(Paper.published_at.desc(), Paper.arxiv_id).limit(limit)
+        with session_scope() as session:
+            return [
+                PaperListItemOut(
+                    arxiv_id=paper.arxiv_id, title=paper.title, published_at=paper.published_at,
+                    primary_category=paper.primary_category, has_fulltext=bool(full),
+                    abs_url=ABS_URL.format(arxiv_id=paper.arxiv_id),
+                )
+                for paper, full in session.execute(stmt).all()
+            ]  # fmt: skip
+
     def get_paper(self, arxiv_id: str) -> PaperOut | None:
         with session_scope() as session:
             paper = session.get(Paper, arxiv_id)
@@ -316,6 +369,20 @@ def get_paper_store() -> PaperStore:
 
 
 Store = Annotated[PaperStore, Depends(get_paper_store)]
+
+
+@router.get("/papers", response_model=PaperListOut)
+async def list_papers(
+    store: Store,
+    q: Annotated[str, Query(max_length=200, description="title words or an exact arXiv id")] = "",
+    limit: Annotated[int, Query(ge=1, le=50)] = 20,
+    has_fulltext: Annotated[
+        bool | None, Query(description="only papers with / without full text")
+    ] = None,
+) -> PaperListOut:
+    """The paper pickers' lookup: newest first, Postgres only (no Qdrant, no OpenAI call).
+    This is the collection root; `/papers/{arxiv_id}` below is one paper."""
+    return PaperListOut(papers=await run_in_threadpool(store.list_papers, q, limit, has_fulltext))
 
 
 @router.get("/papers/{arxiv_id:path}/chunks", response_model=PaperChunksOut)

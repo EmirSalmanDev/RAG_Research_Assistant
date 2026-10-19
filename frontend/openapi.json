@@ -106,6 +106,49 @@
         "title": "BestInterestOut",
         "type": "object"
       },
+      "CellOut": {
+        "properties": {
+          "citations": {
+            "items": {
+              "$ref": "#/components/schemas/CitationOut"
+            },
+            "title": "Citations",
+            "type": "array"
+          },
+          "dimension": {
+            "enum": [
+              "task",
+              "method",
+              "data",
+              "metrics",
+              "compute",
+              "limitations"
+            ],
+            "title": "Dimension",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "cited",
+              "not_stated"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "dimension",
+          "text",
+          "status",
+          "citations"
+        ],
+        "title": "CellOut",
+        "type": "object"
+      },
       "ChatRequest": {
         "properties": {
           "conversation_id": {
@@ -193,6 +236,214 @@
           "abs_url"
         ],
         "title": "ChunkOut",
+        "type": "object"
+      },
+      "CitationOut": {
+        "properties": {
+          "chunk_id": {
+            "format": "uuid",
+            "title": "Chunk Id",
+            "type": "string"
+          },
+          "chunk_type": {
+            "title": "Chunk Type",
+            "type": "string"
+          },
+          "n": {
+            "title": "N",
+            "type": "integer"
+          },
+          "section_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Section Path"
+          }
+        },
+        "required": [
+          "n",
+          "chunk_id",
+          "chunk_type",
+          "section_path"
+        ],
+        "title": "CitationOut",
+        "type": "object"
+      },
+      "CompareNotes": {
+        "properties": {
+          "cut_sources": {
+            "title": "Cut Sources",
+            "type": "integer"
+          },
+          "invalid_citations_dropped": {
+            "title": "Invalid Citations Dropped",
+            "type": "integer"
+          },
+          "missing_cells": {
+            "title": "Missing Cells",
+            "type": "integer"
+          },
+          "top_k_used": {
+            "title": "Top K Used",
+            "type": "integer"
+          },
+          "truncated_cells": {
+            "title": "Truncated Cells",
+            "type": "integer"
+          },
+          "uncited_cells_converted": {
+            "title": "Uncited Cells Converted",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "invalid_citations_dropped",
+          "uncited_cells_converted",
+          "missing_cells",
+          "truncated_cells",
+          "cut_sources",
+          "top_k_used"
+        ],
+        "title": "CompareNotes",
+        "type": "object"
+      },
+      "CompareOut": {
+        "properties": {
+          "cost_usd": {
+            "title": "Cost Usd",
+            "type": "number"
+          },
+          "dimensions": {
+            "items": {
+              "enum": [
+                "task",
+                "method",
+                "data",
+                "metrics",
+                "compute",
+                "limitations"
+              ],
+              "type": "string"
+            },
+            "title": "Dimensions",
+            "type": "array"
+          },
+          "notes": {
+            "$ref": "#/components/schemas/CompareNotes"
+          },
+          "prompt_version": {
+            "title": "Prompt Version",
+            "type": "string"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/RowOut"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/SourceOut"
+            },
+            "title": "Sources",
+            "type": "array"
+          },
+          "tokens_in": {
+            "title": "Tokens In",
+            "type": "integer"
+          },
+          "tokens_out": {
+            "title": "Tokens Out",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "dimensions",
+          "rows",
+          "sources",
+          "notes",
+          "tokens_in",
+          "tokens_out",
+          "cost_usd",
+          "prompt_version"
+        ],
+        "title": "CompareOut",
+        "type": "object"
+      },
+      "CompareRequest": {
+        "properties": {
+          "arxiv_ids": {
+            "items": {
+              "maxLength": 40,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 5,
+            "minItems": 2,
+            "title": "Arxiv Ids",
+            "type": "array"
+          },
+          "dimensions": {
+            "items": {
+              "enum": [
+                "task",
+                "method",
+                "data",
+                "metrics",
+                "compute",
+                "limitations"
+              ],
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Dimensions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "arxiv_ids"
+        ],
+        "title": "CompareRequest",
+        "type": "object"
+      },
+      "DateRange": {
+        "properties": {
+          "first": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First"
+          },
+          "last": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last"
+          }
+        },
+        "required": [
+          "first",
+          "last"
+        ],
+        "title": "DateRange",
         "type": "object"
       },
       "DigestEntryOut": {
@@ -672,6 +923,68 @@
         "title": "PaperDetailsOut",
         "type": "object"
       },
+      "PaperListItemOut": {
+        "properties": {
+          "abs_url": {
+            "title": "Abs Url",
+            "type": "string"
+          },
+          "arxiv_id": {
+            "title": "Arxiv Id",
+            "type": "string"
+          },
+          "has_fulltext": {
+            "title": "Has Fulltext",
+            "type": "boolean"
+          },
+          "primary_category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Primary Category"
+          },
+          "published_at": {
+            "format": "date-time",
+            "title": "Published At",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "arxiv_id",
+          "title",
+          "published_at",
+          "primary_category",
+          "has_fulltext",
+          "abs_url"
+        ],
+        "title": "PaperListItemOut",
+        "type": "object"
+      },
+      "PaperListOut": {
+        "properties": {
+          "papers": {
+            "items": {
+              "$ref": "#/components/schemas/PaperListItemOut"
+            },
+            "title": "Papers",
+            "type": "array"
+          }
+        },
+        "required": [
+          "papers"
+        ],
+        "title": "PaperListOut",
+        "type": "object"
+      },
       "PaperOut": {
         "properties": {
           "abs_url": {
@@ -954,6 +1267,42 @@
         "title": "RepoOut",
         "type": "object"
       },
+      "RowOut": {
+        "properties": {
+          "abs_url": {
+            "title": "Abs Url",
+            "type": "string"
+          },
+          "arxiv_id": {
+            "title": "Arxiv Id",
+            "type": "string"
+          },
+          "cells": {
+            "items": {
+              "$ref": "#/components/schemas/CellOut"
+            },
+            "title": "Cells",
+            "type": "array"
+          },
+          "has_fulltext": {
+            "title": "Has Fulltext",
+            "type": "boolean"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "arxiv_id",
+          "title",
+          "has_fulltext",
+          "abs_url",
+          "cells"
+        ],
+        "title": "RowOut",
+        "type": "object"
+      },
       "SearchHitOut": {
         "properties": {
           "abs_url": {
@@ -1146,6 +1495,300 @@
         "title": "SettingsOut",
         "type": "object"
       },
+      "SourceOut": {
+        "properties": {
+          "abs_url": {
+            "title": "Abs Url",
+            "type": "string"
+          },
+          "arxiv_id": {
+            "title": "Arxiv Id",
+            "type": "string"
+          },
+          "chunk_id": {
+            "format": "uuid",
+            "title": "Chunk Id",
+            "type": "string"
+          },
+          "chunk_type": {
+            "title": "Chunk Type",
+            "type": "string"
+          },
+          "n": {
+            "title": "N",
+            "type": "integer"
+          },
+          "section_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Section Path"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "n",
+          "chunk_id",
+          "arxiv_id",
+          "chunk_type",
+          "section_path",
+          "title",
+          "abs_url"
+        ],
+        "title": "SourceOut",
+        "type": "object"
+      },
+      "TimelineBody": {
+        "properties": {
+          "categories": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 10,
+            "title": "Categories",
+            "type": "array"
+          },
+          "date_from": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Date From"
+          },
+          "date_to": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Date To"
+          },
+          "key_papers": {
+            "default": 8,
+            "maximum": 15.0,
+            "minimum": 1.0,
+            "title": "Key Papers",
+            "type": "integer"
+          },
+          "max_papers": {
+            "default": 30,
+            "maximum": 50.0,
+            "minimum": 1.0,
+            "title": "Max Papers",
+            "type": "integer"
+          },
+          "topic": {
+            "maxLength": 200,
+            "minLength": 3,
+            "title": "Topic",
+            "type": "string"
+          }
+        },
+        "required": [
+          "topic"
+        ],
+        "title": "TimelineBody",
+        "type": "object"
+      },
+      "TimelineNotes": {
+        "properties": {
+          "fallback_lines": {
+            "title": "Fallback Lines",
+            "type": "integer"
+          },
+          "key_papers": {
+            "title": "Key Papers",
+            "type": "integer"
+          },
+          "known_citation_counts": {
+            "title": "Known Citation Counts",
+            "type": "integer"
+          },
+          "lines_call_failed": {
+            "title": "Lines Call Failed",
+            "type": "boolean"
+          },
+          "narrow_range": {
+            "title": "Narrow Range",
+            "type": "boolean"
+          },
+          "papers": {
+            "title": "Papers",
+            "type": "integer"
+          },
+          "range_days": {
+            "title": "Range Days",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "papers",
+          "key_papers",
+          "known_citation_counts",
+          "narrow_range",
+          "range_days",
+          "fallback_lines",
+          "lines_call_failed"
+        ],
+        "title": "TimelineNotes",
+        "type": "object"
+      },
+      "TimelineOut": {
+        "properties": {
+          "cost_usd": {
+            "title": "Cost Usd",
+            "type": "number"
+          },
+          "notes": {
+            "$ref": "#/components/schemas/TimelineNotes"
+          },
+          "points": {
+            "items": {
+              "$ref": "#/components/schemas/TimelinePoint"
+            },
+            "title": "Points",
+            "type": "array"
+          },
+          "prompt_version": {
+            "title": "Prompt Version",
+            "type": "string"
+          },
+          "range": {
+            "$ref": "#/components/schemas/DateRange"
+          },
+          "tokens_in": {
+            "title": "Tokens In",
+            "type": "integer"
+          },
+          "tokens_out": {
+            "title": "Tokens Out",
+            "type": "integer"
+          },
+          "topic": {
+            "title": "Topic",
+            "type": "string"
+          }
+        },
+        "required": [
+          "topic",
+          "range",
+          "points",
+          "notes",
+          "prompt_version",
+          "tokens_in",
+          "tokens_out",
+          "cost_usd"
+        ],
+        "title": "TimelineOut",
+        "type": "object"
+      },
+      "TimelinePoint": {
+        "properties": {
+          "abs_url": {
+            "title": "Abs Url",
+            "type": "string"
+          },
+          "arxiv_id": {
+            "title": "Arxiv Id",
+            "type": "string"
+          },
+          "chunk_id": {
+            "format": "uuid",
+            "title": "Chunk Id",
+            "type": "string"
+          },
+          "citation_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Citation Count"
+          },
+          "is_key": {
+            "title": "Is Key",
+            "type": "boolean"
+          },
+          "key_score": {
+            "title": "Key Score",
+            "type": "number"
+          },
+          "line": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Line"
+          },
+          "line_source": {
+            "anyOf": [
+              {
+                "enum": [
+                  "model",
+                  "abstract_fallback"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Line Source"
+          },
+          "published_at": {
+            "format": "date-time",
+            "title": "Published At",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "topic_relevance": {
+            "title": "Topic Relevance",
+            "type": "number"
+          }
+        },
+        "required": [
+          "arxiv_id",
+          "title",
+          "published_at",
+          "citation_count",
+          "topic_relevance",
+          "key_score",
+          "is_key",
+          "line",
+          "line_source",
+          "chunk_id",
+          "abs_url"
+        ],
+        "title": "TimelinePoint",
+        "type": "object"
+      },
       "ValidationError": {
         "properties": {
           "ctx": {
@@ -1269,6 +1912,45 @@
           }
         },
         "summary": "Get Chunk"
+      }
+    },
+    "/compare": {
+      "post": {
+        "description": "A table of 2-5 papers by the chosen dimensions; every shown cell carries citations.",
+        "operationId": "compare_papers_compare_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CompareRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CompareOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Compare Papers"
       }
     },
     "/digest": {
@@ -1624,6 +2306,80 @@
           }
         },
         "summary": "Update Interest"
+      }
+    },
+    "/papers": {
+      "get": {
+        "description": "The paper pickers' lookup: newest first, Postgres only (no Qdrant, no OpenAI call).\nThis is the collection root; `/papers/{arxiv_id}` below is one paper.",
+        "operationId": "list_papers_papers_get",
+        "parameters": [
+          {
+            "description": "title words or an exact arXiv id",
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "default": "",
+              "description": "title words or an exact arXiv id",
+              "maxLength": 200,
+              "title": "Q",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 50,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "only papers with / without full text",
+            "in": "query",
+            "name": "has_fulltext",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "only papers with / without full text",
+              "title": "Has Fulltext"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaperListOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Papers"
       }
     },
     "/papers/{arxiv_id}": {
@@ -2009,6 +2765,45 @@
           }
         },
         "summary": "Save Settings"
+      }
+    },
+    "/timeline": {
+      "post": {
+        "description": "Papers on a topic by date, key papers marked, with a one-line \"what changed\".",
+        "operationId": "topic_timeline_timeline_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TimelineBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TimelineOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Topic Timeline"
       }
     }
   }

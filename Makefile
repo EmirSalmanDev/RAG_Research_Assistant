@@ -1,4 +1,4 @@
-.PHONY: up down logs test lint e2e openapi digest migrate ingest-one enrich-one analyze-submit analyze-collect backfill fetch-reranker eval-retrieval
+.PHONY: up down logs test lint e2e openapi digest compare timeline migrate ingest-one enrich-one analyze-submit analyze-collect backfill fetch-reranker eval-retrieval
 
 # Start the stack and wait until every service's healthcheck passes.
 up:
@@ -94,6 +94,25 @@ analyze-collect:
 #   make digest ARGS="--rebuild --no-embed"  # replace the entries nobody acted on
 digest:
 	cd backend && uv run python -m app.features.cli $(ARGS)
+
+# Compare 2-5 held papers, or draw a topic timeline, from the command line. Runs natively
+# against the stores on localhost, like `make digest`. WITHOUT ESTIMATE=1 these make real,
+# paid OpenAI calls (one embeddings request and one chat request each: ask first).
+# ESTIMATE=1 prints an upper bound of the input tokens and the cost from the stored chunk
+# sizes: no network, no key.
+#   make compare IDS="1706.03762 2609.24972 1301.3781" ESTIMATE=1
+#   make compare IDS="1706.03762 2609.24972" DIMENSIONS=method,data
+#   make timeline TOPIC="transformer attention mechanisms" ESTIMATE=1
+compare:
+	@test -n "$(IDS)" || (echo 'usage: make compare IDS="id1 id2 [id3 ...]" [DIMENSIONS=task,method,...] [ESTIMATE=1]'; exit 2)
+	cd backend && uv run python -m app.features.explore_cli compare $(IDS) \
+		$(if $(DIMENSIONS),--dimensions "$(DIMENSIONS)") $(if $(ESTIMATE),--estimate) $(if $(JSON),--json)
+
+timeline:
+	@test -n "$(TOPIC)" || (echo 'usage: make timeline TOPIC="..." [FROM=YYYY-MM-DD] [TO=YYYY-MM-DD] [ESTIMATE=1]'; exit 2)
+	cd backend && uv run python -m app.features.explore_cli timeline "$(TOPIC)" \
+		$(if $(FROM),--date-from "$(FROM)") $(if $(TO),--date-to "$(TO)") \
+		$(if $(ESTIMATE),--estimate) $(if $(JSON),--json)
 
 # Seed the corpus: fetch the last DAYS days of the configured arXiv categories (new
 # papers and new versions) and index their abstracts only (no full text):

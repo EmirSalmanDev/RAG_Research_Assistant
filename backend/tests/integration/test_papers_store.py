@@ -66,3 +66,46 @@ def test_store_reads_paper_chunks_and_one_chunk(migrated_session: Session) -> No
     assert chunk is not None
     assert (chunk.title, chunk.section_path) == ("An Invented Paper", "Method")
     assert store.get_chunk(uuid.uuid4()) is None
+
+
+def _paper(arxiv_id: str, title: str, day: int) -> Paper:
+    return Paper(
+        arxiv_id=arxiv_id, title=title, abstract="Invented.", authors=[], categories=["cs.CL"],
+        primary_category="cs.CL", published_at=datetime(2026, 9, day, tzinfo=UTC),
+    )  # fmt: skip
+
+
+def test_store_lists_papers_by_title_or_exact_id_newest_first(migrated_session: Session) -> None:
+    migrated_session.add_all(
+        [
+            _paper("2609.00001", "Attention Is All You Need (invented)", 1),
+            _paper("2609.00002", "Attention to 100% of Detail_x", 3),
+            _paper("2609.00003", "A Paper About Adapters", 2),
+        ]
+    )
+    migrated_session.flush()
+    migrated_session.add(
+        Chunk(
+            id=uuid.uuid4(), arxiv_id="2609.00001", chunk_type="section", section_path="1 Intro",
+            ord=1, text="Invented body.", token_count=3,
+        )
+    )  # fmt: skip
+    migrated_session.commit()
+    store = SqlPaperStore()
+
+    def ids(q: str = "", *, limit: int = 10, full: bool | None = None) -> list[str]:
+        return [p.arxiv_id for p in store.list_papers(q, limit, full)]
+
+    assert ids() == ["2609.00002", "2609.00003", "2609.00001"]  # newest first
+    assert ids("attention") == ["2609.00002", "2609.00001"]  # case-insensitive substring
+    assert ids("100%") == ["2609.00002"]  # % is literal, not a wildcard
+    assert ids("%") == ["2609.00002"]
+    assert ids("detail_x") == ["2609.00002"] and ids("detail-x") == []  # _ is literal
+    assert ids("2609.00003") == ["2609.00003"]  # exact arXiv id
+    assert ids("2609.00003v2") == ["2609.00003"]  # a version suffix is ignored
+    assert ids("2609.0000") == []  # a partial id is not an id (and not in any title)
+    assert ids(limit=2) == ["2609.00002", "2609.00003"]
+    assert ids(full=True) == ["2609.00001"]
+    assert ids(full=False) == ["2609.00002", "2609.00003"]
+    only = store.list_papers("", 1, True)[0]
+    assert only.has_fulltext and only.abs_url == "https://arxiv.org/abs/2609.00001"

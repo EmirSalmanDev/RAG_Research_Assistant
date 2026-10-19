@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Protocol
 
-from sqlalchemy import exists, select
+from sqlalchemy import Exists, exists, select
 
 from app.db.models import Chunk, Paper
 from app.db.session import session_scope
@@ -33,7 +33,8 @@ class FactsStore(Protocol):
         ...
 
 
-def _has_section_chunks() -> object:
+def has_section_chunks() -> Exists:
+    """A SQL condition: the paper has full-text chunks (usable in select and where)."""
     return exists().where(Chunk.arxiv_id == Paper.arxiv_id, Chunk.chunk_type == "section")
 
 
@@ -43,7 +44,7 @@ class SqlFactsStore:
             return {}
         with session_scope() as session:
             rows = session.execute(
-                select(Paper, _has_section_chunks().label("fulltext")).where(  # type: ignore[attr-defined]
+                select(Paper, has_section_chunks().label("fulltext")).where(
                     Paper.arxiv_id.in_(list(arxiv_ids))
                 )
             ).all()

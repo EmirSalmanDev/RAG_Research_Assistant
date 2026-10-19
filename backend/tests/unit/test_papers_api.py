@@ -12,6 +12,7 @@ from app.api.papers import (
     ChunkOut,
     PaperChunksOut,
     PaperDetailsOut,
+    PaperListItemOut,
     PaperOut,
     RelatedOut,
     RelatedPaperOut,
@@ -67,6 +68,15 @@ RELATED = RelatedOut(
 class FakeStore:
     def __init__(self) -> None:
         self.limits: list[int] = []
+        self.list_calls: list[tuple[str, int, bool | None]] = []
+
+    def list_papers(self, q: str, limit: int, has_fulltext: bool | None) -> list[PaperListItemOut]:
+        self.list_calls.append((q, limit, has_fulltext))
+        item = PaperListItemOut(
+            arxiv_id=PAPER.arxiv_id, title=PAPER.title, published_at=PUBLISHED,
+            primary_category="cs.CL", has_fulltext=True, abs_url=PAPER.abs_url,
+        )  # fmt: skip
+        return [item]
 
     def get_paper(self, arxiv_id: str) -> PaperOut | None:
         return PAPER if arxiv_id == PAPER.arxiv_id else None
@@ -186,3 +196,24 @@ async def test_details_route_and_404(client: AsyncClient) -> None:
     assert r.json()["analysis_status"] == "queued" and r.json()["analysis"] is None
     assert (await client.get("/papers/0000.00000/details")).status_code == 404
     assert (await client.get("/papers/hep-th/9901001/details")).status_code == 404
+
+
+async def test_paper_list_is_the_collection_root_and_does_not_shadow_one_paper(
+    client: AsyncClient, store: FakeStore
+) -> None:
+    r = await client.get("/papers", params={"q": " attention ", "limit": 5, "has_fulltext": "true"})
+    assert r.status_code == 200
+    (item,) = r.json()["papers"]
+    assert item["arxiv_id"] == "2609.00001" and item["has_fulltext"] is True
+    assert item["abs_url"] == "https://arxiv.org/abs/2609.00001"
+    assert store.list_calls == [(" attention ", 5, True)]
+    assert (await client.get("/papers/2609.00001")).json()["title"] == "An Invented Paper"
+    assert (await client.get("/papers/0000.00000")).status_code == 404
+
+
+async def test_paper_list_defaults_and_bounds(client: AsyncClient, store: FakeStore) -> None:
+    assert (await client.get("/papers")).status_code == 200
+    assert store.list_calls == [("", 20, None)]
+    assert (await client.get("/papers?limit=0")).status_code == 422
+    assert (await client.get("/papers?limit=51")).status_code == 422
+    assert (await client.get("/papers?q=" + "x" * 201)).status_code == 422
