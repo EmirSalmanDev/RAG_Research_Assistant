@@ -29,12 +29,14 @@ Langfuse is not connected yet.
 | `make up` / `make down` / `make logs` | start, stop, tail the stack |
 | `make migrate` | apply database migrations |
 | `make test` / `make lint` | backend tests (offline) and frontend checks and unit tests / linters |
-| `make e2e` | the browser tests: three Playwright tests of the chat, paper and digest pages (see "Browser test"); not part of `make test` |
+| `make e2e` | the browser tests: four Playwright tests of the chat, digest, paper, compare and timeline pages (see "Browser test"); not part of `make test` |
 | `make ingest-one ID=<arxiv_id> [SOURCE=hf\|html\|pdf] [METADATA_ONLY=1]` | ingest one paper end to end: metadata, abstract, full text, chunks, embeddings |
 | `make enrich-one ID=<arxiv_id>` | refresh a held paper's GitHub repo, Hugging Face models, datasets and Spaces, and Semantic Scholar citations (5 free calls, no OpenAI call) |
 | `make analyze-submit [DRY_RUN=1] [IDS="<id> ..."] [MAX=N]` | submit one OpenAI Batch job of paper analyses for full-text papers; `DRY_RUN=1` only prints the papers and the cost bound |
 | `make analyze-collect` | store and index the analyses of finished Batch jobs |
 | `make digest [ARGS="--dry-run"]` | build today's digest by hand: embed new or edited interests (one small embeddings request), score the last week's papers, write the digest and list which papers the nightly selection would send to full text; `--dry-run` writes nothing and makes no request, `--date`, `--rebuild`, `--no-embed` also work |
+| `make compare IDS="<id> <id> ..." [DIMENSIONS=...] [ESTIMATE=1]` | compare 2 to 5 papers (paid: one embeddings and one chat request); `ESTIMATE=1` prints an upper bound of the tokens and cost from the stored chunk sizes, no network, no key |
+| `make timeline TOPIC="..." [FROM=...] [TO=...] [ESTIMATE=1]` | a topic timeline (paid: one embeddings and one chat request); `ESTIMATE=1` as above |
 | `make backfill DAYS=7 [CONFIRM=1]` | fetch the last N days of the configured categories and index abstracts only; more than 7 days needs `CONFIRM=1` |
 | `make fetch-reranker` | download the reranker model once (about 1 GB) into `~/.cache/fastembed` |
 | `make eval-retrieval [EMBED=1]` | retrieval metrics on the golden set for four configurations, stored in `eval_runs` |
@@ -121,6 +123,18 @@ setup. Pages:
 - `/search`: find passages by topic, category and date, grouped by paper. Each search
   costs one embedding request.
 - `/paper/[id]`: one paper's metadata, abstract and indexed passages (no model call).
+- `/compare`: pick 2 to 5 papers (a title or arXiv id lookup and a list of the papers with
+  full text; free) and the dimensions (task, method, data, metrics, compute, limitations).
+  **Compare** makes one embeddings request and one model call (a fraction of a cent) and
+  fills a table. A cell shows a claim only together with citations that open the passage it
+  rests on; a cell the sources do not support says "Not stated in the sources." A paper with
+  only its abstract indexed is marked "abstract only" and will often have such cells. The
+  table exports as markdown (download or copy) with `[n]` markers and a Sources list that
+  links the arXiv abstract pages.
+- `/timeline`: papers on a topic by date (plain SVG), key papers marked, one line each on
+  what the paper changed, written from its abstract. **Run** makes one embeddings request and
+  one model call. Citation counts are thin (Semantic Scholar covers few of the stored
+  papers) and the stored papers cover a short time for most topics; the page says so.
 
 The TypeScript client is generated from the API's OpenAPI schema: `make openapi`
 rewrites `frontend/openapi.json` and `frontend/lib/api/schema.d.ts`, and `make lint`
@@ -137,12 +151,14 @@ To look at the real data in a browser, start the stack (`make up`), then `pnpm d
 makes about six small OpenAI requests (about $0.001), and each search one embedding request.
 
 ### Browser test
-`make e2e` runs three Playwright tests. `frontend/e2e/chat-citation.spec.ts`: ask a question,
+`make e2e` runs four Playwright tests. `frontend/e2e/chat-citation.spec.ts`: ask a question,
 watch the answer stream in, open a citation, read the cited passage.
 `frontend/e2e/digest-flow.spec.ts`: open the digest, save one card, dismiss one, undo, then
 add, edit and delete an interest on `/settings` and save the settings.
 `frontend/e2e/paper-page.spec.ts`: a paper page shows its analysis, code, Hugging Face
-models and datasets, and the three related-paper tabs (keyboard included). It starts the Next
+models and datasets, and the three related-paper tabs (keyboard included).
+`frontend/e2e/explore-flow.spec.ts`: pick three papers, Compare, open a citation, export the
+markdown; run a timeline (and that typing on either page sends nothing paid). It starts the Next
 dev server (with `--webpack`) and a small **mock API** with invented data
 (`frontend/e2e/mock-api.ts`), and drives the Google Chrome that is already installed
 (Playwright `channel: "chrome"`, so no browser is downloaded). The mock API is reached

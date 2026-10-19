@@ -336,6 +336,187 @@ async function digestRoute(
   return false;
 }
 
+// --- comparison and timeline (e2e/explore-flow.spec.ts): invented, no model behind them ---
+// Papers 1 and 2 have full text, 3 to 6 only an abstract. The comparison fills every cell
+// with a claim and a citation, except that an abstract-only paper says nothing about "data".
+const EXPLORE_PAPERS = Array.from({ length: 6 }, (_, i) => ({
+  arxiv_id: `2611.0000${i + 1}`,
+  title: `Invented Explore Paper ${i + 1}`,
+  published_at: `2026-10-${String(i * 2 + 1).padStart(2, "0")}T12:00:00+00:00`,
+  primary_category: "cs.CL",
+  has_fulltext: i < 2,
+  abs_url: abs(`2611.0000${i + 1}`),
+}));
+// Chunk ids are readable on purpose: 0c<paper><k>, k=1 abstract, k=2 section.
+const exploreChunkId = (paper: number, kind: 1 | 2) =>
+  `00000000-0000-4000-8000-0000000c${paper}${kind}00`;
+const exploreSource = (paper: number, kind: 1 | 2, n: number) => {
+  const p = EXPLORE_PAPERS[paper - 1];
+  return {
+    n,
+    chunk_id: exploreChunkId(paper, kind),
+    arxiv_id: p.arxiv_id,
+    chunk_type: kind === 1 ? "abstract" : "section",
+    section_path: kind === 1 ? null : "3 Method",
+    title: p.title,
+    published_at: p.published_at,
+    abs_url: p.abs_url,
+  };
+};
+// GET /chunks/{id} for the ids made by exploreChunkId.
+const exploreChunk = (id: string) => {
+  const m = /^00000000-0000-4000-8000-0000000c(\d)(\d)00$/.exec(id);
+  const paper = Number(m?.[1]);
+  const kind = Number(m?.[2]);
+  if (!m || !EXPLORE_PAPERS[paper - 1] || (kind !== 1 && kind !== 2))
+    return null;
+  const source = exploreSource(paper, kind, 1);
+  return {
+    chunk_id: id,
+    arxiv_id: source.arxiv_id,
+    title: source.title,
+    chunk_type: source.chunk_type,
+    section_path: source.section_path,
+    ord: 1,
+    text: `Invented ${source.chunk_type} text of ${source.title}.`,
+    published_at: source.published_at,
+    abs_url: source.abs_url,
+  };
+};
+
+function listPapers(res: ServerResponse, url: string): void {
+  const query = new URL(url, "http://mock").searchParams;
+  const q = (query.get("q") ?? "").toLowerCase();
+  const full = query.get("has_fulltext");
+  const papers = EXPLORE_PAPERS.filter(
+    (p) =>
+      (!q || p.title.toLowerCase().includes(q) || p.arxiv_id === q) &&
+      (full === null || String(p.has_fulltext) === full),
+  ).slice(0, Number(query.get("limit") ?? 20));
+  json(res, 200, { papers });
+}
+
+async function exploreRoute(
+  req: IncomingMessage,
+  res: ServerResponse,
+  url: string,
+): Promise<boolean> {
+  const path = url.split("?")[0];
+  if (req.method === "GET" && path === "/papers") {
+    listPapers(res, url);
+    return true;
+  }
+  if (req.method === "POST" && path === "/compare") {
+    const body = await readJson(req);
+    const ids = (body.arxiv_ids as string[]) ?? [];
+    const dims = (body.dimensions as string[]) ?? [];
+    if (ids.length < 2 || ids.length > 5) {
+      json(res, 422, { detail: "pick 2 to 5 papers" });
+      return true;
+    }
+    const rows = [];
+    const sources = [];
+    let n = 0;
+    for (const id of ids) {
+      const paper = EXPLORE_PAPERS.findIndex((p) => p.arxiv_id === id) + 1;
+      if (paper === 0) {
+        json(res, 404, { detail: `unknown paper(s): ${id}` });
+        return true;
+      }
+      const kind = EXPLORE_PAPERS[paper - 1].has_fulltext ? 2 : 1;
+      const source = exploreSource(paper, kind, ++n);
+      sources.push(source);
+      rows.push({
+        arxiv_id: id,
+        title: EXPLORE_PAPERS[paper - 1].title,
+        has_fulltext: EXPLORE_PAPERS[paper - 1].has_fulltext,
+        abs_url: abs(id),
+        cells: dims.map((dimension) =>
+          dimension === "data" && kind === 1
+            ? {
+                dimension,
+                text: "Not stated in the sources.",
+                status: "not_stated",
+                citations: [],
+              }
+            : {
+                dimension,
+                text: `Invented ${dimension} claim about paper ${paper}.`,
+                status: "cited",
+                citations: [
+                  {
+                    n: source.n,
+                    chunk_id: source.chunk_id,
+                    chunk_type: source.chunk_type,
+                    section_path: source.section_path,
+                  },
+                ],
+              },
+        ),
+      });
+    }
+    json(res, 200, {
+      dimensions: dims,
+      rows,
+      sources,
+      notes: {
+        invalid_citations_dropped: 0,
+        uncited_cells_converted: 0,
+        missing_cells: 0,
+        truncated_cells: 0,
+        cut_sources: 0,
+        top_k_used: 3,
+      },
+      tokens_in: 4000,
+      tokens_out: 400,
+      cost_usd: 0.00084,
+      prompt_version: "compare_v1",
+    });
+    return true;
+  }
+  if (req.method === "POST" && path === "/timeline") {
+    const body = await readJson(req);
+    const points = EXPLORE_PAPERS.map((p, i) => ({
+      arxiv_id: p.arxiv_id,
+      title: p.title,
+      published_at: p.published_at,
+      citation_count: i === 0 ? 120 : null,
+      topic_relevance: 1 - i / 5,
+      key_score: 0.9 - i / 10,
+      is_key: i === 0 || i === 3,
+      line:
+        i === 0
+          ? "Invented line: introduced the first adapter."
+          : i === 3
+            ? "Invented first sentence of the abstract."
+            : null,
+      line_source: i === 0 ? "model" : i === 3 ? "abstract_fallback" : null,
+      chunk_id: exploreChunkId(i + 1, 1),
+      abs_url: p.abs_url,
+    }));
+    json(res, 200, {
+      topic: body.topic,
+      range: { first: points[0].published_at, last: points[5].published_at },
+      points,
+      notes: {
+        papers: 6,
+        key_papers: 2,
+        known_citation_counts: 1,
+        narrow_range: true,
+        range_days: 10,
+        fallback_lines: 1,
+        lines_call_failed: false,
+      },
+      prompt_version: "timeline_v1",
+      tokens_in: 2500,
+      tokens_out: 120,
+      cost_usd: 0.000447,
+    });
+    return true;
+  }
+  return false;
+}
+
 createServer(async (req, res) => {
   const url = req.url ?? "";
   if (req.method === "GET" && url === "/health")
@@ -351,9 +532,12 @@ createServer(async (req, res) => {
     return json(res, 200, { released: true });
   }
   if (await digestRoute(req, res, url)) return;
+  if (await exploreRoute(req, res, url)) return;
   if (req.method === "GET" && paperRoute(res, url)) return;
   const chunk = /^\/chunks\/([0-9a-f-]+)$/.exec(url);
   if (req.method === "GET" && chunk) {
+    const explore = exploreChunk(chunk[1]);
+    if (explore) return json(res, 200, explore);
     const source = SOURCES.find((s) => s.chunk_id === chunk[1]);
     if (!source) return json(res, 404, { detail: "unknown chunk" });
     return json(res, 200, {

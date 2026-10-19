@@ -38,6 +38,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/compare": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Compare Papers
+         * @description A table of 2-5 papers by the chosen dimensions; every shown cell carries citations.
+         */
+        post: operations["compare_papers_compare_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/digest": {
         parameters: {
             query?: never;
@@ -159,6 +179,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/papers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Papers
+         * @description The paper pickers' lookup: newest first, Postgres only (no Qdrant, no OpenAI call).
+         *     This is the collection root; `/papers/{arxiv_id}` below is one paper.
+         */
+        get: operations["list_papers_papers_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/papers/{arxiv_id}": {
         parameters: {
             query?: never;
@@ -269,6 +310,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/timeline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Topic Timeline
+         * @description Papers on a topic by date, key papers marked, with a one-line "what changed".
+         */
+        post: operations["topic_timeline_timeline_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -301,6 +362,23 @@ export interface components {
             id: number;
             /** Name */
             name: string;
+        };
+        /** CellOut */
+        CellOut: {
+            /** Citations */
+            citations: components["schemas"]["CitationOut"][];
+            /**
+             * Dimension
+             * @enum {string}
+             */
+            dimension: "task" | "method" | "data" | "metrics" | "compute" | "limitations";
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "cited" | "not_stated";
+            /** Text */
+            text: string;
         };
         /** ChatRequest */
         ChatRequest: {
@@ -335,6 +413,67 @@ export interface components {
             text: string;
             /** Title */
             title: string;
+        };
+        /** CitationOut */
+        CitationOut: {
+            /**
+             * Chunk Id
+             * Format: uuid
+             */
+            chunk_id: string;
+            /** Chunk Type */
+            chunk_type: string;
+            /** N */
+            n: number;
+            /** Section Path */
+            section_path: string | null;
+        };
+        /** CompareNotes */
+        CompareNotes: {
+            /** Cut Sources */
+            cut_sources: number;
+            /** Invalid Citations Dropped */
+            invalid_citations_dropped: number;
+            /** Missing Cells */
+            missing_cells: number;
+            /** Top K Used */
+            top_k_used: number;
+            /** Truncated Cells */
+            truncated_cells: number;
+            /** Uncited Cells Converted */
+            uncited_cells_converted: number;
+        };
+        /** CompareOut */
+        CompareOut: {
+            /** Cost Usd */
+            cost_usd: number;
+            /** Dimensions */
+            dimensions: ("task" | "method" | "data" | "metrics" | "compute" | "limitations")[];
+            notes: components["schemas"]["CompareNotes"];
+            /** Prompt Version */
+            prompt_version: string;
+            /** Rows */
+            rows: components["schemas"]["RowOut"][];
+            /** Sources */
+            sources: components["schemas"]["SourceOut"][];
+            /** Tokens In */
+            tokens_in: number;
+            /** Tokens Out */
+            tokens_out: number;
+        };
+        /** CompareRequest */
+        CompareRequest: {
+            /** Arxiv Ids */
+            arxiv_ids: string[];
+            /** Dimensions */
+            dimensions?: ("task" | "method" | "data" | "metrics" | "compute" | "limitations")[];
+        };
+        /** DateRange */
+        DateRange: {
+            /** First */
+            first: string | null;
+            /** Last */
+            last: string | null;
         };
         /** DigestEntryOut */
         DigestEntryOut: {
@@ -502,6 +641,29 @@ export interface components {
             /** Spaces */
             spaces: components["schemas"]["HFArtifactOut"][];
         };
+        /** PaperListItemOut */
+        PaperListItemOut: {
+            /** Abs Url */
+            abs_url: string;
+            /** Arxiv Id */
+            arxiv_id: string;
+            /** Has Fulltext */
+            has_fulltext: boolean;
+            /** Primary Category */
+            primary_category: string | null;
+            /**
+             * Published At
+             * Format: date-time
+             */
+            published_at: string;
+            /** Title */
+            title: string;
+        };
+        /** PaperListOut */
+        PaperListOut: {
+            /** Papers */
+            papers: components["schemas"]["PaperListItemOut"][];
+        };
         /** PaperOut */
         PaperOut: {
             /** Abs Url */
@@ -580,6 +742,19 @@ export interface components {
             /** Url */
             url: string;
         };
+        /** RowOut */
+        RowOut: {
+            /** Abs Url */
+            abs_url: string;
+            /** Arxiv Id */
+            arxiv_id: string;
+            /** Cells */
+            cells: components["schemas"]["CellOut"][];
+            /** Has Fulltext */
+            has_fulltext: boolean;
+            /** Title */
+            title: string;
+        };
         /** SearchHitOut */
         SearchHitOut: {
             /** Abs Url */
@@ -645,6 +820,117 @@ export interface components {
             fulltext_top_n: number;
             /** Month To Date Usd */
             month_to_date_usd: number;
+        };
+        /** SourceOut */
+        SourceOut: {
+            /** Abs Url */
+            abs_url: string;
+            /** Arxiv Id */
+            arxiv_id: string;
+            /**
+             * Chunk Id
+             * Format: uuid
+             */
+            chunk_id: string;
+            /** Chunk Type */
+            chunk_type: string;
+            /** N */
+            n: number;
+            /**
+             * Published At
+             * Format: date-time
+             */
+            published_at: string;
+            /** Section Path */
+            section_path: string | null;
+            /** Title */
+            title: string;
+        };
+        /** TimelineBody */
+        TimelineBody: {
+            /** Categories */
+            categories?: string[];
+            /** Date From */
+            date_from?: string | null;
+            /** Date To */
+            date_to?: string | null;
+            /**
+             * Key Papers
+             * @default 8
+             */
+            key_papers: number;
+            /**
+             * Max Papers
+             * @default 30
+             */
+            max_papers: number;
+            /** Topic */
+            topic: string;
+        };
+        /** TimelineNotes */
+        TimelineNotes: {
+            /** Fallback Lines */
+            fallback_lines: number;
+            /** Key Papers */
+            key_papers: number;
+            /** Known Citation Counts */
+            known_citation_counts: number;
+            /** Lines Call Failed */
+            lines_call_failed: boolean;
+            /** Narrow Range */
+            narrow_range: boolean;
+            /** Papers */
+            papers: number;
+            /** Range Days */
+            range_days: number;
+        };
+        /** TimelineOut */
+        TimelineOut: {
+            /** Cost Usd */
+            cost_usd: number;
+            notes: components["schemas"]["TimelineNotes"];
+            /** Points */
+            points: components["schemas"]["TimelinePoint"][];
+            /** Prompt Version */
+            prompt_version: string;
+            range: components["schemas"]["DateRange"];
+            /** Tokens In */
+            tokens_in: number;
+            /** Tokens Out */
+            tokens_out: number;
+            /** Topic */
+            topic: string;
+        };
+        /** TimelinePoint */
+        TimelinePoint: {
+            /** Abs Url */
+            abs_url: string;
+            /** Arxiv Id */
+            arxiv_id: string;
+            /**
+             * Chunk Id
+             * Format: uuid
+             */
+            chunk_id: string;
+            /** Citation Count */
+            citation_count: number | null;
+            /** Is Key */
+            is_key: boolean;
+            /** Key Score */
+            key_score: number;
+            /** Line */
+            line: string | null;
+            /** Line Source */
+            line_source: ("model" | "abstract_fallback") | null;
+            /**
+             * Published At
+             * Format: date-time
+             */
+            published_at: string;
+            /** Title */
+            title: string;
+            /** Topic Relevance */
+            topic_relevance: number;
         };
         /** ValidationError */
         ValidationError: {
@@ -720,6 +1006,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ChunkOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    compare_papers_compare_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CompareRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CompareOut"];
                 };
             };
             /** @description Validation Error */
@@ -1003,6 +1322,41 @@ export interface operations {
             };
         };
     };
+    list_papers_papers_get: {
+        parameters: {
+            query?: {
+                /** @description title words or an exact arXiv id */
+                q?: string;
+                limit?: number;
+                /** @description only papers with / without full text */
+                has_fulltext?: boolean | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaperListOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_paper_papers__arxiv_id__get: {
         parameters: {
             query?: never;
@@ -1212,6 +1566,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SettingsOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    topic_timeline_timeline_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TimelineBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TimelineOut"];
                 };
             };
             /** @description Validation Error */

@@ -3,7 +3,8 @@
 What one chat turn sends: exactly the six stage spans, in one trace, and nothing else.
 - The trace id is made here (32 hex characters). Each stage span is started with
   `trace_context={"trace_id": ...}`, so Langfuse shows it as a top-level observation of
-  that trace: no extra root span. The trace's name ("chat-turn") and session (the
+  that trace: no extra root span. The trace's name ("chat-turn"; the compare and timeline
+  features pass their own) and session (the
   conversation id) are attached to every span through `propagate_attributes`.
 - The SDK gets a PRIVATE OpenTelemetry TracerProvider. Without one it would install its
   own as the process-wide default, and spans that other libraries emit through the
@@ -43,7 +44,6 @@ from app.observability.tracing import Span, Trace
 
 logger = logging.getLogger(__name__)
 
-TRACE_NAME = "chat-turn"
 EXPORT_TIMEOUT_S = 10
 SUMMARY_SPAN = "verify"  # the last stage: the turn's summary goes on its metadata
 
@@ -151,7 +151,8 @@ class LangfuseTracer:
 
     def start_trace(self, name: str, *, input: Any, metadata: Mapping[str, Any]) -> Trace:
         # Propagated values must be short strings; the input goes on the spans themselves.
-        attributes: dict[str, Any] = {"trace_name": TRACE_NAME}
+        # "chat-turn" for chat; the compare and timeline features pass their own name.
+        attributes: dict[str, Any] = {"trace_name": name}
         conversation = metadata.get("conversation_id")
         if conversation:
             attributes["session_id"] = str(conversation)

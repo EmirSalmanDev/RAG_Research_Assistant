@@ -9,6 +9,9 @@ import { ApiError } from "./errors.ts";
 import {
   fetchChunk,
   fetchPaper,
+  fetchPapers,
+  postCompare,
+  postTimeline,
   fetchPaperChunks,
   fetchPaperDetails,
   fetchPaperRelated,
@@ -339,5 +342,85 @@ test("settings: read and save", async () => {
       ["GET", "/api/settings"],
       ["PUT", "/api/settings"],
     ],
+  );
+});
+
+// --- paper comparison and timeline -----------------------------------------------------------
+
+test("the paper list sends the trimmed query, a limit and the full-text flag, and returns the papers", async () => {
+  const item = {
+    arxiv_id: "2609.00001",
+    title: "An Invented Paper",
+    published_at: "2026-09-01T12:00:00+00:00",
+    primary_category: "cs.CL",
+    has_fulltext: true,
+    abs_url: "https://arxiv.org/abs/2609.00001",
+  };
+  const { client, calls } = mocked(() => Response.json({ papers: [item] }));
+  const papers = await fetchPapers(client, {
+    q: "  attention ",
+    hasFulltext: true,
+  });
+  assert.deepEqual(papers, [item]);
+  const url = calls[0]!.url;
+  assert.equal(url.pathname, "/api/papers");
+  assert.equal(url.searchParams.get("q"), "attention");
+  assert.equal(url.searchParams.get("limit"), "20");
+  assert.equal(url.searchParams.get("has_fulltext"), "true");
+
+  const { client: plain, calls: plainCalls } = mocked(() =>
+    Response.json({ papers: [] }),
+  );
+  await fetchPapers(plain, { q: "" });
+  assert.equal(plainCalls[0]!.url.searchParams.has("has_fulltext"), false);
+});
+
+test("compare posts the ids and dimensions once and surfaces the API's message on failure", async () => {
+  const { client, calls } = mocked(() => Response.json({ rows: [] }));
+  await postCompare(client, { arxiv_ids: ["a", "b"], dimensions: ["task"] });
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0]!.method, "POST");
+  assert.equal(calls[0]!.url.pathname, "/api/compare");
+
+  const failing = mocked(() =>
+    Response.json({ detail: "unknown paper(s): 9999.99999" }, { status: 404 }),
+  );
+  await assert.rejects(
+    postCompare(failing.client, {
+      arxiv_ids: ["a", "9999.99999"],
+      dimensions: ["task"],
+    }),
+    (err: unknown) =>
+      err instanceof ApiError &&
+      err.status === 404 &&
+      err.message === "unknown paper(s): 9999.99999",
+  );
+  assert.equal(failing.calls.length, 1); // no retry: a retry would be a second paid call
+});
+
+test("timeline posts the topic and options once; a 503 keeps the server's sentence", async () => {
+  const { client, calls } = mocked(() => Response.json({ points: [] }));
+  await postTimeline(client, {
+    topic: "adapters",
+    max_papers: 30,
+    key_papers: 8,
+    categories: [],
+  });
+  assert.equal(calls[0]!.url.pathname, "/api/timeline");
+
+  const down = mocked(() =>
+    Response.json(
+      { detail: "OPENAI_API_KEY is not set (put it in .env)" },
+      { status: 503 },
+    ),
+  );
+  await assert.rejects(
+    postTimeline(down.client, {
+      topic: "adapters",
+      max_papers: 30,
+      key_papers: 8,
+    }),
+    (err: unknown) =>
+      err instanceof ApiError && /OPENAI_API_KEY/.test(err.message),
   );
 });
