@@ -836,6 +836,11 @@ export interface components {
             chunk_type: string;
             /** N */
             n: number;
+            /**
+             * Published At
+             * Format: date-time
+             */
+            published_at: string;
             /** Section Path */
             section_path: string | null;
             /** Title */

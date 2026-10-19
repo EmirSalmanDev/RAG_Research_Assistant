@@ -25,6 +25,7 @@ import re
 import uuid
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
+from datetime import datetime
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Literal, get_args
 
@@ -106,6 +107,7 @@ class SourceOut(BaseModel):
     chunk_type: str
     section_path: str | None
     title: str
+    published_at: datetime
     abs_url: str
 
 
@@ -529,5 +531,6 @@ def _source_out(source: Source) -> SourceOut:
         chunk_type=h.chunk_type,
         section_path=h.section_path,
         title=h.title,
+        published_at=datetime.fromisoformat(h.published_at),
         abs_url=ARXIV_ABS_URL.format(arxiv_id=h.arxiv_id),
     )

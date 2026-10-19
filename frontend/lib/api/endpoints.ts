@@ -270,3 +270,75 @@ export async function saveSettings(
     apiErrorMessage(response.status, detailOf(error), "settings"),
   );
 }
+
+// --- paper comparison and topic timeline -----------------------------------------------------
+// fetchPapers is free (Postgres only). postCompare and postTimeline are PAID: each makes one
+// embeddings request and one chat request on the server. They are only ever called from a
+// button, never from a page load, a keystroke or a refetch.
+
+export type PaperListItemOut = components["schemas"]["PaperListItemOut"];
+export type CompareRequest = components["schemas"]["CompareRequest"];
+export type CompareOut = components["schemas"]["CompareOut"];
+export type TimelineBody = components["schemas"]["TimelineBody"];
+export type TimelineOut = components["schemas"]["TimelineOut"];
+export type TimelinePoint = components["schemas"]["TimelinePoint"];
+
+/** How many papers one picker lookup shows. */
+export const PICKER_LIMIT = 20;
+
+/** GET /papers: newest first; `q` is title words or an exact arXiv id. */
+export async function fetchPapers(
+  client: ApiClient,
+  params: { q: string; hasFulltext?: boolean; limit?: number },
+  signal?: AbortSignal,
+): Promise<PaperListItemOut[]> {
+  const { data, error, response } = await client.GET("/papers", {
+    params: {
+      query: {
+        q: params.q.trim(),
+        limit: params.limit ?? PICKER_LIMIT,
+        has_fulltext: params.hasFulltext,
+      },
+    },
+    signal,
+  });
+  if (data) return data.papers;
+  throw new ApiError(
+    response.status,
+    apiErrorMessage(response.status, detailOf(error), "paper list"),
+  );
+}
+
+/** POST /compare (paid). */
+export async function postCompare(
+  client: ApiClient,
+  body: CompareRequest,
+  signal?: AbortSignal,
+): Promise<CompareOut> {
+  const { data, error, response } = await client.POST("/compare", {
+    body,
+    signal,
+  });
+  if (data) return data;
+  throw new ApiError(
+    response.status,
+    apiErrorMessage(response.status, detailOf(error), "comparison"),
+  );
+}
+
+/** POST /timeline (paid). */
+export async function postTimeline(
+  client: ApiClient,
+  body: TimelineBody,
+  signal?: AbortSignal,
+): Promise<TimelineOut> {
+  const { data, error, response } = await client.POST("/timeline", {
+    body,
+    signal,
+  });
+  if (data) return data;
+  throw new ApiError(
+    response.status,
+    apiErrorMessage(response.status, detailOf(error), "timeline"),
+  );
+}

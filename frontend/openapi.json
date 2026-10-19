@@ -1518,6 +1518,11 @@
             "title": "N",
             "type": "integer"
           },
+          "published_at": {
+            "format": "date-time",
+            "title": "Published At",
+            "type": "string"
+          },
           "section_path": {
             "anyOf": [
               {
@@ -1541,6 +1546,7 @@
           "chunk_type",
           "section_path",
           "title",
+          "published_at",
           "abs_url"
         ],
         "title": "SourceOut",
