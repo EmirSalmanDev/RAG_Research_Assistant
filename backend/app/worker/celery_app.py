@@ -1,4 +1,4 @@
-"""Celery app: Redis broker, the ingest and analysis tasks, and the Beat schedule."""
+"""Celery app: Redis broker, the ingest, analysis and digest tasks, and the Beat schedule."""
 
 from celery import Celery
 
@@ -9,7 +9,7 @@ celery_app = Celery(
     "research_copilot",
     broker=get_settings().redis_url,
     backend=get_settings().redis_url,
-    include=["app.ingest.tasks", "app.llm.tasks"],
+    include=["app.ingest.tasks", "app.llm.tasks", "app.features.tasks"],
 )
 celery_app.conf.update(
     worker_concurrency=1,  # 8 GB RAM machine: one worker process

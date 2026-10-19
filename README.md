@@ -29,11 +29,12 @@ Langfuse is not connected yet.
 | `make up` / `make down` / `make logs` | start, stop, tail the stack |
 | `make migrate` | apply database migrations |
 | `make test` / `make lint` | backend tests (offline) and frontend checks and unit tests / linters |
-| `make e2e` | the browser test: one Playwright test of the chat page (see "Browser test"); not part of `make test` |
+| `make e2e` | the browser tests: three Playwright tests of the chat, paper and digest pages (see "Browser test"); not part of `make test` |
 | `make ingest-one ID=<arxiv_id> [SOURCE=hf\|html\|pdf] [METADATA_ONLY=1]` | ingest one paper end to end: metadata, abstract, full text, chunks, embeddings |
 | `make enrich-one ID=<arxiv_id>` | refresh a held paper's GitHub repo, Hugging Face models, datasets and Spaces, and Semantic Scholar citations (5 free calls, no OpenAI call) |
 | `make analyze-submit [DRY_RUN=1] [IDS="<id> ..."] [MAX=N]` | submit one OpenAI Batch job of paper analyses for full-text papers; `DRY_RUN=1` only prints the papers and the cost bound |
 | `make analyze-collect` | store and index the analyses of finished Batch jobs |
+| `make digest [ARGS="--dry-run"]` | build today's digest by hand: embed new or edited interests (one small embeddings request), score the last week's papers, write the digest and list which papers the nightly selection would send to full text; `--dry-run` writes nothing and makes no request, `--date`, `--rebuild`, `--no-embed` also work |
 | `make backfill DAYS=7 [CONFIRM=1]` | fetch the last N days of the configured categories and index abstracts only; more than 7 days needs `CONFIRM=1` |
 | `make fetch-reranker` | download the reranker model once (about 1 GB) into `~/.cache/fastembed` |
 | `make eval-retrieval [EMBED=1]` | retrieval metrics on the golden set for four configurations, stored in `eval_runs` |
@@ -104,6 +105,15 @@ open http://localhost:3000. It talks to the API through a same-origin proxy (`/a
 rewritten to `API_ORIGIN`, default `http://127.0.0.1:8000`), so the API needs no CORS
 setup. Pages:
 
+- `/`: the daily digest. The day's papers ranked against your interests, with a trending
+  badge, the best-matching interest, a one-line summary, links to the paper page and to
+  arXiv, and Save and Dismiss (with Undo). Opening it asks the API for stored rows only; it
+  never builds a digest or calls a model. `?date=YYYY-MM-DD` shows an earlier digest.
+- `/settings`: your interests (name, description, keywords, categories, active), the digest
+  size, how many top papers get full text each night, the arXiv categories to fetch (adding
+  one does not backfill older papers) and a monthly budget cap, shown next to this month's
+  spending (the cap pauses nothing yet). Saving costs nothing; a new or edited interest is
+  embedded by the next nightly run.
 - `/chat`: ask a question; the answer streams in, and every `[n]` is a chip. A chip opens
   the cited passage in a side panel (it stays open beside the chat; Escape or the close
   button closes it) with a link to the paper's arXiv abstract page. A dashed chip marked
@@ -127,8 +137,10 @@ To look at the real data in a browser, start the stack (`make up`), then `pnpm d
 makes about six small OpenAI requests (about $0.001), and each search one embedding request.
 
 ### Browser test
-`make e2e` runs two Playwright tests. `frontend/e2e/chat-citation.spec.ts`: ask a question,
+`make e2e` runs three Playwright tests. `frontend/e2e/chat-citation.spec.ts`: ask a question,
 watch the answer stream in, open a citation, read the cited passage.
+`frontend/e2e/digest-flow.spec.ts`: open the digest, save one card, dismiss one, undo, then
+add, edit and delete an interest on `/settings` and save the settings.
 `frontend/e2e/paper-page.spec.ts`: a paper page shows its analysis, code, Hugging Face
 models and datasets, and the three related-paper tabs (keyboard included). It starts the Next
 dev server (with `--webpack`) and a small **mock API** with invented data
@@ -156,14 +168,23 @@ Chrome installed. Playwright is not run in CI yet.
 ## The daily pipeline
 Celery Beat starts it every day at **07:00 Europe/Istanbul**:
 
-1. **fetch_arxiv**: new papers and new versions in the configured categories, from the
-   last run's cursor minus 4 days (arXiv announces papers with a delay).
+1. **fetch_arxiv**: new papers and new versions in the configured categories (the list on
+   `/settings` replaces the configured one), from the last run's cursor minus 4 days (arXiv
+   announces papers with a delay).
 2. **fetch_hf_daily**: Hugging Face daily papers of yesterday and today (upvotes, GitHub
    repo, project page); trending papers we do not hold are added.
 3. **index_abstracts**: every paper's title and abstract become its first chunk.
-4. **select_fulltext**: papers in the library or requested by hand get their full text
-   (Hugging Face markdown, else arXiv HTML, else the PDF), which is cleaned, chunked
-   (about 512 tokens, by section) and indexed.
+4. **enrich_new**: GitHub repo, Hugging Face models and datasets, and Semantic Scholar
+   citations for the new papers.
+5. **score_relevance**: embeds interests that are new or edited (the only paid call, one
+   small embeddings request) and stores each recent paper's relevance to your interests.
+6. **select_fulltext**: papers in the library, requested by hand, or among the top 20 by
+   relevance get their full text (Hugging Face markdown, else arXiv HTML, else the PDF),
+   which is cleaned, chunked (about 512 tokens, by section) and indexed.
+
+At **08:00** a separate Beat entry builds the day's digest (`digest.build`) from the papers
+of the last 7 days that were not dismissed and are not in an earlier digest. Beat does not
+catch up a missed run; `make digest` builds one by hand. Decisions: `docs/adr/0009`.
 
 Every step is a separate, idempotent Celery task, retried with backoff; each run is
 recorded in the `ingest_runs` table. A missed run (computer asleep) is not caught up; the

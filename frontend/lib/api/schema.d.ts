@@ -38,6 +38,74 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/digest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Digest */
+        get: operations["read_digest_digest_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/digest/{arxiv_id}/dismiss": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Dismiss Entry */
+        post: operations["dismiss_entry_digest__arxiv_id__dismiss_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/digest/{arxiv_id}/save": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Save Entry */
+        post: operations["save_entry_digest__arxiv_id__save_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/digest/{arxiv_id}/undo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Undo Entry */
+        post: operations["undo_entry_digest__arxiv_id__undo_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health": {
         parameters: {
             query?: never;
@@ -50,6 +118,42 @@ export interface paths {
         put?: never;
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/interests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Interests */
+        get: operations["list_interests_interests_get"];
+        put?: never;
+        /** Create Interest */
+        post: operations["create_interest_interests_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/interests/{interest_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Update Interest */
+        put: operations["update_interest_interests__interest_id__put"];
+        post?: never;
+        /** Delete Interest */
+        delete: operations["delete_interest_interests__interest_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -147,6 +251,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Settings */
+        get: operations["read_settings_settings_get"];
+        /** Save Settings */
+        put: operations["save_settings_settings_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -172,6 +294,13 @@ export interface components {
             results: string | null;
             /** Tldr */
             tldr: string | null;
+        };
+        /** BestInterestOut */
+        BestInterestOut: {
+            /** Id */
+            id: number;
+            /** Name */
+            name: string;
         };
         /** ChatRequest */
         ChatRequest: {
@@ -206,6 +335,65 @@ export interface components {
             text: string;
             /** Title */
             title: string;
+        };
+        /** DigestEntryOut */
+        DigestEntryOut: {
+            /** Abs Url */
+            abs_url: string;
+            /** Arxiv Id */
+            arxiv_id: string;
+            /** Author Count */
+            author_count: number;
+            /** Authors */
+            authors: string[];
+            best_interest: components["schemas"]["BestInterestOut"] | null;
+            /** Categories */
+            categories: string[];
+            /** Hf Upvotes */
+            hf_upvotes: number | null;
+            /**
+             * Published At
+             * Format: date-time
+             */
+            published_at: string;
+            /** Rank */
+            rank: number;
+            /** Score */
+            score: number;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "new" | "saved" | "dismissed";
+            /** Summary */
+            summary: string;
+            /**
+             * Summary Source
+             * @enum {string}
+             */
+            summary_source: "analysis" | "abstract";
+            /** Title */
+            title: string;
+            /** Trending */
+            trending: boolean;
+        };
+        /** DigestOut */
+        DigestOut: {
+            /** Digest Date */
+            digest_date: string | null;
+            /** Entries */
+            entries: components["schemas"]["DigestEntryOut"][];
+            /** Has Interests */
+            has_interests: boolean;
+            /** Is Fallback */
+            is_fallback: boolean;
+            /** Recent Dates */
+            recent_dates: string[];
+            /**
+             * Requested Date
+             * Format: date
+             */
+            requested_date: string;
         };
         /** HFArtifactOut */
         HFArtifactOut: {
@@ -242,6 +430,51 @@ export interface components {
              * @enum {string}
              */
             redis: "up" | "down";
+        };
+        /** InterestIn */
+        InterestIn: {
+            /** Categories */
+            categories?: string[];
+            /** Description */
+            description?: string | null;
+            /**
+             * Is Active
+             * @default true
+             */
+            is_active: boolean;
+            /** Keywords */
+            keywords?: string[];
+            /** Name */
+            name: string;
+        };
+        /** InterestOut */
+        InterestOut: {
+            /** Categories */
+            categories: string[];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Description */
+            description: string | null;
+            /** Embedded */
+            embedded: boolean;
+            /** Id */
+            id: number;
+            /** Is Active */
+            is_active: boolean;
+            /** Keywords */
+            keywords: string[];
+            /** Name */
+            name: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Weight */
+            weight: number;
         };
         /** PaperChunksOut */
         PaperChunksOut: {
@@ -385,6 +618,34 @@ export interface components {
             /** Reranked */
             reranked: boolean;
         };
+        /** SettingsIn */
+        SettingsIn: {
+            /** Budget Cap Usd */
+            budget_cap_usd?: number | null;
+            /** Categories */
+            categories?: string[];
+            /** Digest Size */
+            digest_size: number;
+            /** Fulltext Top N */
+            fulltext_top_n: number;
+        };
+        /** SettingsOut */
+        SettingsOut: {
+            /** Budget Cap Usd */
+            budget_cap_usd: number | null;
+            /** Categories */
+            categories: string[];
+            /** Categories Default */
+            categories_default: string[];
+            /** Categories Overridden */
+            categories_overridden: boolean;
+            /** Digest Size */
+            digest_size: number;
+            /** Fulltext Top N */
+            fulltext_top_n: number;
+            /** Month To Date Usd */
+            month_to_date_usd: number;
+        };
         /** ValidationError */
         ValidationError: {
             /** Context */
@@ -472,6 +733,139 @@ export interface operations {
             };
         };
     };
+    read_digest_digest_get: {
+        parameters: {
+            query?: {
+                date?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DigestOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    dismiss_entry_digest__arxiv_id__dismiss_post: {
+        parameters: {
+            query: {
+                /** @description the digest's date (digest_date of GET /digest) */
+                date: string;
+            };
+            header?: never;
+            path: {
+                arxiv_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DigestEntryOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    save_entry_digest__arxiv_id__save_post: {
+        parameters: {
+            query: {
+                /** @description the digest's date (digest_date of GET /digest) */
+                date: string;
+            };
+            header?: never;
+            path: {
+                arxiv_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DigestEntryOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    undo_entry_digest__arxiv_id__undo_post: {
+        parameters: {
+            query: {
+                /** @description the digest's date (digest_date of GET /digest) */
+                date: string;
+            };
+            header?: never;
+            path: {
+                arxiv_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DigestEntryOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     health_health_get: {
         parameters: {
             query?: never;
@@ -488,6 +882,123 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HealthResponse"];
+                };
+            };
+        };
+    };
+    list_interests_interests_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InterestOut"][];
+                };
+            };
+        };
+    };
+    create_interest_interests_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InterestIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InterestOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_interest_interests__interest_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                interest_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InterestIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InterestOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_interest_interests__interest_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                interest_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -648,6 +1159,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SearchResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_settings_settings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SettingsOut"];
+                };
+            };
+        };
+    };
+    save_settings_settings_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SettingsIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SettingsOut"];
                 };
             };
             /** @description Validation Error */

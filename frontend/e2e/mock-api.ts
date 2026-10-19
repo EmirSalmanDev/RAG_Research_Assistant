@@ -13,7 +13,7 @@
 // test calls POST /__release. That makes "the text is on screen while the turn is still
 // running" something the test can assert, instead of a race against a timer.
 import { createServer } from "node:http";
-import type { ServerResponse } from "node:http";
+import type { IncomingMessage, ServerResponse } from "node:http";
 
 import {
   ABSTRACT_SOURCE,
@@ -172,7 +172,171 @@ function paperRoute(res: ServerResponse, url: string): boolean {
   return true;
 }
 
-createServer((req, res) => {
+// --- the digest, interests and settings (e2e/digest-flow.spec.ts): invented, in memory ---
+type EntryStatus = "new" | "saved" | "dismissed";
+const DIGEST_DATE = "2026-10-19";
+const entry = (n: number, extra: Record<string, unknown> = {}) => ({
+  arxiv_id: `2610.0000${n}`,
+  rank: n,
+  score: 0.9 - n / 10,
+  status: "new" as EntryStatus,
+  title: `Invented Digest Paper ${n}`,
+  authors: ["Ada Example", "Bo Sample", "Cy Test"],
+  author_count: n === 1 ? 5 : 3,
+  categories: ["cs.CL", "cs.LG"],
+  published_at: "2026-10-18T12:00:00+00:00",
+  hf_upvotes: n === 1 ? 25 : null,
+  trending: n === 1,
+  best_interest: null as { id: number; name: string } | null,
+  summary: `Invented one-line summary number ${n}.`,
+  summary_source: "abstract",
+  abs_url: abs(`2610.0000${n}`),
+  ...extra,
+});
+const digestEntries = [entry(1), entry(2), entry(3)];
+type MockInterest = {
+  id: number;
+  name: string;
+  description: string | null;
+  keywords: string[];
+  categories: string[];
+  is_active: boolean;
+  weight: number;
+  embedded: boolean;
+  created_at: string;
+  updated_at: string;
+};
+const interests: MockInterest[] = [];
+let nextInterestId = 1;
+let settings = {
+  digest_size: 20,
+  categories: ["cs.CL", "cs.LG", "cs.AI", "cs.IR"],
+  categories_default: ["cs.CL", "cs.LG", "cs.AI", "cs.IR"],
+  categories_overridden: false,
+  fulltext_top_n: 20,
+  budget_cap_usd: null as number | null,
+  month_to_date_usd: 0.045026,
+};
+
+function readJson(req: IncomingMessage): Promise<Record<string, unknown>> {
+  return new Promise((resolve) => {
+    let raw = "";
+    req.on("data", (chunk) => (raw += chunk));
+    req.on("end", () => resolve(raw ? JSON.parse(raw) : {}));
+  });
+}
+
+async function digestRoute(
+  req: IncomingMessage,
+  res: ServerResponse,
+  url: string,
+): Promise<boolean> {
+  const path = url.split("?")[0];
+  if (req.method === "GET" && path === "/digest") {
+    json(res, 200, {
+      requested_date: DIGEST_DATE,
+      digest_date: DIGEST_DATE,
+      is_fallback: false,
+      has_interests: interests.some((i) => i.is_active),
+      recent_dates: [DIGEST_DATE],
+      entries: digestEntries.map((e) => ({
+        ...e,
+        best_interest: interests.find((i) => i.is_active)
+          ? { id: interests[0].id, name: interests[0].name }
+          : null,
+      })),
+    });
+    return true;
+  }
+  const act = /^\/digest\/([^/]+)\/(save|dismiss|undo)$/.exec(path);
+  if (req.method === "POST" && act) {
+    const row = digestEntries.find((e) => e.arxiv_id === act[1]);
+    if (!row) {
+      json(res, 404, { detail: "that paper is not in this digest" });
+      return true;
+    }
+    row.status = { save: "saved", dismiss: "dismissed", undo: "new" }[
+      act[2] as "save" | "dismiss" | "undo"
+    ] as EntryStatus;
+    json(res, 200, row);
+    return true;
+  }
+  if (path === "/interests" && req.method === "GET") {
+    json(res, 200, interests);
+    return true;
+  }
+  if (path === "/interests" && req.method === "POST") {
+    const body = await readJson(req);
+    if (interests.some((i) => i.name === body.name)) {
+      json(res, 409, { detail: "an interest with this name exists" });
+      return true;
+    }
+    const now = "2026-10-19T05:00:00+00:00";
+    const row: MockInterest = {
+      id: nextInterestId++,
+      name: String(body.name),
+      description: (body.description as string | null) ?? null,
+      keywords: (body.keywords as string[]) ?? [],
+      categories: (body.categories as string[]) ?? [],
+      is_active: body.is_active !== false,
+      weight: 1,
+      embedded: false,
+      created_at: now,
+      updated_at: now,
+    };
+    interests.push(row);
+    json(res, 201, row);
+    return true;
+  }
+  const one = /^\/interests\/(\d+)$/.exec(path);
+  if (one) {
+    const index = interests.findIndex((i) => i.id === Number(one[1]));
+    if (index < 0) {
+      json(res, 404, { detail: "unknown interest" });
+      return true;
+    }
+    if (req.method === "DELETE") {
+      interests.splice(index, 1);
+      res.writeHead(204).end();
+      return true;
+    }
+    if (req.method === "PUT") {
+      const body = await readJson(req);
+      interests[index] = {
+        ...interests[index],
+        name: String(body.name),
+        description: (body.description as string | null) ?? null,
+        keywords: (body.keywords as string[]) ?? [],
+        categories: (body.categories as string[]) ?? [],
+        is_active: body.is_active !== false,
+        embedded: false,
+      };
+      json(res, 200, interests[index]);
+      return true;
+    }
+  }
+  if (path === "/settings" && req.method === "GET") {
+    json(res, 200, settings);
+    return true;
+  }
+  if (path === "/settings" && req.method === "PUT") {
+    const body = await readJson(req);
+    const categories = (body.categories as string[]) ?? [];
+    settings = {
+      ...settings,
+      digest_size: Number(body.digest_size),
+      fulltext_top_n: Number(body.fulltext_top_n),
+      categories: categories.length ? categories : settings.categories_default,
+      categories_overridden: categories.length > 0,
+      budget_cap_usd: (body.budget_cap_usd as number | null) ?? null,
+    };
+    json(res, 200, settings);
+    return true;
+  }
+  return false;
+}
+
+createServer(async (req, res) => {
   const url = req.url ?? "";
   if (req.method === "GET" && url === "/health")
     return json(res, 200, { ok: true });
@@ -186,6 +350,7 @@ createServer((req, res) => {
     onRelease?.();
     return json(res, 200, { released: true });
   }
+  if (await digestRoute(req, res, url)) return;
   if (req.method === "GET" && paperRoute(res, url)) return;
   const chunk = /^\/chunks\/([0-9a-f-]+)$/.exec(url);
   if (req.method === "GET" && chunk) {

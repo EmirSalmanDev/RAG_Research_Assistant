@@ -141,3 +141,132 @@ export async function fetchChunk(
     apiErrorMessage(response.status, detailOf(error), "passage"),
   );
 }
+
+// --- the daily digest, interests and settings ---------------------------------------------
+// None of these calls OpenAI. GET /digest only reads; Save, Dismiss and Undo change one
+// entry and one interest weight on the server.
+
+export type DigestOut = components["schemas"]["DigestOut"];
+export type DigestEntryOut = components["schemas"]["DigestEntryOut"];
+export type InterestOut = components["schemas"]["InterestOut"];
+export type InterestIn = components["schemas"]["InterestIn"];
+export type SettingsOut = components["schemas"]["SettingsOut"];
+export type SettingsIn = components["schemas"]["SettingsIn"];
+export type EntryAction = "save" | "dismiss" | "undo";
+
+/** GET /digest: the day's ranked papers (the latest digest if none exists for `date`). */
+export async function fetchDigest(
+  client: ApiClient,
+  date?: string,
+): Promise<DigestOut> {
+  const { data, error, response } = await client.GET("/digest", {
+    params: { query: { date } },
+  });
+  if (data) return data;
+  throw new ApiError(
+    response.status,
+    apiErrorMessage(response.status, detailOf(error), "digest"),
+  );
+}
+
+/** POST /digest/{id}/save|dismiss|undo for the digest of `date`; returns the updated entry. */
+export async function actOnEntry(
+  client: ApiClient,
+  action: EntryAction,
+  date: string,
+  arxivId: string,
+): Promise<DigestEntryOut> {
+  const path = {
+    save: "/digest/{arxiv_id}/save",
+    dismiss: "/digest/{arxiv_id}/dismiss",
+    undo: "/digest/{arxiv_id}/undo",
+  } as const;
+  const { data, error, response } = await client.POST(path[action], {
+    params: { path: { arxiv_id: arxivId }, query: { date } },
+  });
+  if (data) return data;
+  throw new ApiError(
+    response.status,
+    apiErrorMessage(response.status, detailOf(error), "digest entry"),
+  );
+}
+
+/** GET /interests. */
+export async function fetchInterests(
+  client: ApiClient,
+): Promise<InterestOut[]> {
+  const { data, error, response } = await client.GET("/interests");
+  if (data) return data;
+  throw new ApiError(
+    response.status,
+    apiErrorMessage(response.status, detailOf(error), "interests"),
+  );
+}
+
+/** POST /interests (a duplicate name is a 409 with a readable message). */
+export async function createInterest(
+  client: ApiClient,
+  body: InterestIn,
+): Promise<InterestOut> {
+  const { data, error, response } = await client.POST("/interests", { body });
+  if (data) return data;
+  throw new ApiError(
+    response.status,
+    apiErrorMessage(response.status, detailOf(error), "interest"),
+  );
+}
+
+/** PUT /interests/{id}: replaces the editable fields. */
+export async function updateInterest(
+  client: ApiClient,
+  id: number,
+  body: InterestIn,
+): Promise<InterestOut> {
+  const { data, error, response } = await client.PUT(
+    "/interests/{interest_id}",
+    { params: { path: { interest_id: id } }, body },
+  );
+  if (data) return data;
+  throw new ApiError(
+    response.status,
+    apiErrorMessage(response.status, detailOf(error), "interest"),
+  );
+}
+
+/** DELETE /interests/{id}. */
+export async function deleteInterest(
+  client: ApiClient,
+  id: number,
+): Promise<void> {
+  const { error, response } = await client.DELETE("/interests/{interest_id}", {
+    params: { path: { interest_id: id } },
+  });
+  if (response.ok) return;
+  throw new ApiError(
+    response.status,
+    apiErrorMessage(response.status, detailOf(error), "interest"),
+  );
+}
+
+/** GET /settings: digest size, categories, full-text top N, budget cap, month-to-date spend. */
+export async function fetchSettings(client: ApiClient): Promise<SettingsOut> {
+  const { data, error, response } = await client.GET("/settings");
+  if (data) return data;
+  throw new ApiError(
+    response.status,
+    apiErrorMessage(response.status, detailOf(error), "settings"),
+  );
+}
+
+/** PUT /settings. */
+export async function saveSettings(
+  client: ApiClient,
+  body: SettingsIn,
+): Promise<SettingsOut> {
+  const { data, error, response } = await client.PUT("/settings", { body });
+  if (data) return data;
+  throw new ApiError(
+    response.status,
+    apiErrorMessage(response.status, detailOf(error), "settings"),
+  );
+}

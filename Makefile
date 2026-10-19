@@ -1,4 +1,4 @@
-.PHONY: up down logs test lint e2e openapi migrate ingest-one enrich-one analyze-submit analyze-collect backfill fetch-reranker eval-retrieval
+.PHONY: up down logs test lint e2e openapi digest migrate ingest-one enrich-one analyze-submit analyze-collect backfill fetch-reranker eval-retrieval
 
 # Start the stack and wait until every service's healthcheck passes.
 up:
@@ -83,6 +83,17 @@ analyze-submit:
 
 analyze-collect:
 	docker compose exec -T worker python -m app.llm.cli collect
+
+# The daily digest, by hand: embed interests whose text changed (one small paid OpenAI
+# embeddings request, only when an interest is new or edited), score the papers of the last
+# week against the interests, build today's digest and list which papers the nightly
+# selection would send to full text (nothing is downloaded). Runs natively against the
+# stores on localhost (postgres, qdrant). The nightly Beat job does the same (08:00).
+#   make digest ARGS="--dry-run"             # rank with stored vectors; no write, no request
+#   make digest ARGS="--date 2026-10-18"     # a past date (built from what it could see)
+#   make digest ARGS="--rebuild --no-embed"  # replace the entries nobody acted on
+digest:
+	cd backend && uv run python -m app.features.cli $(ARGS)
 
 # Seed the corpus: fetch the last DAYS days of the configured arXiv categories (new
 # papers and new versions) and index their abstracts only (no full text):
