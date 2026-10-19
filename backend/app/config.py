@@ -132,6 +132,46 @@ class Settings(BaseSettings):
     interest_weight_max: float = 2.0
     interest_weight_decimals: int = 6  # weights are rounded so that Undo returns exactly
 
+    # --- Paper comparison and topic timeline (docs/adr/0010) -------------------------
+    # Both features spend money only when the user presses the button (nothing runs on
+    # page load) and persist nothing.
+    # Comparison: the fixed question each dimension is retrieved with. The same text is
+    # used for every paper, so all of them go to the embeddings API in one request.
+    compare_dimension_queries: dict[str, str] = {
+        "task": "What problem or task does the paper address, and what is its goal?",
+        "method": "What method, model or approach does the paper propose, and how does it work?",
+        "data": "Which datasets, corpora or benchmarks does the paper use for training and "
+        "evaluation?",
+        "metrics": "Which evaluation metrics does the paper report, and what are its main results?",
+        "compute": "What compute does the paper use: hardware, training time, model size, "
+        "number of parameters or cost?",
+        "limitations": "What limitations, failure cases or open problems does the paper state?",
+    }  # fmt: skip
+    compare_top_k: int = 3  # chunks kept per paper and dimension (reduced 3 -> 2 -> 1 if too big)
+    # A paper-filtered hybrid query returns chunks of every type; generated analysis chunks
+    # are dropped in code (they are model output, not evidence), so ask for a few more.
+    compare_fetch_limit: int = 12
+    compare_evidence_types: list[str] = ["abstract", "section"]
+    compare_max_input_tokens: int = 30_000  # cl100k_base count of the fill call's input
+    compare_source_max_tokens: int = 800  # a longer source (a big table) is cut to this
+    compare_max_output_tokens: int = 4000  # 5 papers x 6 dimensions of <= 40 words, as JSON
+    compare_cell_max_words: int = 40
+    compare_prompt: str = "compare_v1"
+    # Timeline: candidates come from one hybrid query over abstracts; the result list is
+    # the union of the two prefetch lists at most (2 x search_prefetch_limit).
+    timeline_search_limit: int = 100
+    # key_score = relevance_weight * topic_relevance + citation_weight * citation_norm,
+    # where topic_relevance is 1 for the best-matching paper down to 0 for the last, and
+    # citation_norm = ln(1 + citations) / ln(1 + the set's largest count).
+    timeline_relevance_weight: float = 0.7
+    timeline_citation_weight: float = 0.3
+    timeline_line_max_words: int = 30  # a longer "what changed" line is replaced
+    timeline_line_fallback_chars: int = 200  # fallback: the abstract's first sentence, cut here
+    timeline_abstract_max_tokens: int = 400  # an abstract is cut to this in the prompt
+    timeline_max_output_tokens: int = 1500
+    timeline_narrow_days: int = 30  # a result spanning fewer days is flagged as a narrow range
+    timeline_prompt: str = "timeline_v1"
+
     @field_validator(
         "openai_api_key", "langfuse_public_key", "langfuse_secret_key", "github_token",
         "s2_api_key", mode="before",
