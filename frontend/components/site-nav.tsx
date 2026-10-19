@@ -6,8 +6,10 @@ import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 
 const LINKS = [
+  { href: "/", label: "Digest" },
   { href: "/chat", label: "Chat" },
   { href: "/search", label: "Search" },
+  { href: "/settings", label: "Settings" },
 ];
 
 export function SiteNav() {
