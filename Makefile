@@ -1,4 +1,4 @@
-.PHONY: up down logs test lint e2e openapi digest compare timeline migrate ingest-one enrich-one analyze-submit analyze-collect backfill fetch-reranker eval-retrieval
+.PHONY: up down logs test lint e2e openapi digest compare timeline review migrate ingest-one enrich-one analyze-submit analyze-collect backfill fetch-reranker eval-retrieval
 
 # Start the stack and wait until every service's healthcheck passes.
 up:
@@ -113,6 +113,20 @@ timeline:
 	cd backend && uv run python -m app.features.explore_cli timeline "$(TOPIC)" \
 		$(if $(FROM),--date-from "$(FROM)") $(if $(TO),--date-to "$(TO)") \
 		$(if $(ESTIMATE),--estimate) $(if $(JSON),--json)
+
+# The literature review of a library collection, or its .bib file, from the command line. Runs
+# natively against Postgres on localhost, like `make compare`. WITHOUT ESTIMATE=1 or BIB=1 it
+# makes real, paid OpenAI chat calls (one per group of eight papers above eight, plus one
+# writing call: ask first). ESTIMATE=1 prints an upper bound of the input tokens and the cost
+# from the stored text: no network, no key. BIB=1 prints the .bib file (no model, no key).
+#   make review COLLECTION="Thesis ch. 2" ESTIMATE=1
+#   make review COLLECTION="Thesis ch. 2" FOCUS="speculative decoding" MAX=30
+#   make review COLLECTION="Thesis ch. 2" BIB=1
+review:
+	@test -n "$(COLLECTION)" || (echo 'usage: make review COLLECTION="..." [FOCUS="..."] [MAX=30] [ESTIMATE=1|BIB=1]'; exit 2)
+	cd backend && uv run python -m app.features.review_cli "$(COLLECTION)" \
+		$(if $(FOCUS),--focus "$(FOCUS)") $(if $(MAX),--max-papers "$(MAX)") \
+		$(if $(ESTIMATE),--estimate) $(if $(BIB),--bib) $(if $(JSON),--json)
 
 # Seed the corpus: fetch the last DAYS days of the configured arXiv categories (new
 # papers and new versions) and index their abstracts only (no full text):

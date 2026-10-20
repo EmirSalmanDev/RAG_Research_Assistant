@@ -275,6 +275,27 @@ export interface paths {
         patch: operations["update_item_library_items__arxiv_id__patch"];
         trace?: never;
     };
+    "/library/review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Write Review
+         * @description A cited related-work draft for the collection: every shown claim carries at least
+         *     one citation that exists. A citation that resolves does not prove it supports the sentence.
+         */
+        post: operations["write_review_library_review_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/papers": {
         parameters: {
             query?: never;
@@ -894,6 +915,45 @@ export interface components {
             /** Version */
             version: number;
         };
+        /** ParagraphOut */
+        ParagraphOut: {
+            /** Sentences */
+            sentences: components["schemas"]["SentenceOut"][];
+        };
+        /** ReferenceOut */
+        ReferenceOut: {
+            /** Abs Url */
+            abs_url: string | null;
+            /** Arxiv Id */
+            arxiv_id: string;
+            /** Authors */
+            authors: string[];
+            /** Bibtex Key */
+            bibtex_key: string;
+            /**
+             * Chunk Id
+             * Format: uuid
+             */
+            chunk_id: string;
+            /**
+             * Chunk Type
+             * @enum {string}
+             */
+            chunk_type: "analysis" | "abstract";
+            /** Cited Count */
+            cited_count: number;
+            /**
+             * Evidence
+             * @enum {string}
+             */
+            evidence: "analysis" | "abstract";
+            /** N */
+            n: number;
+            /** Title */
+            title: string;
+            /** Year */
+            year: number;
+        };
         /** RelatedOut */
         RelatedOut: {
             /** Arxiv Id */
@@ -937,6 +997,68 @@ export interface components {
             stars: number | null;
             /** Url */
             url: string;
+        };
+        /** ReviewCounts */
+        ReviewCounts: {
+            /** Claims */
+            claims: number;
+            /** Dropped Transitions */
+            dropped_transitions: number;
+            /** Dropped Uncited */
+            dropped_uncited: number;
+            /** Invalid Citations Dropped */
+            invalid_citations_dropped: number;
+            /** Map Calls */
+            map_calls: number;
+            /** Map Notes Dropped */
+            map_notes_dropped: number;
+            /** Papers */
+            papers: number;
+            /** Papers Omitted */
+            papers_omitted: number;
+            /** Papers Uncitable */
+            papers_uncitable: number;
+            /** Papers Without Analysis */
+            papers_without_analysis: number;
+            /** Transitions */
+            transitions: number;
+        };
+        /** ReviewOut */
+        ReviewOut: {
+            /** Collection */
+            collection: string;
+            /** Cost Usd */
+            cost_usd: number;
+            counts: components["schemas"]["ReviewCounts"];
+            /** Focus */
+            focus: string | null;
+            /** Prompt Versions */
+            prompt_versions: {
+                [key: string]: string;
+            };
+            /** References */
+            references: components["schemas"]["ReferenceOut"][];
+            /** Sections */
+            sections: components["schemas"]["SectionOut"][];
+            /** Tokens In */
+            tokens_in: number;
+            /** Tokens Out */
+            tokens_out: number;
+        };
+        /** ReviewRequest */
+        ReviewRequest: {
+            /** Collection */
+            collection: string;
+            /**
+             * Focus
+             * @description a topic hint for the draft (optional)
+             */
+            focus?: string | null;
+            /**
+             * Max Papers
+             * @description papers used (default 30, at most 60); the rest are left out
+             */
+            max_papers?: number | null;
         };
         /** RowOut */
         RowOut: {
@@ -988,6 +1110,25 @@ export interface components {
             query: string;
             /** Reranked */
             reranked: boolean;
+        };
+        /** SectionOut */
+        SectionOut: {
+            /** Heading */
+            heading: string;
+            /** Paragraphs */
+            paragraphs: components["schemas"]["ParagraphOut"][];
+        };
+        /** SentenceOut */
+        SentenceOut: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "claim" | "transition";
+            /** Source Numbers */
+            source_numbers: number[];
+            /** Text */
+            text: string;
         };
         /** SettingsIn */
         SettingsIn: {
@@ -1789,6 +1930,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ItemOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    write_review_library_review_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewOut"];
                 };
             };
             /** @description Validation Error */

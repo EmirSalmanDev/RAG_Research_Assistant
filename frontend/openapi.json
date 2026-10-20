@@ -1424,6 +1424,104 @@
         "title": "PaperOut",
         "type": "object"
       },
+      "ParagraphOut": {
+        "properties": {
+          "sentences": {
+            "items": {
+              "$ref": "#/components/schemas/SentenceOut"
+            },
+            "title": "Sentences",
+            "type": "array"
+          }
+        },
+        "required": [
+          "sentences"
+        ],
+        "title": "ParagraphOut",
+        "type": "object"
+      },
+      "ReferenceOut": {
+        "properties": {
+          "abs_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Abs Url"
+          },
+          "arxiv_id": {
+            "title": "Arxiv Id",
+            "type": "string"
+          },
+          "authors": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Authors",
+            "type": "array"
+          },
+          "bibtex_key": {
+            "title": "Bibtex Key",
+            "type": "string"
+          },
+          "chunk_id": {
+            "format": "uuid",
+            "title": "Chunk Id",
+            "type": "string"
+          },
+          "chunk_type": {
+            "enum": [
+              "analysis",
+              "abstract"
+            ],
+            "title": "Chunk Type",
+            "type": "string"
+          },
+          "cited_count": {
+            "title": "Cited Count",
+            "type": "integer"
+          },
+          "evidence": {
+            "enum": [
+              "analysis",
+              "abstract"
+            ],
+            "title": "Evidence",
+            "type": "string"
+          },
+          "n": {
+            "title": "N",
+            "type": "integer"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "year": {
+            "title": "Year",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "n",
+          "arxiv_id",
+          "bibtex_key",
+          "title",
+          "authors",
+          "year",
+          "chunk_id",
+          "chunk_type",
+          "evidence",
+          "abs_url",
+          "cited_count"
+        ],
+        "title": "ReferenceOut",
+        "type": "object"
+      },
       "RelatedOut": {
         "properties": {
           "arxiv_id": {
@@ -1593,6 +1691,178 @@
         "title": "RepoOut",
         "type": "object"
       },
+      "ReviewCounts": {
+        "properties": {
+          "claims": {
+            "title": "Claims",
+            "type": "integer"
+          },
+          "dropped_transitions": {
+            "title": "Dropped Transitions",
+            "type": "integer"
+          },
+          "dropped_uncited": {
+            "title": "Dropped Uncited",
+            "type": "integer"
+          },
+          "invalid_citations_dropped": {
+            "title": "Invalid Citations Dropped",
+            "type": "integer"
+          },
+          "map_calls": {
+            "title": "Map Calls",
+            "type": "integer"
+          },
+          "map_notes_dropped": {
+            "title": "Map Notes Dropped",
+            "type": "integer"
+          },
+          "papers": {
+            "title": "Papers",
+            "type": "integer"
+          },
+          "papers_omitted": {
+            "title": "Papers Omitted",
+            "type": "integer"
+          },
+          "papers_uncitable": {
+            "title": "Papers Uncitable",
+            "type": "integer"
+          },
+          "papers_without_analysis": {
+            "title": "Papers Without Analysis",
+            "type": "integer"
+          },
+          "transitions": {
+            "title": "Transitions",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "papers",
+          "papers_without_analysis",
+          "papers_omitted",
+          "papers_uncitable",
+          "claims",
+          "transitions",
+          "dropped_uncited",
+          "dropped_transitions",
+          "invalid_citations_dropped",
+          "map_calls",
+          "map_notes_dropped"
+        ],
+        "title": "ReviewCounts",
+        "type": "object"
+      },
+      "ReviewOut": {
+        "properties": {
+          "collection": {
+            "title": "Collection",
+            "type": "string"
+          },
+          "cost_usd": {
+            "title": "Cost Usd",
+            "type": "number"
+          },
+          "counts": {
+            "$ref": "#/components/schemas/ReviewCounts"
+          },
+          "focus": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Focus"
+          },
+          "prompt_versions": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Prompt Versions",
+            "type": "object"
+          },
+          "references": {
+            "items": {
+              "$ref": "#/components/schemas/ReferenceOut"
+            },
+            "title": "References",
+            "type": "array"
+          },
+          "sections": {
+            "items": {
+              "$ref": "#/components/schemas/SectionOut"
+            },
+            "title": "Sections",
+            "type": "array"
+          },
+          "tokens_in": {
+            "title": "Tokens In",
+            "type": "integer"
+          },
+          "tokens_out": {
+            "title": "Tokens Out",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "collection",
+          "focus",
+          "sections",
+          "references",
+          "counts",
+          "tokens_in",
+          "tokens_out",
+          "cost_usd",
+          "prompt_versions"
+        ],
+        "title": "ReviewOut",
+        "type": "object"
+      },
+      "ReviewRequest": {
+        "properties": {
+          "collection": {
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Collection",
+            "type": "string"
+          },
+          "focus": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "a topic hint for the draft (optional)",
+            "title": "Focus"
+          },
+          "max_papers": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "papers used (default 30, at most 60); the rest are left out",
+            "title": "Max Papers"
+          }
+        },
+        "required": [
+          "collection"
+        ],
+        "title": "ReviewRequest",
+        "type": "object"
+      },
       "RowOut": {
         "properties": {
           "abs_url": {
@@ -1734,6 +2004,57 @@
           "hits"
         ],
         "title": "SearchResponse",
+        "type": "object"
+      },
+      "SectionOut": {
+        "properties": {
+          "heading": {
+            "title": "Heading",
+            "type": "string"
+          },
+          "paragraphs": {
+            "items": {
+              "$ref": "#/components/schemas/ParagraphOut"
+            },
+            "title": "Paragraphs",
+            "type": "array"
+          }
+        },
+        "required": [
+          "heading",
+          "paragraphs"
+        ],
+        "title": "SectionOut",
+        "type": "object"
+      },
+      "SentenceOut": {
+        "properties": {
+          "kind": {
+            "enum": [
+              "claim",
+              "transition"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "source_numbers": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Source Numbers",
+            "type": "array"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text",
+          "kind",
+          "source_numbers"
+        ],
+        "title": "SentenceOut",
         "type": "object"
       },
       "SettingsIn": {
@@ -3036,6 +3357,45 @@
           }
         },
         "summary": "Update Item"
+      }
+    },
+    "/library/review": {
+      "post": {
+        "description": "A cited related-work draft for the collection: every shown claim carries at least\none citation that exists. A citation that resolves does not prove it supports the sentence.",
+        "operationId": "write_review_library_review_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Write Review"
       }
     },
     "/papers": {
