@@ -20,9 +20,10 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 from starlette.concurrency import run_in_threadpool
 
-from app.api.papers import ABS_URL, _author_names
+from app.api.papers import _author_names
 from app.db.session import session_scope
 from app.features import digest
+from app.ids import abs_url
 
 router = APIRouter()
 
@@ -49,7 +50,7 @@ class DigestEntryOut(BaseModel):
     best_interest: BestInterestOut | None
     summary: str  # the stored TL;DR, else the abstract's first sentence
     summary_source: Literal["analysis", "abstract"]
-    abs_url: str
+    abs_url: str | None
 
 
 class DigestOut(BaseModel):
@@ -76,7 +77,7 @@ def _entry_out(card: digest.DigestCard) -> DigestEntryOut:
         categories=list(paper.categories), published_at=paper.published_at,
         hf_upvotes=paper.hf_upvotes, trending=card.trending, best_interest=best,
         summary=card.summary, summary_source=card.summary_source,
-        abs_url=ABS_URL.format(arxiv_id=paper.arxiv_id),
+        abs_url=abs_url(paper.arxiv_id),
     )  # fmt: skip
 
 

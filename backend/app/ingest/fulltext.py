@@ -28,6 +28,7 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.db.models import DigestEntry, LibraryItem, Paper, PaperText
+from app.ids import LOCAL_PREFIX, is_local_id
 
 logger = logging.getLogger(__name__)
 
@@ -310,6 +311,8 @@ def request_fulltext(session: Session, arxiv_id: str) -> None:
     paper = session.get(Paper, arxiv_id)
     if paper is None:
         raise ValueError(f"no paper {arxiv_id} in Postgres")
+    if is_local_id(arxiv_id):  # an uploaded document keeps the text it was uploaded with
+        return
     paper.fulltext_status = "requested"
 
 
@@ -334,6 +337,7 @@ def select_for_fulltext(
     query = (
         select(Paper.arxiv_id)
         .where(in_library | (Paper.fulltext_status == "requested"))
+        .where(~Paper.arxiv_id.startswith(LOCAL_PREFIX))  # an upload has no source to fetch
         .where(Paper.fulltext_status != "failed")
         .where(~has_current_text)
         .order_by(Paper.arxiv_id)
@@ -354,7 +358,12 @@ def _top_by_relevance(session: Session, top_n: int, now: datetime | None) -> lis
     )
     top = session.execute(
         select(Paper.arxiv_id, Paper.fulltext_status)
-        .where(Paper.relevance_score.is_not(None), Paper.published_at >= start, ~dismissed)
+        .where(
+            Paper.relevance_score.is_not(None),
+            Paper.published_at >= start,
+            ~dismissed,
+            ~Paper.arxiv_id.startswith(LOCAL_PREFIX),
+        )
         .order_by(Paper.relevance_score.desc(), Paper.published_at.desc(), Paper.arxiv_id)
         .limit(top_n)
     ).all()

@@ -56,6 +56,11 @@ export function siteUrl(
   }
 }
 
+/** The id of an uploaded document (a PDF that is not on arXiv): it has no arXiv page. */
+export function isLocalId(arxivId: string): boolean {
+  return arxivId.startsWith("local-");
+}
+
 /** The page of one paper in this app. */
 export function paperPath(arxivId: string): string {
   return `/paper/${encodeURIComponent(arxivId)}`;

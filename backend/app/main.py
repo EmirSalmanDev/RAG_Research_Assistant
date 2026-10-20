@@ -5,8 +5,11 @@ from app.api.digest import router as digest_router
 from app.api.explore import router as explore_router
 from app.api.health import router as health_router
 from app.api.interests import router as interests_router
+from app.api.library import router as library_router
 from app.api.papers import router as papers_router
+from app.api.review import router as review_router
 from app.api.search import router as search_router
+from app.api.upload import router as upload_router
 from app.egress_guard import install_from_env
 
 # Proof runs only: does nothing unless EGRESS_GUARD_POLICY is set (see app/egress_guard.py).
@@ -21,3 +24,6 @@ app.include_router(papers_router)
 app.include_router(interests_router)
 app.include_router(digest_router)
 app.include_router(explore_router)
+app.include_router(library_router)
+app.include_router(review_router)
+app.include_router(upload_router)

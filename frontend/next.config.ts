@@ -17,6 +17,11 @@ const nextConfig: NextConfig = {
     // A chat turn can be silent for a while (search and rerank run before the sources
     // are sent); the proxy must not cut the stream after its default 30 s.
     proxyTimeout: 5 * 60 * 1000,
+    // The rewrite buffers a request body up to this size and silently cuts anything beyond
+    // it (the default is 10 MB). A PDF upload goes through it (the API accepts up to
+    // 25 MB, UPLOAD_MAX_BYTES), so a bigger PDF would arrive truncated and parse as garbage.
+    // Kept above the API's limit so the API, not the proxy, is what refuses a big file.
+    proxyClientMaxBodySize: "30mb",
   },
 };
 

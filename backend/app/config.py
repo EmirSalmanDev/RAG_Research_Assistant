@@ -172,6 +172,29 @@ class Settings(BaseSettings):
     timeline_narrow_days: int = 30  # a result spanning fewer days is flagged as a narrow range
     timeline_prompt: str = "timeline_v1"
 
+    # --- Library, literature review and PDF upload (docs/adr/0011) --------------------
+    # The review reads Postgres only (stored analyses and abstracts): no retrieval, no
+    # embeddings. It spends money only when its button is pressed and stores nothing.
+    review_map_prompt: str = "review_map_v1"
+    review_write_prompt: str = "review_write_v1"
+    review_default_papers: int = 30  # papers a review uses unless the request says otherwise
+    review_max_papers: int = 60  # hard cap on `max_papers`
+    review_direct_max_papers: int = 8  # up to this many papers the writer reads them directly
+    review_map_group_size: int = 8  # papers per map call above that
+    review_field_max_tokens: int = 250  # an analysis field or an abstract is cut to this
+    review_map_max_output_tokens: int = 1500  # theme notes of one group, as JSON
+    review_write_max_output_tokens: int = 4000  # the draft, as JSON
+    review_note_max_words: int = 60  # a longer theme note statement is cut
+    review_max_citations_per_sentence: int = 4  # further source numbers of a sentence are dropped
+    # Transitions ("Several lines of work follow.") may be uncited but are limited to this
+    # share of the kept sentences; a transition that names an author or holds a number is
+    # an uncited claim and is removed.
+    review_max_transition_share: float = 0.25
+    # PDF upload: the raw request body is read up to this size before any parsing.
+    upload_max_bytes: int = 25 * 1024 * 1024
+    upload_abstract_chars: int = 1500  # no abstract given: the abstract chunk is the body's start
+    upload_min_text_chars: int = 500  # less parsed text than this: no text layer (scanned PDF)
+
     @field_validator(
         "openai_api_key", "langfuse_public_key", "langfuse_secret_key", "github_token",
         "s2_api_key", mode="before",

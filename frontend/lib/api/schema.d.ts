@@ -179,6 +179,165 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/library/bibtex": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export Bibtex
+         * @description The collection's references as a .bib file, built from stored metadata (no model,
+         *     no network). The keys are the ones the review's citations use.
+         */
+        get: operations["export_bibtex_library_bibtex_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/library/collections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Collections */
+        get: operations["list_collections_library_collections_get"];
+        put?: never;
+        /** Create Collection */
+        post: operations["create_collection_library_collections_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/library/collections/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Update Collection */
+        put: operations["update_collection_library_collections__name__put"];
+        post?: never;
+        /** Delete Collection */
+        delete: operations["delete_collection_library_collections__name__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/library/items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Items */
+        get: operations["list_items_library_items_get"];
+        put?: never;
+        /**
+         * Add Item
+         * @description 201 when the paper was added, 200 when it was in the collection already.
+         */
+        post: operations["add_item_library_items_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/library/items/{arxiv_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Remove Item */
+        delete: operations["remove_item_library_items__arxiv_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Item */
+        patch: operations["update_item_library_items__arxiv_id__patch"];
+        trace?: never;
+    };
+    "/library/review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Write Review
+         * @description A cited related-work draft for the collection: every shown claim carries at least
+         *     one citation that exists. A citation that resolves does not prove it supports the sentence.
+         */
+        post: operations["write_review_library_review_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/library/upload": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upload Pdf
+         * @description Add the PDF in the request body as an uploaded document (201 when new, 200 when the
+         *     same file was uploaded before).
+         */
+        post: operations["upload_pdf_library_upload_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/library/uploads/{arxiv_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Uploaded Document
+         * @description Remove an uploaded document: its Qdrant points, chunks, text and library items.
+         *     Only `local-` ids; an arXiv paper cannot be deleted here.
+         */
+        delete: operations["delete_uploaded_document_library_uploads__arxiv_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/papers": {
         parameters: {
             query?: never;
@@ -390,7 +549,7 @@ export interface components {
         /** ChunkOut */
         ChunkOut: {
             /** Abs Url */
-            abs_url: string;
+            abs_url: string | null;
             /** Arxiv Id */
             arxiv_id: string;
             /**
@@ -427,6 +586,42 @@ export interface components {
             n: number;
             /** Section Path */
             section_path: string | null;
+        };
+        /** CollectionCreate */
+        CollectionCreate: {
+            /** Description */
+            description?: string | null;
+            /** Name */
+            name: string;
+        };
+        /** CollectionDeleted */
+        CollectionDeleted: {
+            /** Items Removed */
+            items_removed: number;
+            /** Name */
+            name: string;
+        };
+        /** CollectionOut */
+        CollectionOut: {
+            /** Created At */
+            created_at: string | null;
+            /** Description */
+            description: string | null;
+            /** Name */
+            name: string;
+            /** Paper Count */
+            paper_count: number;
+        };
+        /**
+         * CollectionUpdate
+         * @description Send only what changes: `name` renames (the items move with it), `description` null
+         *     clears the description.
+         */
+        CollectionUpdate: {
+            /** Description */
+            description?: string | null;
+            /** Name */
+            name?: string | null;
         };
         /** CompareNotes */
         CompareNotes: {
@@ -478,7 +673,7 @@ export interface components {
         /** DigestEntryOut */
         DigestEntryOut: {
             /** Abs Url */
-            abs_url: string;
+            abs_url: string | null;
             /** Arxiv Id */
             arxiv_id: string;
             /** Author Count */
@@ -615,6 +810,70 @@ export interface components {
             /** Weight */
             weight: number;
         };
+        /** ItemCreate */
+        ItemCreate: {
+            /** Collection */
+            collection: string;
+            /**
+             * Reference
+             * @description an arXiv id (also with a version) or an arxiv.org abs/pdf link
+             */
+            reference: string;
+            /**
+             * Status
+             * @default to_read
+             * @enum {string}
+             */
+            status: "to_read" | "reading" | "read" | "archived";
+        };
+        /** ItemOut */
+        ItemOut: {
+            /** Abs Url */
+            abs_url: string | null;
+            /**
+             * Added At
+             * Format: date-time
+             */
+            added_at: string;
+            /** Arxiv Id */
+            arxiv_id: string;
+            /** Authors */
+            authors: string[];
+            /** Collection */
+            collection: string;
+            /**
+             * Evidence
+             * @enum {string}
+             */
+            evidence: "full_text" | "abstract_only" | "uploaded";
+            /** Notes */
+            notes: string | null;
+            /**
+             * Published At
+             * Format: date-time
+             */
+            published_at: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "to_read" | "reading" | "read" | "archived";
+            /** Title */
+            title: string;
+        };
+        /**
+         * ItemPatch
+         * @description Send only what changes. `notes` null or empty clears the note; `collection` moves
+         *     the item to that collection (409 if the paper is in it already).
+         */
+        ItemPatch: {
+            /** Collection */
+            collection?: string | null;
+            /** Notes */
+            notes?: string | null;
+            /** Status */
+            status?: ("to_read" | "reading" | "read" | "archived") | null;
+        };
         /** PaperChunksOut */
         PaperChunksOut: {
             /** Arxiv Id */
@@ -644,7 +903,7 @@ export interface components {
         /** PaperListItemOut */
         PaperListItemOut: {
             /** Abs Url */
-            abs_url: string;
+            abs_url: string | null;
             /** Arxiv Id */
             arxiv_id: string;
             /** Has Fulltext */
@@ -667,7 +926,7 @@ export interface components {
         /** PaperOut */
         PaperOut: {
             /** Abs Url */
-            abs_url: string;
+            abs_url: string | null;
             /** Abstract */
             abstract: string;
             /** Arxiv Id */
@@ -698,6 +957,52 @@ export interface components {
             /** Version */
             version: number;
         };
+        /** ParagraphOut */
+        ParagraphOut: {
+            /** Sentences */
+            sentences: components["schemas"]["SentenceOut"][];
+        };
+        /** ReferenceOut */
+        ReferenceOut: {
+            /** Abs Url */
+            abs_url: string | null;
+            /** Arxiv Id */
+            arxiv_id: string;
+            /** Authors */
+            authors: string[];
+            /** Bibtex Key */
+            bibtex_key: string;
+            /**
+             * Chunk Id
+             * Format: uuid
+             */
+            chunk_id: string;
+            /**
+             * Chunk Type
+             * @enum {string}
+             */
+            chunk_type: "analysis" | "abstract";
+            /** Cited Count */
+            cited_count: number;
+            /**
+             * Evidence
+             * @enum {string}
+             */
+            evidence: "analysis" | "abstract";
+            /** N */
+            n: number;
+            /**
+             * Published At
+             * Format: date-time
+             */
+            published_at: string;
+            /** Section Path */
+            section_path: string | null;
+            /** Title */
+            title: string;
+            /** Year */
+            year: number;
+        };
         /** RelatedOut */
         RelatedOut: {
             /** Arxiv Id */
@@ -717,7 +1022,7 @@ export interface components {
         /** RelatedPaperOut */
         RelatedPaperOut: {
             /** Abs Url */
-            abs_url: string;
+            abs_url: string | null;
             /** Arxiv Id */
             arxiv_id: string;
             /** Held */
@@ -742,10 +1047,72 @@ export interface components {
             /** Url */
             url: string;
         };
+        /** ReviewCounts */
+        ReviewCounts: {
+            /** Claims */
+            claims: number;
+            /** Dropped Transitions */
+            dropped_transitions: number;
+            /** Dropped Uncited */
+            dropped_uncited: number;
+            /** Invalid Citations Dropped */
+            invalid_citations_dropped: number;
+            /** Map Calls */
+            map_calls: number;
+            /** Map Notes Dropped */
+            map_notes_dropped: number;
+            /** Papers */
+            papers: number;
+            /** Papers Omitted */
+            papers_omitted: number;
+            /** Papers Uncitable */
+            papers_uncitable: number;
+            /** Papers Without Analysis */
+            papers_without_analysis: number;
+            /** Transitions */
+            transitions: number;
+        };
+        /** ReviewOut */
+        ReviewOut: {
+            /** Collection */
+            collection: string;
+            /** Cost Usd */
+            cost_usd: number;
+            counts: components["schemas"]["ReviewCounts"];
+            /** Focus */
+            focus: string | null;
+            /** Prompt Versions */
+            prompt_versions: {
+                [key: string]: string;
+            };
+            /** References */
+            references: components["schemas"]["ReferenceOut"][];
+            /** Sections */
+            sections: components["schemas"]["SectionOut"][];
+            /** Tokens In */
+            tokens_in: number;
+            /** Tokens Out */
+            tokens_out: number;
+        };
+        /** ReviewRequest */
+        ReviewRequest: {
+            /** Collection */
+            collection: string;
+            /**
+             * Focus
+             * @description a topic hint for the draft (optional)
+             */
+            focus?: string | null;
+            /**
+             * Max Papers
+             * @description papers used (default 30, at most 60); the rest are left out
+             */
+            max_papers?: number | null;
+        };
         /** RowOut */
         RowOut: {
             /** Abs Url */
-            abs_url: string;
+            abs_url: string | null;
             /** Arxiv Id */
             arxiv_id: string;
             /** Cells */
@@ -758,7 +1125,7 @@ export interface components {
         /** SearchHitOut */
         SearchHitOut: {
             /** Abs Url */
-            abs_url: string;
+            abs_url: string | null;
             /** Arxiv Id */
             arxiv_id: string;
             /**
@@ -793,6 +1160,25 @@ export interface components {
             /** Reranked */
             reranked: boolean;
         };
+        /** SectionOut */
+        SectionOut: {
+            /** Heading */
+            heading: string;
+            /** Paragraphs */
+            paragraphs: components["schemas"]["ParagraphOut"][];
+        };
+        /** SentenceOut */
+        SentenceOut: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "claim" | "transition";
+            /** Source Numbers */
+            source_numbers: number[];
+            /** Text */
+            text: string;
+        };
         /** SettingsIn */
         SettingsIn: {
             /** Budget Cap Usd */
@@ -824,7 +1210,7 @@ export interface components {
         /** SourceOut */
         SourceOut: {
             /** Abs Url */
-            abs_url: string;
+            abs_url: string | null;
             /** Arxiv Id */
             arxiv_id: string;
             /**
@@ -904,7 +1290,7 @@ export interface components {
         /** TimelinePoint */
         TimelinePoint: {
             /** Abs Url */
-            abs_url: string;
+            abs_url: string | null;
             /** Arxiv Id */
             arxiv_id: string;
             /**
@@ -931,6 +1317,44 @@ export interface components {
             title: string;
             /** Topic Relevance */
             topic_relevance: number;
+        };
+        /** UploadDeleted */
+        UploadDeleted: {
+            /** Arxiv Id */
+            arxiv_id: string;
+            /** Chunks */
+            chunks: number;
+            /** Library Items */
+            library_items: number;
+            /** Points */
+            points: number;
+        };
+        /** UploadOut */
+        UploadOut: {
+            /** Abs Url */
+            abs_url?: null;
+            /** Arxiv Id */
+            arxiv_id: string;
+            /** Chunks */
+            chunks: {
+                [key: string]: number;
+            };
+            /** Collection */
+            collection: string | null;
+            /** Cost Usd */
+            cost_usd: number;
+            /** Created */
+            created: boolean;
+            /** Embedded */
+            embedded: number;
+            /** Embedding Requests */
+            embedding_requests: number;
+            /** Title */
+            title: string;
+            /** Tokens In */
+            tokens_in: number;
+            /** Year */
+            year: number;
         };
         /** ValidationError */
         ValidationError: {
@@ -1310,6 +1734,388 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_bibtex_library_bibtex_get: {
+        parameters: {
+            query: {
+                /** @description the collection's name */
+                collection: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_collections_library_collections_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CollectionOut"][];
+                };
+            };
+        };
+    };
+    create_collection_library_collections_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CollectionCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CollectionOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_collection_library_collections__name__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CollectionUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CollectionOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_collection_library_collections__name__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CollectionDeleted"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_items_library_items_get: {
+        parameters: {
+            query: {
+                /** @description the collection's name */
+                collection: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ItemOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_item_library_items_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ItemCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ItemOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_item_library_items__arxiv_id__delete: {
+        parameters: {
+            query: {
+                /** @description the collection's name */
+                collection: string;
+            };
+            header?: never;
+            path: {
+                arxiv_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_item_library_items__arxiv_id__patch: {
+        parameters: {
+            query: {
+                /** @description the collection's name */
+                collection: string;
+            };
+            header?: never;
+            path: {
+                arxiv_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ItemPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ItemOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    write_review_library_review_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upload_pdf_library_upload_post: {
+        parameters: {
+            query: {
+                title: string;
+                collection?: string | null;
+                year?: number | null;
+                abstract?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UploadOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_uploaded_document_library_uploads__arxiv_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                arxiv_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UploadDeleted"];
+                };
             };
             /** @description Validation Error */
             422: {

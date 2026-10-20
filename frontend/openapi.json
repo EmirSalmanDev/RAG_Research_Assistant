@@ -179,8 +179,15 @@
       "ChunkOut": {
         "properties": {
           "abs_url": {
-            "title": "Abs Url",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Abs Url"
           },
           "arxiv_id": {
             "title": "Arxiv Id",
@@ -272,6 +279,126 @@
           "section_path"
         ],
         "title": "CitationOut",
+        "type": "object"
+      },
+      "CollectionCreate": {
+        "properties": {
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "name": {
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "CollectionCreate",
+        "type": "object"
+      },
+      "CollectionDeleted": {
+        "properties": {
+          "items_removed": {
+            "title": "Items Removed",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "items_removed"
+        ],
+        "title": "CollectionDeleted",
+        "type": "object"
+      },
+      "CollectionOut": {
+        "properties": {
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "paper_count": {
+            "title": "Paper Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "name",
+          "description",
+          "paper_count",
+          "created_at"
+        ],
+        "title": "CollectionOut",
+        "type": "object"
+      },
+      "CollectionUpdate": {
+        "description": "Send only what changes: `name` renames (the items move with it), `description` null\nclears the description.",
+        "properties": {
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          }
+        },
+        "title": "CollectionUpdate",
         "type": "object"
       },
       "CompareNotes": {
@@ -449,8 +576,15 @@
       "DigestEntryOut": {
         "properties": {
           "abs_url": {
-            "title": "Abs Url",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Abs Url"
           },
           "arxiv_id": {
             "title": "Arxiv Id",
@@ -836,6 +970,177 @@
         "title": "InterestOut",
         "type": "object"
       },
+      "ItemCreate": {
+        "properties": {
+          "collection": {
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Collection",
+            "type": "string"
+          },
+          "reference": {
+            "description": "an arXiv id (also with a version) or an arxiv.org abs/pdf link",
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Reference",
+            "type": "string"
+          },
+          "status": {
+            "default": "to_read",
+            "enum": [
+              "to_read",
+              "reading",
+              "read",
+              "archived"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reference",
+          "collection"
+        ],
+        "title": "ItemCreate",
+        "type": "object"
+      },
+      "ItemOut": {
+        "properties": {
+          "abs_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Abs Url"
+          },
+          "added_at": {
+            "format": "date-time",
+            "title": "Added At",
+            "type": "string"
+          },
+          "arxiv_id": {
+            "title": "Arxiv Id",
+            "type": "string"
+          },
+          "authors": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Authors",
+            "type": "array"
+          },
+          "collection": {
+            "title": "Collection",
+            "type": "string"
+          },
+          "evidence": {
+            "enum": [
+              "full_text",
+              "abstract_only",
+              "uploaded"
+            ],
+            "title": "Evidence",
+            "type": "string"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "published_at": {
+            "format": "date-time",
+            "title": "Published At",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "to_read",
+              "reading",
+              "read",
+              "archived"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "arxiv_id",
+          "collection",
+          "status",
+          "notes",
+          "added_at",
+          "title",
+          "authors",
+          "published_at",
+          "evidence",
+          "abs_url"
+        ],
+        "title": "ItemOut",
+        "type": "object"
+      },
+      "ItemPatch": {
+        "description": "Send only what changes. `notes` null or empty clears the note; `collection` moves\nthe item to that collection (409 if the paper is in it already).",
+        "properties": {
+          "collection": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Collection"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "maxLength": 10000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "enum": [
+                  "to_read",
+                  "reading",
+                  "read",
+                  "archived"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          }
+        },
+        "title": "ItemPatch",
+        "type": "object"
+      },
       "PaperChunksOut": {
         "properties": {
           "arxiv_id": {
@@ -926,8 +1231,15 @@
       "PaperListItemOut": {
         "properties": {
           "abs_url": {
-            "title": "Abs Url",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Abs Url"
           },
           "arxiv_id": {
             "title": "Arxiv Id",
@@ -988,8 +1300,15 @@
       "PaperOut": {
         "properties": {
           "abs_url": {
-            "title": "Abs Url",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Abs Url"
           },
           "abstract": {
             "title": "Abstract",
@@ -1105,6 +1424,122 @@
         "title": "PaperOut",
         "type": "object"
       },
+      "ParagraphOut": {
+        "properties": {
+          "sentences": {
+            "items": {
+              "$ref": "#/components/schemas/SentenceOut"
+            },
+            "title": "Sentences",
+            "type": "array"
+          }
+        },
+        "required": [
+          "sentences"
+        ],
+        "title": "ParagraphOut",
+        "type": "object"
+      },
+      "ReferenceOut": {
+        "properties": {
+          "abs_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Abs Url"
+          },
+          "arxiv_id": {
+            "title": "Arxiv Id",
+            "type": "string"
+          },
+          "authors": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Authors",
+            "type": "array"
+          },
+          "bibtex_key": {
+            "title": "Bibtex Key",
+            "type": "string"
+          },
+          "chunk_id": {
+            "format": "uuid",
+            "title": "Chunk Id",
+            "type": "string"
+          },
+          "chunk_type": {
+            "enum": [
+              "analysis",
+              "abstract"
+            ],
+            "title": "Chunk Type",
+            "type": "string"
+          },
+          "cited_count": {
+            "title": "Cited Count",
+            "type": "integer"
+          },
+          "evidence": {
+            "enum": [
+              "analysis",
+              "abstract"
+            ],
+            "title": "Evidence",
+            "type": "string"
+          },
+          "n": {
+            "title": "N",
+            "type": "integer"
+          },
+          "published_at": {
+            "format": "date-time",
+            "title": "Published At",
+            "type": "string"
+          },
+          "section_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Section Path"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "year": {
+            "title": "Year",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "n",
+          "arxiv_id",
+          "bibtex_key",
+          "title",
+          "authors",
+          "year",
+          "chunk_id",
+          "section_path",
+          "published_at",
+          "chunk_type",
+          "evidence",
+          "abs_url",
+          "cited_count"
+        ],
+        "title": "ReferenceOut",
+        "type": "object"
+      },
       "RelatedOut": {
         "properties": {
           "arxiv_id": {
@@ -1155,8 +1590,15 @@
       "RelatedPaperOut": {
         "properties": {
           "abs_url": {
-            "title": "Abs Url",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Abs Url"
           },
           "arxiv_id": {
             "title": "Arxiv Id",
@@ -1267,11 +1709,190 @@
         "title": "RepoOut",
         "type": "object"
       },
+      "ReviewCounts": {
+        "properties": {
+          "claims": {
+            "title": "Claims",
+            "type": "integer"
+          },
+          "dropped_transitions": {
+            "title": "Dropped Transitions",
+            "type": "integer"
+          },
+          "dropped_uncited": {
+            "title": "Dropped Uncited",
+            "type": "integer"
+          },
+          "invalid_citations_dropped": {
+            "title": "Invalid Citations Dropped",
+            "type": "integer"
+          },
+          "map_calls": {
+            "title": "Map Calls",
+            "type": "integer"
+          },
+          "map_notes_dropped": {
+            "title": "Map Notes Dropped",
+            "type": "integer"
+          },
+          "papers": {
+            "title": "Papers",
+            "type": "integer"
+          },
+          "papers_omitted": {
+            "title": "Papers Omitted",
+            "type": "integer"
+          },
+          "papers_uncitable": {
+            "title": "Papers Uncitable",
+            "type": "integer"
+          },
+          "papers_without_analysis": {
+            "title": "Papers Without Analysis",
+            "type": "integer"
+          },
+          "transitions": {
+            "title": "Transitions",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "papers",
+          "papers_without_analysis",
+          "papers_omitted",
+          "papers_uncitable",
+          "claims",
+          "transitions",
+          "dropped_uncited",
+          "dropped_transitions",
+          "invalid_citations_dropped",
+          "map_calls",
+          "map_notes_dropped"
+        ],
+        "title": "ReviewCounts",
+        "type": "object"
+      },
+      "ReviewOut": {
+        "properties": {
+          "collection": {
+            "title": "Collection",
+            "type": "string"
+          },
+          "cost_usd": {
+            "title": "Cost Usd",
+            "type": "number"
+          },
+          "counts": {
+            "$ref": "#/components/schemas/ReviewCounts"
+          },
+          "focus": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Focus"
+          },
+          "prompt_versions": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Prompt Versions",
+            "type": "object"
+          },
+          "references": {
+            "items": {
+              "$ref": "#/components/schemas/ReferenceOut"
+            },
+            "title": "References",
+            "type": "array"
+          },
+          "sections": {
+            "items": {
+              "$ref": "#/components/schemas/SectionOut"
+            },
+            "title": "Sections",
+            "type": "array"
+          },
+          "tokens_in": {
+            "title": "Tokens In",
+            "type": "integer"
+          },
+          "tokens_out": {
+            "title": "Tokens Out",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "collection",
+          "focus",
+          "sections",
+          "references",
+          "counts",
+          "tokens_in",
+          "tokens_out",
+          "cost_usd",
+          "prompt_versions"
+        ],
+        "title": "ReviewOut",
+        "type": "object"
+      },
+      "ReviewRequest": {
+        "properties": {
+          "collection": {
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Collection",
+            "type": "string"
+          },
+          "focus": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "a topic hint for the draft (optional)",
+            "title": "Focus"
+          },
+          "max_papers": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "papers used (default 30, at most 60); the rest are left out",
+            "title": "Max Papers"
+          }
+        },
+        "required": [
+          "collection"
+        ],
+        "title": "ReviewRequest",
+        "type": "object"
+      },
       "RowOut": {
         "properties": {
           "abs_url": {
-            "title": "Abs Url",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Abs Url"
           },
           "arxiv_id": {
             "title": "Arxiv Id",
@@ -1306,8 +1927,15 @@
       "SearchHitOut": {
         "properties": {
           "abs_url": {
-            "title": "Abs Url",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Abs Url"
           },
           "arxiv_id": {
             "title": "Arxiv Id",
@@ -1394,6 +2022,57 @@
           "hits"
         ],
         "title": "SearchResponse",
+        "type": "object"
+      },
+      "SectionOut": {
+        "properties": {
+          "heading": {
+            "title": "Heading",
+            "type": "string"
+          },
+          "paragraphs": {
+            "items": {
+              "$ref": "#/components/schemas/ParagraphOut"
+            },
+            "title": "Paragraphs",
+            "type": "array"
+          }
+        },
+        "required": [
+          "heading",
+          "paragraphs"
+        ],
+        "title": "SectionOut",
+        "type": "object"
+      },
+      "SentenceOut": {
+        "properties": {
+          "kind": {
+            "enum": [
+              "claim",
+              "transition"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "source_numbers": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Source Numbers",
+            "type": "array"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text",
+          "kind",
+          "source_numbers"
+        ],
+        "title": "SentenceOut",
         "type": "object"
       },
       "SettingsIn": {
@@ -1498,8 +2177,15 @@
       "SourceOut": {
         "properties": {
           "abs_url": {
-            "title": "Abs Url",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Abs Url"
           },
           "arxiv_id": {
             "title": "Arxiv Id",
@@ -1708,8 +2394,15 @@
       "TimelinePoint": {
         "properties": {
           "abs_url": {
-            "title": "Abs Url",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Abs Url"
           },
           "arxiv_id": {
             "title": "Arxiv Id",
@@ -1793,6 +2486,106 @@
           "abs_url"
         ],
         "title": "TimelinePoint",
+        "type": "object"
+      },
+      "UploadDeleted": {
+        "properties": {
+          "arxiv_id": {
+            "title": "Arxiv Id",
+            "type": "string"
+          },
+          "chunks": {
+            "title": "Chunks",
+            "type": "integer"
+          },
+          "library_items": {
+            "title": "Library Items",
+            "type": "integer"
+          },
+          "points": {
+            "title": "Points",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "arxiv_id",
+          "chunks",
+          "points",
+          "library_items"
+        ],
+        "title": "UploadDeleted",
+        "type": "object"
+      },
+      "UploadOut": {
+        "properties": {
+          "abs_url": {
+            "title": "Abs Url",
+            "type": "null"
+          },
+          "arxiv_id": {
+            "title": "Arxiv Id",
+            "type": "string"
+          },
+          "chunks": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Chunks",
+            "type": "object"
+          },
+          "collection": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Collection"
+          },
+          "cost_usd": {
+            "title": "Cost Usd",
+            "type": "number"
+          },
+          "created": {
+            "title": "Created",
+            "type": "boolean"
+          },
+          "embedded": {
+            "title": "Embedded",
+            "type": "integer"
+          },
+          "embedding_requests": {
+            "title": "Embedding Requests",
+            "type": "integer"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "tokens_in": {
+            "title": "Tokens In",
+            "type": "integer"
+          },
+          "year": {
+            "title": "Year",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "arxiv_id",
+          "title",
+          "year",
+          "created",
+          "collection",
+          "chunks",
+          "embedded",
+          "embedding_requests",
+          "tokens_in",
+          "cost_usd"
+        ],
+        "title": "UploadOut",
         "type": "object"
       },
       "ValidationError": {
@@ -2312,6 +3105,549 @@
           }
         },
         "summary": "Update Interest"
+      }
+    },
+    "/library/bibtex": {
+      "get": {
+        "description": "The collection's references as a .bib file, built from stored metadata (no model,\nno network). The keys are the ones the review's citations use.",
+        "operationId": "export_bibtex_library_bibtex_get",
+        "parameters": [
+          {
+            "description": "the collection's name",
+            "in": "query",
+            "name": "collection",
+            "required": true,
+            "schema": {
+              "description": "the collection's name",
+              "maxLength": 100,
+              "minLength": 1,
+              "title": "Collection",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Export Bibtex"
+      }
+    },
+    "/library/collections": {
+      "get": {
+        "operationId": "list_collections_library_collections_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CollectionOut"
+                  },
+                  "title": "Response List Collections Library Collections Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Collections"
+      },
+      "post": {
+        "operationId": "create_collection_library_collections_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CollectionCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CollectionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Collection"
+      }
+    },
+    "/library/collections/{name}": {
+      "delete": {
+        "operationId": "delete_collection_library_collections__name__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "title": "Name",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CollectionDeleted"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Collection"
+      },
+      "put": {
+        "operationId": "update_collection_library_collections__name__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "title": "Name",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CollectionUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CollectionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Collection"
+      }
+    },
+    "/library/items": {
+      "get": {
+        "operationId": "list_items_library_items_get",
+        "parameters": [
+          {
+            "description": "the collection's name",
+            "in": "query",
+            "name": "collection",
+            "required": true,
+            "schema": {
+              "description": "the collection's name",
+              "maxLength": 100,
+              "minLength": 1,
+              "title": "Collection",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ItemOut"
+                  },
+                  "title": "Response List Items Library Items Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Items"
+      },
+      "post": {
+        "description": "201 when the paper was added, 200 when it was in the collection already.",
+        "operationId": "add_item_library_items_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ItemCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ItemOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Add Item"
+      }
+    },
+    "/library/items/{arxiv_id}": {
+      "delete": {
+        "operationId": "remove_item_library_items__arxiv_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "arxiv_id",
+            "required": true,
+            "schema": {
+              "title": "Arxiv Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "the collection's name",
+            "in": "query",
+            "name": "collection",
+            "required": true,
+            "schema": {
+              "description": "the collection's name",
+              "maxLength": 100,
+              "minLength": 1,
+              "title": "Collection",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Remove Item"
+      },
+      "patch": {
+        "operationId": "update_item_library_items__arxiv_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "arxiv_id",
+            "required": true,
+            "schema": {
+              "title": "Arxiv Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "the collection's name",
+            "in": "query",
+            "name": "collection",
+            "required": true,
+            "schema": {
+              "description": "the collection's name",
+              "maxLength": 100,
+              "minLength": 1,
+              "title": "Collection",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ItemPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ItemOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Item"
+      }
+    },
+    "/library/review": {
+      "post": {
+        "description": "A cited related-work draft for the collection: every shown claim carries at least\none citation that exists. A citation that resolves does not prove it supports the sentence.",
+        "operationId": "write_review_library_review_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Write Review"
+      }
+    },
+    "/library/upload": {
+      "post": {
+        "description": "Add the PDF in the request body as an uploaded document (201 when new, 200 when the\nsame file was uploaded before).",
+        "operationId": "upload_pdf_library_upload_post",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "title",
+            "required": true,
+            "schema": {
+              "maxLength": 300,
+              "minLength": 1,
+              "title": "Title",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "collection",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Collection"
+            }
+          },
+          {
+            "in": "query",
+            "name": "year",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 2100,
+                  "minimum": 1900,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Year"
+            }
+          },
+          {
+            "in": "query",
+            "name": "abstract",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 3000,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Abstract"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UploadOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Upload Pdf"
+      }
+    },
+    "/library/uploads/{arxiv_id}": {
+      "delete": {
+        "description": "Remove an uploaded document: its Qdrant points, chunks, text and library items.\nOnly `local-` ids; an arXiv paper cannot be deleted here.",
+        "operationId": "delete_uploaded_document_library_uploads__arxiv_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "arxiv_id",
+            "required": true,
+            "schema": {
+              "title": "Arxiv Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UploadDeleted"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Uploaded Document"
       }
     },
     "/papers": {

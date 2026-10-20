@@ -313,3 +313,16 @@ def test_an_unusable_model_answer_is_an_upstream_error_but_its_cost_is_counted()
     with pytest.raises(UpstreamError, match="usable table"):
         run_compare([A, B], ["task"], deps=deps)
     assert rows == [("compare-fill", "gpt-4o-mini", 500, 5)]  # llm_usage has the billed call
+
+
+def test_an_uploaded_document_can_be_compared_and_has_no_arxiv_link() -> None:
+    local = "local-0123456789ab"
+    parsed = _fill({A: {"task": [1]}, local: {"task": [4]}})
+    deps, _, _, _, _ = _deps([parsed_reply(parsed)], papers=(A, local))
+    result = run_compare([A, local], ["task"], deps=deps)
+    rows = {r.arxiv_id: r for r in result.rows}
+    assert rows[A].abs_url == f"https://arxiv.org/abs/{A}"
+    assert rows[local].abs_url is None
+    assert rows[local].cells[0].status == "cited"
+    by_paper = {s.arxiv_id: s.abs_url for s in result.sources}
+    assert by_paper[A] is not None and by_paper[local] is None

@@ -11,6 +11,7 @@ const LINKS = [
   { href: "/search", label: "Search" },
   { href: "/compare", label: "Compare" },
   { href: "/timeline", label: "Timeline" },
+  { href: "/library", label: "Library" },
   { href: "/settings", label: "Settings" },
 ];
 

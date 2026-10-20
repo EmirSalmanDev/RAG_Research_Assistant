@@ -24,6 +24,18 @@ import {
   fetchSettings,
   saveSettings,
   updateInterest,
+  addItem,
+  createCollection,
+  deleteCollection,
+  deleteUpload,
+  fetchBibtex,
+  fetchCollections,
+  fetchItems,
+  postReview,
+  removeItem,
+  updateCollection,
+  updateItem,
+  uploadPdf,
 } from "./endpoints.ts";
 import type { paths } from "./schema";
 
@@ -422,5 +434,237 @@ test("timeline posts the topic and options once; a 503 keeps the server's senten
     }),
     (err: unknown) =>
       err instanceof ApiError && /OPENAI_API_KEY/.test(err.message),
+  );
+});
+
+// --- the library --------------------------------------------------------------------------------
+
+test("collections: list, create, rename (the path is encoded) and delete", async () => {
+  const { client, calls } = mocked((url) =>
+    url.pathname.endsWith("/library/collections") &&
+    calls.at(-1)?.method === "GET"
+      ? Response.json([
+          {
+            name: "Saved",
+            description: null,
+            paper_count: 2,
+            created_at: null,
+          },
+        ])
+      : Response.json({
+          name: "Thesis",
+          description: null,
+          paper_count: 0,
+          created_at: "2026-10-20T00:00:00Z",
+        }),
+  );
+  const list = await fetchCollections(client);
+  assert.equal(list[0]!.name, "Saved");
+  await createCollection(client, { name: "Thesis", description: "Ch. 2" });
+  await updateCollection(client, "RL / agents", { name: "RL agents" });
+  await deleteCollection(client, "Thesis");
+  assert.deepEqual(
+    calls.map((c) => `${c.method} ${c.url.pathname}`),
+    [
+      "GET /api/library/collections",
+      "POST /api/library/collections",
+      "PUT /api/library/collections/RL%20%2F%20agents",
+      "DELETE /api/library/collections/Thesis",
+    ],
+  );
+});
+
+test("a duplicate collection name is an ApiError with the server's sentence", async () => {
+  const { client } = mocked(() =>
+    Response.json(
+      { detail: "a collection named 'Thesis' exists already" },
+      { status: 409 },
+    ),
+  );
+  await assert.rejects(
+    createCollection(client, { name: "Thesis" }),
+    (err: unknown) =>
+      err instanceof ApiError &&
+      err.status === 409 &&
+      /exists already/.test(err.message),
+  );
+});
+
+test("items: the collection goes in the query; an old-style id is encoded in the path", async () => {
+  const item = {
+    arxiv_id: "hep-th/9901001",
+    collection: "T",
+    status: "read",
+    notes: null,
+    added_at: "2026-10-20T00:00:00Z",
+    title: "Old",
+    authors: [],
+    published_at: "1999-01-01T00:00:00Z",
+    evidence: "abstract_only",
+    abs_url: "https://arxiv.org/abs/hep-th/9901001",
+  };
+  const { client, calls } = mocked(() => Response.json(item));
+  await fetchItems(client, "My thesis");
+  await updateItem(client, "hep-th/9901001", "My thesis", {
+    status: "read",
+    notes: null,
+  });
+  const [list, patch] = calls;
+  assert.equal(list!.url.searchParams.get("collection"), "My thesis");
+  assert.equal(patch!.method, "PATCH");
+  assert.equal(patch!.url.pathname, "/api/library/items/hep-th%2F9901001");
+  assert.equal(patch!.url.searchParams.get("collection"), "My thesis");
+});
+
+test("adding an unknown paper is a 404 whose message says to ingest it first", async () => {
+  const { client } = mocked(() =>
+    Response.json(
+      {
+        detail: "2610.99999 is not in the database yet. Ingest the paper first",
+      },
+      { status: 404 },
+    ),
+  );
+  await assert.rejects(
+    addItem(client, {
+      reference: "2610.99999",
+      collection: "T",
+      status: "to_read",
+    }),
+    (err: unknown) =>
+      err instanceof ApiError &&
+      err.status === 404 &&
+      /Ingest the paper first/.test(err.message),
+  );
+});
+
+test("removing an item sends DELETE with the collection and expects no body", async () => {
+  const { client, calls } = mocked(() => new Response(null, { status: 204 }));
+  await removeItem(client, "2610.00001", "T");
+  assert.equal(calls[0]!.method, "DELETE");
+  assert.equal(calls[0]!.url.pathname, "/api/library/items/2610.00001");
+  assert.equal(calls[0]!.url.searchParams.get("collection"), "T");
+});
+
+test("the .bib comes back as text with the suggested file name", async () => {
+  const { client, calls } = mocked(
+    () =>
+      new Response("@misc{a2020b,\n}\n", {
+        headers: {
+          "content-type": "text/plain; charset=utf-8",
+          "content-disposition": 'attachment; filename="my-thesis.bib"',
+        },
+      }),
+  );
+  const bib = await fetchBibtex(client, "My thesis");
+  assert.equal(bib.text, "@misc{a2020b,\n}\n");
+  assert.equal(bib.filename, "my-thesis.bib");
+  assert.equal(calls[0]!.url.pathname, "/api/library/bibtex");
+  const empty = mocked(
+    () => new Response("", { headers: { "content-type": "text/plain" } }),
+  );
+  assert.equal((await fetchBibtex(empty.client, "Empty")).text, "");
+});
+
+test("the review is one POST with the request body; errors keep the server's sentence", async () => {
+  const { client, calls } = mocked(() =>
+    Response.json(
+      { detail: "OPENAI_API_KEY is not set (put it in .env)" },
+      { status: 503 },
+    ),
+  );
+  await assert.rejects(
+    postReview(client, { collection: "T", focus: null, max_papers: 30 }),
+    (err: unknown) =>
+      err instanceof ApiError &&
+      err.status === 503 &&
+      /OPENAI_API_KEY/.test(err.message),
+  );
+  assert.equal(calls.length, 1, "no retry of a paid call");
+  assert.equal(calls[0]!.method, "POST");
+  assert.equal(calls[0]!.url.pathname, "/api/library/review");
+});
+
+test("the upload sends the raw file once, with the metadata in the query", async () => {
+  const sent: { url: string; init: RequestInit }[] = [];
+  const fakeFetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    sent.push({ url: String(input), init: init ?? {} });
+    return Response.json(
+      { arxiv_id: "local-0123456789ab", created: true },
+      { status: 201 },
+    );
+  }) as typeof fetch;
+  const file = new Blob(["%PDF-1.7 invented"], { type: "application/pdf" });
+  const out = await uploadPdf(
+    fakeFetch,
+    "/api",
+    { title: "A paper", year: 2021, collection: "T" },
+    file,
+  );
+  assert.equal(out.arxiv_id, "local-0123456789ab");
+  assert.equal(sent.length, 1);
+  const url = new URL(sent[0]!.url, "http://x");
+  assert.equal(url.pathname, "/api/library/upload");
+  assert.deepEqual(Object.fromEntries(url.searchParams), {
+    title: "A paper",
+    year: "2021",
+    collection: "T",
+  });
+  assert.equal(sent[0]!.init.method, "POST");
+  assert.equal(
+    sent[0]!.init.body,
+    file,
+    "the body is the file itself, not a form",
+  );
+  assert.deepEqual(sent[0]!.init.headers, {
+    "Content-Type": "application/pdf",
+  });
+});
+
+test("an upload error becomes an ApiError with the detail (413, 429, no JSON)", async () => {
+  const failing = (status: number, body: BodyInit | null) =>
+    (async () => new Response(body, { status })) as unknown as typeof fetch;
+  const file = new Blob(["x"]);
+  await assert.rejects(
+    uploadPdf(
+      failing(413, JSON.stringify({ detail: "the upload is over the limit" })),
+      "/api",
+      { title: "T" },
+      file,
+    ),
+    (err: unknown) =>
+      err instanceof ApiError &&
+      err.status === 413 &&
+      /over the limit/.test(err.message),
+  );
+  await assert.rejects(
+    uploadPdf(
+      failing(502, "<html>bad gateway</html>"),
+      "/api",
+      { title: "T" },
+      file,
+    ),
+    (err: unknown) =>
+      err instanceof ApiError &&
+      err.status === 502 &&
+      /HTTP 502/.test(err.message),
+  );
+});
+
+test("deleting an upload is one DELETE", async () => {
+  const { client, calls } = mocked(() =>
+    Response.json({
+      arxiv_id: "local-0123456789ab",
+      chunks: 3,
+      points: 3,
+      library_items: 1,
+    }),
+  );
+  const out = await deleteUpload(client, "local-0123456789ab");
+  assert.equal(out.points, 3);
+  assert.equal(calls[0]!.method, "DELETE");
+  assert.equal(
+    calls[0]!.url.pathname,
+    "/api/library/uploads/local-0123456789ab",
   );
 });

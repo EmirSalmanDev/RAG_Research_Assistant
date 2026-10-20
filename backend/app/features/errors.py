@@ -17,3 +17,7 @@ class UnknownPapers(LookupError):
 class UpstreamError(RuntimeError):
     """OpenAI or Qdrant failed after the retries (or answered with something unusable):
     HTTP 502. Requests that were billed before the failure are in llm_usage anyway."""
+
+
+class UnknownCollection(LookupError):
+    """The library collection does not exist: HTTP 404, before any paid call."""
