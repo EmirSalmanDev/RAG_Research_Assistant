@@ -38,10 +38,11 @@ from app.features.errors import InvalidRequest, UnknownPapers, UpstreamError
 from app.features.paper_facts import PaperFacts
 from app.features.spend import EmbeddingMeter, Spend
 from app.features.text import cut_to_tokens
+from app.ids import abs_url
 from app.ingest.embed import SparseEncoder
 from app.ingest.tokens import count_tokens
 from app.llm.client import MESSAGE_OVERHEAD_TOKENS, ChatMessage, ChatResponseError
-from app.rag.citations import ARXIV_ABS_URL, Source, format_sources
+from app.rag.citations import Source, format_sources
 from app.rag.prompts import load_prompt
 from app.rag.retrieve import RetrievalConfig
 from app.rag.search import SearchFilters, SearchHit
@@ -96,7 +97,7 @@ class RowOut(BaseModel):
     arxiv_id: str
     title: str
     has_fulltext: bool  # False: the paper is known by its abstract only
-    abs_url: str
+    abs_url: str | None
     cells: list[CellOut]  # in the order of `dimensions`
 
 
@@ -108,7 +109,7 @@ class SourceOut(BaseModel):
     section_path: str | None
     title: str
     published_at: datetime
-    abs_url: str
+    abs_url: str | None
 
 
 class CompareNotes(BaseModel):
@@ -517,7 +518,7 @@ def _row(facts: PaperFacts, cells: list[CellOut]) -> RowOut:
         arxiv_id=facts.arxiv_id,
         title=facts.title,
         has_fulltext=facts.has_fulltext,
-        abs_url=ARXIV_ABS_URL.format(arxiv_id=facts.arxiv_id),
+        abs_url=abs_url(facts.arxiv_id),
         cells=cells,
     )
 
@@ -532,5 +533,5 @@ def _source_out(source: Source) -> SourceOut:
         section_path=h.section_path,
         title=h.title,
         published_at=datetime.fromisoformat(h.published_at),
-        abs_url=ARXIV_ABS_URL.format(arxiv_id=h.arxiv_id),
+        abs_url=abs_url(h.arxiv_id),
     )

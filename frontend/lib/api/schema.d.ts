@@ -390,7 +390,7 @@ export interface components {
         /** ChunkOut */
         ChunkOut: {
             /** Abs Url */
-            abs_url: string;
+            abs_url: string | null;
             /** Arxiv Id */
             arxiv_id: string;
             /**
@@ -478,7 +478,7 @@ export interface components {
         /** DigestEntryOut */
         DigestEntryOut: {
             /** Abs Url */
-            abs_url: string;
+            abs_url: string | null;
             /** Arxiv Id */
             arxiv_id: string;
             /** Author Count */
@@ -644,7 +644,7 @@ export interface components {
         /** PaperListItemOut */
         PaperListItemOut: {
             /** Abs Url */
-            abs_url: string;
+            abs_url: string | null;
             /** Arxiv Id */
             arxiv_id: string;
             /** Has Fulltext */
@@ -667,7 +667,7 @@ export interface components {
         /** PaperOut */
         PaperOut: {
             /** Abs Url */
-            abs_url: string;
+            abs_url: string | null;
             /** Abstract */
             abstract: string;
             /** Arxiv Id */
@@ -717,7 +717,7 @@ export interface components {
         /** RelatedPaperOut */
         RelatedPaperOut: {
             /** Abs Url */
-            abs_url: string;
+            abs_url: string | null;
             /** Arxiv Id */
             arxiv_id: string;
             /** Held */
@@ -745,7 +745,7 @@ export interface components {
         /** RowOut */
         RowOut: {
             /** Abs Url */
-            abs_url: string;
+            abs_url: string | null;
             /** Arxiv Id */
             arxiv_id: string;
             /** Cells */
@@ -758,7 +758,7 @@ export interface components {
         /** SearchHitOut */
         SearchHitOut: {
             /** Abs Url */
-            abs_url: string;
+            abs_url: string | null;
             /** Arxiv Id */
             arxiv_id: string;
             /**
@@ -824,7 +824,7 @@ export interface components {
         /** SourceOut */
         SourceOut: {
             /** Abs Url */
-            abs_url: string;
+            abs_url: string | null;
             /** Arxiv Id */
             arxiv_id: string;
             /**
@@ -904,7 +904,7 @@ export interface components {
         /** TimelinePoint */
         TimelinePoint: {
             /** Abs Url */
-            abs_url: string;
+            abs_url: string | null;
             /** Arxiv Id */
             arxiv_id: string;
             /**

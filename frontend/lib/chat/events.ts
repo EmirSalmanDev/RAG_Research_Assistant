@@ -31,7 +31,7 @@ export interface Source {
   section_path: string | null;
   chunk_type: ChunkType;
   published_at: string;
-  abs_url: string;
+  abs_url: string | null; // null: an uploaded document has no arXiv page
 }
 
 export interface MetaEvent {
@@ -199,7 +199,7 @@ function source(v: unknown, path: string): Source {
     section_path: strOrNull(o, "section_path", path),
     chunk_type: oneOf(o, "chunk_type", path, CHUNK_TYPES),
     published_at: str(o, "published_at", path),
-    abs_url: str(o, "abs_url", path),
+    abs_url: strOrNull(o, "abs_url", path),
   };
 }
 

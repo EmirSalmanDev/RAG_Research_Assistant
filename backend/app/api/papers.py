@@ -36,14 +36,13 @@ from app.db.session import session_scope
 from app.features import related as related_papers
 from app.features.paper_facts import has_section_chunks
 from app.features.related import RelatedPaper, SimilarStatus
+from app.ids import abs_url
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
 CITATION_LIST_LIMIT = 200  # "cites" and "cited by" are capped at this many papers
-
-ABS_URL = "https://arxiv.org/abs/{arxiv_id}"
 
 
 class PaperOut(BaseModel):
@@ -60,7 +59,7 @@ class PaperOut(BaseModel):
     github_url: str | None
     project_url: str | None
     fulltext_status: str
-    abs_url: str
+    abs_url: str | None
 
 
 class ChunkOut(BaseModel):
@@ -72,7 +71,7 @@ class ChunkOut(BaseModel):
     ord: int
     text: str
     published_at: datetime
-    abs_url: str
+    abs_url: str | None
 
 
 class PaperChunksOut(BaseModel):
@@ -86,7 +85,7 @@ class RelatedPaperOut(BaseModel):
     published_at: datetime | None
     held: bool  # the paper is in the database (it has a /paper page)
     score: float | None  # similarity, for "similar" only
-    abs_url: str
+    abs_url: str | None
 
 
 class RelatedOut(BaseModel):
@@ -143,7 +142,7 @@ class PaperListItemOut(BaseModel):
     published_at: datetime
     primary_category: str | None
     has_fulltext: bool  # the paper has full-text passages, not only its abstract
-    abs_url: str
+    abs_url: str | None
 
 
 class PaperListOut(BaseModel):
@@ -175,7 +174,7 @@ class PaperStore(Protocol):
 def _related_out(paper: RelatedPaper) -> RelatedPaperOut:
     return RelatedPaperOut(
         arxiv_id=paper.arxiv_id, title=paper.title, published_at=paper.published_at,
-        held=paper.held, score=paper.score, abs_url=ABS_URL.format(arxiv_id=paper.arxiv_id),
+        held=paper.held, score=paper.score, abs_url=abs_url(paper.arxiv_id),
     )  # fmt: skip
 
 
@@ -199,7 +198,7 @@ def _chunk_out(chunk: Chunk, paper: Paper) -> ChunkOut:
         ord=chunk.ord,
         text=chunk.text,
         published_at=paper.published_at,
-        abs_url=ABS_URL.format(arxiv_id=chunk.arxiv_id),
+        abs_url=abs_url(chunk.arxiv_id),
     )
 
 
@@ -232,7 +231,7 @@ class SqlPaperStore:
                 PaperListItemOut(
                     arxiv_id=paper.arxiv_id, title=paper.title, published_at=paper.published_at,
                     primary_category=paper.primary_category, has_fulltext=bool(full),
-                    abs_url=ABS_URL.format(arxiv_id=paper.arxiv_id),
+                    abs_url=abs_url(paper.arxiv_id),
                 )
                 for paper, full in session.execute(stmt).all()
             ]  # fmt: skip
@@ -256,7 +255,7 @@ class SqlPaperStore:
                 github_url=paper.github_url,
                 project_url=paper.project_url,
                 fulltext_status=paper.fulltext_status,
-                abs_url=ABS_URL.format(arxiv_id=paper.arxiv_id),
+                abs_url=abs_url(paper.arxiv_id),
             )
 
     def list_chunks(self, arxiv_id: str, limit: int) -> PaperChunksOut | None:

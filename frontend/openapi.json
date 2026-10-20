@@ -179,8 +179,15 @@
       "ChunkOut": {
         "properties": {
           "abs_url": {
-            "title": "Abs Url",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Abs Url"
           },
           "arxiv_id": {
             "title": "Arxiv Id",
@@ -449,8 +456,15 @@
       "DigestEntryOut": {
         "properties": {
           "abs_url": {
-            "title": "Abs Url",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Abs Url"
           },
           "arxiv_id": {
             "title": "Arxiv Id",
@@ -926,8 +940,15 @@
       "PaperListItemOut": {
         "properties": {
           "abs_url": {
-            "title": "Abs Url",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Abs Url"
           },
           "arxiv_id": {
             "title": "Arxiv Id",
@@ -988,8 +1009,15 @@
       "PaperOut": {
         "properties": {
           "abs_url": {
-            "title": "Abs Url",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Abs Url"
           },
           "abstract": {
             "title": "Abstract",
@@ -1155,8 +1183,15 @@
       "RelatedPaperOut": {
         "properties": {
           "abs_url": {
-            "title": "Abs Url",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Abs Url"
           },
           "arxiv_id": {
             "title": "Arxiv Id",
@@ -1270,8 +1305,15 @@
       "RowOut": {
         "properties": {
           "abs_url": {
-            "title": "Abs Url",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Abs Url"
           },
           "arxiv_id": {
             "title": "Arxiv Id",
@@ -1306,8 +1348,15 @@
       "SearchHitOut": {
         "properties": {
           "abs_url": {
-            "title": "Abs Url",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Abs Url"
           },
           "arxiv_id": {
             "title": "Arxiv Id",
@@ -1498,8 +1547,15 @@
       "SourceOut": {
         "properties": {
           "abs_url": {
-            "title": "Abs Url",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Abs Url"
           },
           "arxiv_id": {
             "title": "Arxiv Id",
@@ -1708,8 +1764,15 @@
       "TimelinePoint": {
         "properties": {
           "abs_url": {
-            "title": "Abs Url",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Abs Url"
           },
           "arxiv_id": {
             "title": "Arxiv Id",

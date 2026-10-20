@@ -36,8 +36,9 @@ from app.features.errors import InvalidRequest, UpstreamError
 from app.features.paper_facts import PaperFacts
 from app.features.spend import EmbeddingMeter, Spend
 from app.features.text import cut_to_tokens
+from app.ids import abs_url
 from app.llm.client import ChatMessage, ChatResponseError
-from app.rag.citations import ARXIV_ABS_URL, format_sources, number_sources
+from app.rag.citations import format_sources, number_sources
 from app.rag.prompts import load_prompt
 from app.rag.retrieve import RetrievalConfig
 from app.rag.search import SearchFilters, SearchHit
@@ -80,7 +81,7 @@ class TimelinePoint(BaseModel):
     line: str | None  # key papers only: what this paper changed, from its abstract
     line_source: Literal["model", "abstract_fallback"] | None
     chunk_id: uuid.UUID  # the abstract chunk the line comes from
-    abs_url: str
+    abs_url: str | None
 
 
 class DateRange(BaseModel):
@@ -432,7 +433,7 @@ def _response(
                 line=line,
                 line_source=source,
                 chunk_id=s.candidate.chunk_id,
-                abs_url=ARXIV_ABS_URL.format(arxiv_id=facts.arxiv_id),
+                abs_url=abs_url(facts.arxiv_id),
             )
         )
     first = points[0].published_at if points else None

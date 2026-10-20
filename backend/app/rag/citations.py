@@ -16,11 +16,12 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any
 
+from app.ids import abs_url
 from app.rag.prompts import escape_block
 from app.rag.search import SearchHit
 
-# Answers link to the arXiv abstract page, never to a PDF (we do not re-serve papers).
-ARXIV_ABS_URL = "https://arxiv.org/abs/{arxiv_id}"
+# Answers link to the arXiv abstract page, never to a PDF (we do not re-serve papers); an
+# uploaded document has no arXiv page, so its link is None (app/ids.py).
 
 _CITATION = re.compile(r"\[(\d+(?:\s*[,;]\s*\d+)*)\]")
 _LEADING_CITATIONS = re.compile(r"^((?:\[\d+(?:\s*[,;]\s*\d+)*\]\s*)+)")
@@ -162,5 +163,5 @@ def source_object(source: Source) -> dict[str, Any]:
         "section_path": h.section_path,
         "chunk_type": h.chunk_type,
         "published_at": h.published_at,
-        "abs_url": ARXIV_ABS_URL.format(arxiv_id=h.arxiv_id),
+        "abs_url": abs_url(h.arxiv_id),
     }

@@ -19,6 +19,7 @@ from fastapi import APIRouter, HTTPException, Query, status
 from pydantic import BaseModel
 from starlette.concurrency import run_in_threadpool
 
+from app.ids import abs_url
 from app.ingest.embed import OpenAIKeyMissing
 from app.rag.rerank import RerankerUnavailable
 from app.rag.retrieve import RetrievalConfig, retrieve
@@ -27,7 +28,6 @@ from app.rag.search import SearchFilters, SearchHit
 router = APIRouter()
 
 # Results link to the arXiv abstract page, never to a PDF (we do not re-serve papers).
-ABS_URL = "https://arxiv.org/abs/{arxiv_id}"
 
 
 class SearchHitOut(BaseModel):
@@ -39,7 +39,7 @@ class SearchHitOut(BaseModel):
     published_at: datetime
     score: float  # the reranker's score when reranked, else the search score
     text: str
-    abs_url: str
+    abs_url: str | None
 
     @classmethod
     def from_hit(cls, hit: SearchHit) -> "SearchHitOut":
@@ -52,7 +52,7 @@ class SearchHitOut(BaseModel):
             published_at=datetime.fromisoformat(hit.published_at),
             score=hit.score,
             text=hit.text,
-            abs_url=ABS_URL.format(arxiv_id=hit.arxiv_id),
+            abs_url=abs_url(hit.arxiv_id),
         )
 
 
