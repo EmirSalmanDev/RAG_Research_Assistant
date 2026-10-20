@@ -67,7 +67,9 @@ arXiv id" for papers not in the database goes through the worker and is a later 
 - Papers, analyses and notes appear only inside escaped, delimited blocks, and both prompts say
   to ignore instructions inside them (rule 8). The prompts restrict statements about limitations
   to the `limitations` field and about results to the `results` field, and say that a source with
-  evidence `abstract` supports only what its abstract says.
+  evidence `abstract` supports only what its abstract says. A field that holds only the analysis prompt's placeholder ("Not stated in the available text.") is left
+  out of the model's input: when it was shown, the model wrote a sentence about the absence ("did
+  not state any limitations") and cited the paper for it.
 - Code, not the model, decides what is shown (`validate_draft`): a source number must exist (and
   after the map step appear in a note); invalid numbers are dropped; at most 4 per sentence; a
   `claim` with no valid number is REMOVED and counted in `dropped_uncited`; a `transition` may be

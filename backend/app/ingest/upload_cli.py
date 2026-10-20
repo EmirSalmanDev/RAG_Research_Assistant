@@ -59,14 +59,16 @@ def estimate_upload(
         *chunk_paper(arxiv_id, 1, clean_title, markdown),
     ]
     tokens = sum(count_tokens(c.embedding_text) for c in chunks)
-    requests = -(-len(chunks) // settings.embedding_batch_size)  # ceil
+    # Indexing sends one request per chunk type (abstract, then sections), in batches.
+    sections = len(chunks) - 1
+    requests = 1 + (-(-sections // settings.embedding_batch_size) if sections else 0)  # ceil
     return {
         "estimate": "upper bound; nothing was sent or stored",
         "id": arxiv_id,
         "year": upload_year,
         "chunks": len(chunks),
         "embedding_tokens": tokens,
-        "embedding_requests": f"{requests} (at most {settings.embedding_batch_size} chunks each)",
+        "embedding_requests": f"{requests} (one for the abstract, then the sections in batches)",
         "cost_usd_max": float(embedding_cost(tokens).quantize(Decimal("0.000001"))),
     }
 

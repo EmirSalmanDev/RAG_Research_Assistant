@@ -29,6 +29,7 @@ def test_the_estimate_counts_chunks_and_tokens_and_stores_nothing(
     out = json.loads(capsys.readouterr().out)
     assert out["id"].startswith("local-") and out["chunks"] >= 2
     assert out["embedding_tokens"] > 100 and 0 < out["cost_usd_max"] < 0.001
+    assert out["embedding_requests"].startswith("2 ")  # the abstract, then the sections
     assert migrated_session.scalar(select(func.count()).select_from(Paper)) == 0
 
 

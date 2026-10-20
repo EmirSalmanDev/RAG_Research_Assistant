@@ -1,6 +1,7 @@
 """The literature review with fakes: no database, no OpenAI. All text is invented."""
 
 import uuid
+from dataclasses import replace
 from datetime import UTC, datetime
 from typing import Any
 
@@ -17,6 +18,7 @@ from app.features.review import (
     author_label,
     escape,
     groups_of,
+    is_placeholder,
     run_review,
     select_sources,
 )
@@ -395,3 +397,19 @@ def test_an_openai_failure_is_mapped_to_an_upstream_error() -> None:
     with pytest.raises(UpstreamError):
         run_review("Thesis", deps=deps)
     assert rows == []  # nothing was billed
+
+
+def test_a_placeholder_field_is_not_shown_to_the_model() -> None:
+    quiet = make_paper(1)
+    assert quiet.analysis is not None
+    quiet = replace(
+        quiet, analysis=replace(quiet.analysis, limitations="Not stated in the available text.")
+    )
+    deps, completions, _, _ = deps_for([quiet, make_paper(2)], [parsed_reply(draft())])
+    run_review("Thesis", deps=deps)
+    body = completions.calls[0]["messages"][1]["content"]
+    first, second = body.split('<source n="2"')
+    assert "TL;DR: Invented tldr 1." in first and "Results: Invented results 1." in first
+    assert "Limitations" not in first  # the placeholder is left out
+    assert "Limitations: Invented limitations 2." in second  # a real one stays
+    assert is_placeholder(" not stated in the AVAILABLE text ") and not is_placeholder("None.")

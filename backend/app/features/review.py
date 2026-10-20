@@ -327,8 +327,18 @@ def author_label(authors: Sequence[str]) -> str:
     return f"{lasts[0]} and {lasts[1]}" if len(lasts) == 2 else f"{lasts[0]} et al."
 
 
+def is_placeholder(value: str | None) -> bool:
+    """The analysis prompt's "nothing to say" answer ("Not stated in the available text.")."""
+    return (
+        value is not None
+        and value.strip().rstrip(".").lower() == NOT_STATED_FIELD.rstrip(".").lower()
+    )
+
+
 def _field(label: str, value: str | None, max_tokens: int) -> str | None:
-    if value is None or not value.strip():
+    # A placeholder says nothing about the paper. Showing it invited the model to write a
+    # sentence about its absence ("did not state any limitations"), so it is left out.
+    if value is None or not value.strip() or is_placeholder(value):
         return None
     text, _ = cut_to_tokens(value.strip(), max_tokens)
     return f"{label}: {escape(text)}"
