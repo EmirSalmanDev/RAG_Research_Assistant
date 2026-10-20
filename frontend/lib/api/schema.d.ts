@@ -296,6 +296,48 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/library/upload": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upload Pdf
+         * @description Add the PDF in the request body as an uploaded document (201 when new, 200 when the
+         *     same file was uploaded before).
+         */
+        post: operations["upload_pdf_library_upload_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/library/uploads/{arxiv_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Uploaded Document
+         * @description Remove an uploaded document: its Qdrant points, chunks, text and library items.
+         *     Only `local-` ids; an arXiv paper cannot be deleted here.
+         */
+        delete: operations["delete_uploaded_document_library_uploads__arxiv_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/papers": {
         parameters: {
             query?: never;
@@ -1269,6 +1311,44 @@ export interface components {
             /** Topic Relevance */
             topic_relevance: number;
         };
+        /** UploadDeleted */
+        UploadDeleted: {
+            /** Arxiv Id */
+            arxiv_id: string;
+            /** Chunks */
+            chunks: number;
+            /** Library Items */
+            library_items: number;
+            /** Points */
+            points: number;
+        };
+        /** UploadOut */
+        UploadOut: {
+            /** Abs Url */
+            abs_url?: null;
+            /** Arxiv Id */
+            arxiv_id: string;
+            /** Chunks */
+            chunks: {
+                [key: string]: number;
+            };
+            /** Collection */
+            collection: string | null;
+            /** Cost Usd */
+            cost_usd: number;
+            /** Created */
+            created: boolean;
+            /** Embedded */
+            embedded: number;
+            /** Embedding Requests */
+            embedding_requests: number;
+            /** Title */
+            title: string;
+            /** Tokens In */
+            tokens_in: number;
+            /** Year */
+            year: number;
+        };
         /** ValidationError */
         ValidationError: {
             /** Context */
@@ -1963,6 +2043,71 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ReviewOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upload_pdf_library_upload_post: {
+        parameters: {
+            query: {
+                title: string;
+                collection?: string | null;
+                year?: number | null;
+                abstract?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UploadOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_uploaded_document_library_uploads__arxiv_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                arxiv_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UploadDeleted"];
                 };
             };
             /** @description Validation Error */

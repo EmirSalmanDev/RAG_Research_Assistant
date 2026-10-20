@@ -28,6 +28,7 @@ PAPERS = [
     ("2601.20001", 1, ["cs.CL"], 500, "alpha"),
     ("2603.20002", 3, ["cs.CL"], None, "beta"),
     ("2605.20003", 5, ["cs.LG"], 5, "gamma"),
+    ("local-0123456789ab", 7, [], None, "delta"),  # an uploaded document: no arXiv page
 ]
 VECTOR = [1.0, 0.0, 0.0, 0.0]
 
@@ -49,7 +50,8 @@ def stores(
         migrated_session.add(
             Paper(
                 arxiv_id=arxiv_id, title=f"{word} paper", abstract=f"Abstract about {word} topic.",
-                authors=[], categories=categories, primary_category=categories[0],
+                authors=[], categories=categories,
+                primary_category=categories[0] if categories else None,
                 published_at=published, citation_count=citations,
             )
         )  # fmt: skip
@@ -102,8 +104,15 @@ def test_each_paper_appears_once_with_its_abstract(stores: None) -> None:
     (key,) = [p for p in out.points if p.is_key]
     assert key.key_score == max(p.key_score for p in out.points)
     assert key.line == f"{key.title.split()[0]} changed." and key.line_source == "model"
-    assert [p.citation_count for p in out.points] == [500, None, 5]
+    assert [p.citation_count for p in out.points] == [500, None, 5, None]
     assert out.notes.known_citation_counts == 2 and not out.notes.narrow_range
+    # links go to the arXiv abstract page; an uploaded document has none
+    assert [p.abs_url for p in out.points] == [
+        "https://arxiv.org/abs/2601.20001",
+        "https://arxiv.org/abs/2603.20002",
+        "https://arxiv.org/abs/2605.20003",
+        None,
+    ]
 
 
 def test_filters_run_inside_qdrant(stores: None) -> None:

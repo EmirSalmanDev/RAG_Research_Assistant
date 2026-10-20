@@ -2470,6 +2470,106 @@
         "title": "TimelinePoint",
         "type": "object"
       },
+      "UploadDeleted": {
+        "properties": {
+          "arxiv_id": {
+            "title": "Arxiv Id",
+            "type": "string"
+          },
+          "chunks": {
+            "title": "Chunks",
+            "type": "integer"
+          },
+          "library_items": {
+            "title": "Library Items",
+            "type": "integer"
+          },
+          "points": {
+            "title": "Points",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "arxiv_id",
+          "chunks",
+          "points",
+          "library_items"
+        ],
+        "title": "UploadDeleted",
+        "type": "object"
+      },
+      "UploadOut": {
+        "properties": {
+          "abs_url": {
+            "title": "Abs Url",
+            "type": "null"
+          },
+          "arxiv_id": {
+            "title": "Arxiv Id",
+            "type": "string"
+          },
+          "chunks": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Chunks",
+            "type": "object"
+          },
+          "collection": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Collection"
+          },
+          "cost_usd": {
+            "title": "Cost Usd",
+            "type": "number"
+          },
+          "created": {
+            "title": "Created",
+            "type": "boolean"
+          },
+          "embedded": {
+            "title": "Embedded",
+            "type": "integer"
+          },
+          "embedding_requests": {
+            "title": "Embedding Requests",
+            "type": "integer"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "tokens_in": {
+            "title": "Tokens In",
+            "type": "integer"
+          },
+          "year": {
+            "title": "Year",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "arxiv_id",
+          "title",
+          "year",
+          "created",
+          "collection",
+          "chunks",
+          "embedded",
+          "embedding_requests",
+          "tokens_in",
+          "cost_usd"
+        ],
+        "title": "UploadOut",
+        "type": "object"
+      },
       "ValidationError": {
         "properties": {
           "ctx": {
@@ -3396,6 +3496,140 @@
           }
         },
         "summary": "Write Review"
+      }
+    },
+    "/library/upload": {
+      "post": {
+        "description": "Add the PDF in the request body as an uploaded document (201 when new, 200 when the\nsame file was uploaded before).",
+        "operationId": "upload_pdf_library_upload_post",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "title",
+            "required": true,
+            "schema": {
+              "maxLength": 300,
+              "minLength": 1,
+              "title": "Title",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "collection",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Collection"
+            }
+          },
+          {
+            "in": "query",
+            "name": "year",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 2100,
+                  "minimum": 1900,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Year"
+            }
+          },
+          {
+            "in": "query",
+            "name": "abstract",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 3000,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Abstract"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UploadOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Upload Pdf"
+      }
+    },
+    "/library/uploads/{arxiv_id}": {
+      "delete": {
+        "description": "Remove an uploaded document: its Qdrant points, chunks, text and library items.\nOnly `local-` ids; an arXiv paper cannot be deleted here.",
+        "operationId": "delete_uploaded_document_library_uploads__arxiv_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "arxiv_id",
+            "required": true,
+            "schema": {
+              "title": "Arxiv Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UploadDeleted"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Uploaded Document"
       }
     },
     "/papers": {

@@ -37,6 +37,7 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.db.models import Citation, HFArtifact, IngestRun, Paper, Repo
+from app.ids import LOCAL_PREFIX, is_local_id
 from app.sources.github import GitHubRepo, parse_github_url
 from app.sources.hf import ArtifactKind, HFPaper
 from app.sources.hf import HFArtifact as HFArtifactData
@@ -189,6 +190,8 @@ def enrich_one(session: Session, clients: EnrichClients, arxiv_id: str) -> Enric
     failing source never undoes another one. The caller commits."""
     out = EnrichResult(counts={"repos": 0, "hf_artifacts": 0, "citations": 0})
     errors = out.errors
+    if is_local_id(arxiv_id):  # an uploaded document is on none of these sites: no calls
+        return out
 
     def optional(name: str, step: Callable[[], None]) -> None:
         try:
@@ -300,9 +303,14 @@ def plan_daily(
     Each list holds at most `max_papers` ids."""
     new = Paper.created_at > since
     recent = Paper.created_at >= recheck_since
+    arxiv_only = ~Paper.arxiv_id.startswith(LOCAL_PREFIX)  # uploads are not on S2 / GitHub / HF
 
     def ids(*where: Any) -> list[str]:
-        query = select(Paper.arxiv_id).where(*where).order_by(Paper.created_at, Paper.arxiv_id)
+        query = (
+            select(Paper.arxiv_id)
+            .where(arxiv_only, *where)
+            .order_by(Paper.created_at, Paper.arxiv_id)
+        )
         return list(session.scalars(query.limit(max_papers)))
 
     no_repo = ~exists().where(Repo.arxiv_id == Paper.arxiv_id)

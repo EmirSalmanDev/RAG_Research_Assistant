@@ -34,6 +34,7 @@ from app.db.models import DigestEntry, Interest, LibraryItem, Paper, PaperAnalys
 from app.features import app_settings
 from app.features import interests as interest_repo
 from app.features.relevance import InterestVector, PaperFeatures, Score, rank_key, score_paper
+from app.ids import LOCAL_PREFIX
 from app.ingest.chunk import ABSTRACT_ORD, chunk_id
 from app.ingest.embed import DenseEncoder
 from app.ingest.index import DENSE_VECTOR, LOOKUP_BATCH, get_qdrant
@@ -183,6 +184,7 @@ def window_papers(session: Session, reference: datetime) -> list[Paper]:
         session.scalars(
             select(Paper)
             .where(Paper.published_at >= start, Paper.published_at <= reference)
+            .where(~Paper.arxiv_id.startswith(LOCAL_PREFIX))  # uploads are not new arXiv papers
             .order_by(Paper.arxiv_id)
         )
     )
