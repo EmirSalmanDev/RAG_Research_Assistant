@@ -308,14 +308,33 @@ class DigestEntry(Base):
     )
 
 
+# library_items.status (validated by the API, no CHECK constraint, so a status can be added
+# without a migration): the reading state of a saved paper.
+LIBRARY_STATUSES = ("to_read", "reading", "read", "archived")
+
+
 class LibraryItem(Base):
+    """A saved paper in a collection: one item per (paper, collection)."""
+
     __tablename__ = "library_items"
 
     arxiv_id: Mapped[str] = mapped_column(_paper_fk(), primary_key=True)
-    collection: Mapped[str] = mapped_column(Text, primary_key=True)
+    collection: Mapped[str] = mapped_column(Text, primary_key=True, index=True)
     status: Mapped[str] = mapped_column(Text, default="to_read")
     notes: Mapped[str | None] = mapped_column(Text)
     added_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=_now())
+
+
+class LibraryCollection(Base):
+    """A named collection. The list of collections is the union of this table and the
+    distinct `library_items.collection` values (the digest's "Saved" has no row here)."""
+
+    __tablename__ = "library_collections"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(Text, unique=True)
+    description: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=_now())
 
 
 class Conversation(Base):
