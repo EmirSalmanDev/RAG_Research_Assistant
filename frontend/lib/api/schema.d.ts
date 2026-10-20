@@ -179,6 +179,102 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/library/bibtex": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export Bibtex
+         * @description The collection's references as a .bib file, built from stored metadata (no model,
+         *     no network). The keys are the ones the review's citations use.
+         */
+        get: operations["export_bibtex_library_bibtex_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/library/collections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Collections */
+        get: operations["list_collections_library_collections_get"];
+        put?: never;
+        /** Create Collection */
+        post: operations["create_collection_library_collections_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/library/collections/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Update Collection */
+        put: operations["update_collection_library_collections__name__put"];
+        post?: never;
+        /** Delete Collection */
+        delete: operations["delete_collection_library_collections__name__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/library/items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Items */
+        get: operations["list_items_library_items_get"];
+        put?: never;
+        /**
+         * Add Item
+         * @description 201 when the paper was added, 200 when it was in the collection already.
+         */
+        post: operations["add_item_library_items_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/library/items/{arxiv_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Remove Item */
+        delete: operations["remove_item_library_items__arxiv_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Item */
+        patch: operations["update_item_library_items__arxiv_id__patch"];
+        trace?: never;
+    };
     "/papers": {
         parameters: {
             query?: never;
@@ -428,6 +524,42 @@ export interface components {
             /** Section Path */
             section_path: string | null;
         };
+        /** CollectionCreate */
+        CollectionCreate: {
+            /** Description */
+            description?: string | null;
+            /** Name */
+            name: string;
+        };
+        /** CollectionDeleted */
+        CollectionDeleted: {
+            /** Items Removed */
+            items_removed: number;
+            /** Name */
+            name: string;
+        };
+        /** CollectionOut */
+        CollectionOut: {
+            /** Created At */
+            created_at: string | null;
+            /** Description */
+            description: string | null;
+            /** Name */
+            name: string;
+            /** Paper Count */
+            paper_count: number;
+        };
+        /**
+         * CollectionUpdate
+         * @description Send only what changes: `name` renames (the items move with it), `description` null
+         *     clears the description.
+         */
+        CollectionUpdate: {
+            /** Description */
+            description?: string | null;
+            /** Name */
+            name?: string | null;
+        };
         /** CompareNotes */
         CompareNotes: {
             /** Cut Sources */
@@ -614,6 +746,70 @@ export interface components {
             updated_at: string;
             /** Weight */
             weight: number;
+        };
+        /** ItemCreate */
+        ItemCreate: {
+            /** Collection */
+            collection: string;
+            /**
+             * Reference
+             * @description an arXiv id (also with a version) or an arxiv.org abs/pdf link
+             */
+            reference: string;
+            /**
+             * Status
+             * @default to_read
+             * @enum {string}
+             */
+            status: "to_read" | "reading" | "read" | "archived";
+        };
+        /** ItemOut */
+        ItemOut: {
+            /** Abs Url */
+            abs_url: string | null;
+            /**
+             * Added At
+             * Format: date-time
+             */
+            added_at: string;
+            /** Arxiv Id */
+            arxiv_id: string;
+            /** Authors */
+            authors: string[];
+            /** Collection */
+            collection: string;
+            /**
+             * Evidence
+             * @enum {string}
+             */
+            evidence: "full_text" | "abstract_only" | "uploaded";
+            /** Notes */
+            notes: string | null;
+            /**
+             * Published At
+             * Format: date-time
+             */
+            published_at: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "to_read" | "reading" | "read" | "archived";
+            /** Title */
+            title: string;
+        };
+        /**
+         * ItemPatch
+         * @description Send only what changes. `notes` null or empty clears the note; `collection` moves
+         *     the item to that collection (409 if the paper is in it already).
+         */
+        ItemPatch: {
+            /** Collection */
+            collection?: string | null;
+            /** Notes */
+            notes?: string | null;
+            /** Status */
+            status?: ("to_read" | "reading" | "read" | "archived") | null;
         };
         /** PaperChunksOut */
         PaperChunksOut: {
@@ -1310,6 +1506,290 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_bibtex_library_bibtex_get: {
+        parameters: {
+            query: {
+                /** @description the collection's name */
+                collection: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_collections_library_collections_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CollectionOut"][];
+                };
+            };
+        };
+    };
+    create_collection_library_collections_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CollectionCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CollectionOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_collection_library_collections__name__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CollectionUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CollectionOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_collection_library_collections__name__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CollectionDeleted"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_items_library_items_get: {
+        parameters: {
+            query: {
+                /** @description the collection's name */
+                collection: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ItemOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_item_library_items_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ItemCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ItemOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_item_library_items__arxiv_id__delete: {
+        parameters: {
+            query: {
+                /** @description the collection's name */
+                collection: string;
+            };
+            header?: never;
+            path: {
+                arxiv_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_item_library_items__arxiv_id__patch: {
+        parameters: {
+            query: {
+                /** @description the collection's name */
+                collection: string;
+            };
+            header?: never;
+            path: {
+                arxiv_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ItemPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ItemOut"];
+                };
             };
             /** @description Validation Error */
             422: {
