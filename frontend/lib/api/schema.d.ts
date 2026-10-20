@@ -991,6 +991,13 @@ export interface components {
             evidence: "analysis" | "abstract";
             /** N */
             n: number;
+            /**
+             * Published At
+             * Format: date-time
+             */
+            published_at: string;
+            /** Section Path */
+            section_path: string | null;
             /** Title */
             title: string;
             /** Year */

@@ -49,6 +49,7 @@ def make_paper(
         if analysis
         else None,  # fmt: skip
         analysis_chunk_id=uuid.UUID(int=2000 + n) if analysis_chunk else None,
+        analysis_section_path="Analysis > Summary" if analysis_chunk else None,
     )
 
 

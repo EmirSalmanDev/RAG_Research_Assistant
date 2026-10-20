@@ -131,6 +131,8 @@ class ReferenceOut(BaseModel):
     authors: list[str]
     year: int
     chunk_id: uuid.UUID  # what a citation chip opens (GET /chunks/{chunk_id})
+    section_path: str | None  # "Abstract", or "Analysis > Summary" for a generated analysis
+    published_at: datetime
     chunk_type: Literal["analysis", "abstract"]
     evidence: Evidence  # "analysis": a generated analysis; "abstract": the abstract only
     abs_url: str | None  # null for an uploaded document
@@ -182,6 +184,7 @@ class ReviewPaper:
     abstract_chunk_id: uuid.UUID | None
     analysis: AnalysisText | None
     analysis_chunk_id: uuid.UUID | None  # the paper's first `analysis` chunk, if indexed
+    analysis_section_path: str | None = None
 
     @property
     def arxiv_id(self) -> str:
@@ -209,17 +212,19 @@ class SqlReviewStore:
                 )
             }
             abstract: dict[str, tuple[uuid.UUID, str]] = {}
-            analysis_chunk: dict[str, uuid.UUID] = {}
+            analysis_chunk: dict[str, tuple[uuid.UUID, str | None]] = {}
             rows = session.execute(
-                select(Chunk.arxiv_id, Chunk.chunk_type, Chunk.id, Chunk.text)
+                select(Chunk.arxiv_id, Chunk.chunk_type, Chunk.id, Chunk.text, Chunk.section_path)
                 .where(Chunk.arxiv_id.in_(ids), Chunk.chunk_type.in_(("abstract", "analysis")))
                 .order_by(Chunk.arxiv_id, Chunk.ord)
             ).all()
-            for arxiv_id, chunk_type, chunk_id, text in rows:
+            for arxiv_id, chunk_type, chunk_id, text, section_path in rows:
                 if chunk_type == "abstract":
                     abstract.setdefault(arxiv_id, (chunk_id, text))
                 else:
-                    analysis_chunk.setdefault(arxiv_id, chunk_id)  # the lowest ord: the summary
+                    analysis_chunk.setdefault(
+                        arxiv_id, (chunk_id, section_path)
+                    )  # lowest ord: summary
             out: list[ReviewPaper] = []
             for paper in papers:
                 row = analyses.get(paper.arxiv_id)
@@ -234,7 +239,8 @@ class SqlReviewStore:
                         else AnalysisText(
                             row.tldr, row.contributions, row.method, row.results, row.limitations
                         ),
-                        analysis_chunk_id=analysis_chunk.get(paper.arxiv_id),
+                        analysis_chunk_id=analysis_chunk.get(paper.arxiv_id, (None, None))[0],
+                        analysis_section_path=analysis_chunk.get(paper.arxiv_id, (None, None))[1],
                     )
                 )
             return out
@@ -725,6 +731,10 @@ def _reference(source: ReviewSource, cited_count: int) -> ReferenceOut:
         authors=list(bib.authors),
         year=published.year,
         chunk_id=source.chunk_id,
+        section_path=(
+            "Abstract" if source.evidence == "abstract" else source.paper.analysis_section_path
+        ),
+        published_at=published,
         chunk_type=source.evidence,
         evidence=source.evidence,
         abs_url=abs_url(source.arxiv_id),

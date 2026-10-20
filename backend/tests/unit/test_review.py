@@ -179,6 +179,8 @@ def test_the_references_carry_the_keys_chunks_and_links() -> None:
     assert first.abs_url == "https://arxiv.org/abs/2601.00001"
     assert (first.cited_count, second.cited_count) == (1, 1)
     assert first.year == 2020 and first.authors == ["Ada Authora"]
+    assert (first.section_path, second.section_path) == ("Analysis > Summary", "Abstract")
+    assert first.published_at.year == 2020
 
 
 def test_an_uploaded_document_has_no_link() -> None:

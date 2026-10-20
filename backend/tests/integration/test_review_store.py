@@ -96,6 +96,8 @@ def test_the_real_store_gives_chunks_of_the_right_paper_and_level(s: Session) ->
     # the analysis reference opens the paper's own analysis chunk (the summary, ord 10000)
     first = s.get(Chunk, result.references[0].chunk_id)
     assert first is not None and first.ord == 10000 and "Invented tldr." in first.text
+    assert result.references[0].section_path == first.section_path == "Analysis > Summary"
+    assert result.references[1].section_path == "Abstract"
     assert result.counts.papers_without_analysis == 2 and result.counts.dropped_uncited == 0
     body = completions.calls[0]["messages"][1]["content"]
     assert "TL;DR: Invented tldr." in body and "Abstract: An invented abstract." in body

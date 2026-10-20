@@ -342,3 +342,238 @@ export async function postTimeline(
     apiErrorMessage(response.status, detailOf(error), "timeline"),
   );
 }
+
+// --- the library: collections, saved papers, the .bib file, the review and PDF upload ---------
+// Everything here is free (Postgres only) EXCEPT postReview (chat calls) and uploadPdf
+// (embeddings). Those two are only ever called from a button, never from a page load, a
+// keystroke or a refetch.
+
+export type CollectionOut = components["schemas"]["CollectionOut"];
+export type CollectionCreate = components["schemas"]["CollectionCreate"];
+export type CollectionUpdate = components["schemas"]["CollectionUpdate"];
+export type ItemOut = components["schemas"]["ItemOut"];
+export type ItemCreate = components["schemas"]["ItemCreate"];
+export type ItemPatch = components["schemas"]["ItemPatch"];
+export type ReviewRequest = components["schemas"]["ReviewRequest"];
+export type ReviewOut = components["schemas"]["ReviewOut"];
+export type UploadOut = components["schemas"]["UploadOut"];
+export type UploadDeleted = components["schemas"]["UploadDeleted"];
+
+/** GET /library/collections: every collection with its paper count. */
+export async function fetchCollections(
+  client: ApiClient,
+): Promise<CollectionOut[]> {
+  const { data, error, response } = await client.GET("/library/collections");
+  if (data) return data;
+  throw new ApiError(
+    response.status,
+    apiErrorMessage(response.status, detailOf(error), "collections"),
+  );
+}
+
+/** POST /library/collections (a duplicate name is a 409 with a readable message). */
+export async function createCollection(
+  client: ApiClient,
+  body: CollectionCreate,
+): Promise<CollectionOut> {
+  const { data, error, response } = await client.POST("/library/collections", {
+    body,
+  });
+  if (data) return data;
+  throw new ApiError(
+    response.status,
+    apiErrorMessage(response.status, detailOf(error), "collection"),
+  );
+}
+
+/** PUT /library/collections/{name}: rename (the items move with it) and/or describe. */
+export async function updateCollection(
+  client: ApiClient,
+  name: string,
+  body: CollectionUpdate,
+): Promise<CollectionOut> {
+  const { data, error, response } = await client.PUT(
+    "/library/collections/{name}",
+    { params: { path: { name } }, body },
+  );
+  if (data) return data;
+  throw new ApiError(
+    response.status,
+    apiErrorMessage(response.status, detailOf(error), "collection"),
+  );
+}
+
+/** DELETE /library/collections/{name}: the collection and its items, never the papers. */
+export async function deleteCollection(
+  client: ApiClient,
+  name: string,
+): Promise<void> {
+  const { error, response } = await client.DELETE(
+    "/library/collections/{name}",
+    { params: { path: { name } } },
+  );
+  if (response.ok) return;
+  throw new ApiError(
+    response.status,
+    apiErrorMessage(response.status, detailOf(error), "collection"),
+  );
+}
+
+/** GET /library/items: the collection's papers. */
+export async function fetchItems(
+  client: ApiClient,
+  collection: string,
+): Promise<ItemOut[]> {
+  const { data, error, response } = await client.GET("/library/items", {
+    params: { query: { collection } },
+  });
+  if (data) return data;
+  throw new ApiError(
+    response.status,
+    apiErrorMessage(response.status, detailOf(error), "collection"),
+  );
+}
+
+/**
+ * POST /library/items: add a paper that is already in the database (arXiv id or link).
+ * An unknown paper is a 404 whose message says it has to be ingested first.
+ */
+export async function addItem(
+  client: ApiClient,
+  body: ItemCreate,
+): Promise<ItemOut> {
+  const { data, error, response } = await client.POST("/library/items", {
+    body,
+  });
+  if (data) return data;
+  throw new ApiError(
+    response.status,
+    apiErrorMessage(response.status, detailOf(error), "paper"),
+  );
+}
+
+/** PATCH /library/items/{id}?collection=: status, notes, or a move to another collection. */
+export async function updateItem(
+  client: ApiClient,
+  arxivId: string,
+  collection: string,
+  body: ItemPatch,
+): Promise<ItemOut> {
+  const { data, error, response } = await client.PATCH(
+    "/library/items/{arxiv_id}",
+    { params: { path: { arxiv_id: arxivId }, query: { collection } }, body },
+  );
+  if (data) return data;
+  throw new ApiError(
+    response.status,
+    apiErrorMessage(response.status, detailOf(error), "paper"),
+  );
+}
+
+/** DELETE /library/items/{id}?collection=: the paper stays in the database. */
+export async function removeItem(
+  client: ApiClient,
+  arxivId: string,
+  collection: string,
+): Promise<void> {
+  const { error, response } = await client.DELETE("/library/items/{arxiv_id}", {
+    params: { path: { arxiv_id: arxivId }, query: { collection } },
+  });
+  if (response.ok) return;
+  throw new ApiError(
+    response.status,
+    apiErrorMessage(response.status, detailOf(error), "paper"),
+  );
+}
+
+/** GET /library/bibtex: the .bib text and the file name the server suggests. */
+export async function fetchBibtex(
+  client: ApiClient,
+  collection: string,
+): Promise<{ text: string; filename: string | null }> {
+  const { data, error, response } = await client.GET("/library/bibtex", {
+    params: { query: { collection } },
+    parseAs: "text",
+  });
+  if (typeof data === "string")
+    return {
+      text: data,
+      filename:
+        /filename="([^"\\/]+)"/.exec(
+          response.headers.get("content-disposition") ?? "",
+        )?.[1] ?? null,
+    };
+  throw new ApiError(
+    response.status,
+    apiErrorMessage(response.status, detailOf(error), "collection"),
+  );
+}
+
+/** POST /library/review (PAID: one chat call per group of eight papers above eight, plus one). */
+export async function postReview(
+  client: ApiClient,
+  body: ReviewRequest,
+  signal?: AbortSignal,
+): Promise<ReviewOut> {
+  const { data, error, response } = await client.POST("/library/review", {
+    body,
+    signal,
+  });
+  if (data) return data;
+  throw new ApiError(
+    response.status,
+    apiErrorMessage(response.status, detailOf(error), "collection"),
+  );
+}
+
+export interface UploadParams {
+  title: string;
+  year?: number | null;
+  collection?: string | null;
+  abstract?: string | null;
+}
+
+/**
+ * POST /library/upload (PAID: the embeddings of the PDF's chunks). The body is the raw PDF,
+ * not a form; this is a plain fetch because the OpenAPI schema does not describe a raw body.
+ */
+export async function uploadPdf(
+  fetchFn: typeof fetch,
+  baseUrl: string,
+  params: UploadParams,
+  file: Blob,
+  signal?: AbortSignal,
+): Promise<UploadOut> {
+  const query = new URLSearchParams({ title: params.title });
+  if (params.year != null) query.set("year", String(params.year));
+  if (params.collection) query.set("collection", params.collection);
+  if (params.abstract) query.set("abstract", params.abstract);
+  const response = await fetchFn(`${baseUrl}/library/upload?${query}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/pdf" },
+    body: file,
+    signal,
+  });
+  if (response.ok) return (await response.json()) as UploadOut;
+  const body: unknown = await response.json().catch(() => undefined);
+  throw new ApiError(
+    response.status,
+    apiErrorMessage(response.status, detailOf(body), "upload"),
+  );
+}
+
+/** DELETE /library/uploads/{id}: an uploaded document and everything indexed from it. */
+export async function deleteUpload(
+  client: ApiClient,
+  arxivId: string,
+): Promise<UploadDeleted> {
+  const { data, error, response } = await client.DELETE(
+    "/library/uploads/{arxiv_id}",
+    { params: { path: { arxiv_id: arxivId } } },
+  );
+  if (data) return data;
+  throw new ApiError(
+    response.status,
+    apiErrorMessage(response.status, detailOf(error), "upload"),
+  );
+}

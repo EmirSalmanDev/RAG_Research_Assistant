@@ -7,6 +7,9 @@ import type { SearchParams } from "../search/params";
 
 export type {
   ChunkOut,
+  CollectionCreate,
+  CollectionOut,
+  CollectionUpdate,
   CompareOut,
   CompareRequest,
   DigestEntryOut,
@@ -14,6 +17,14 @@ export type {
   EntryAction,
   InterestIn,
   InterestOut,
+  ItemCreate,
+  ItemOut,
+  ItemPatch,
+  ReviewOut,
+  ReviewRequest,
+  UploadDeleted,
+  UploadOut,
+  UploadParams,
   SettingsIn,
   SettingsOut,
   PaperChunksOut,
@@ -69,3 +80,46 @@ export const postTimeline = (
   body: endpoints.TimelineBody,
   signal?: AbortSignal,
 ) => endpoints.postTimeline(api, body, signal);
+
+// The library. Free (Postgres only), except the review and the upload.
+export const fetchCollections = () => endpoints.fetchCollections(api);
+export const createCollection = (body: endpoints.CollectionCreate) =>
+  endpoints.createCollection(api, body);
+export const updateCollection = (
+  name: string,
+  body: endpoints.CollectionUpdate,
+) => endpoints.updateCollection(api, name, body);
+export const deleteCollection = (name: string) =>
+  endpoints.deleteCollection(api, name);
+export const fetchItems = (collection: string) =>
+  endpoints.fetchItems(api, collection);
+export const addItem = (body: endpoints.ItemCreate) =>
+  endpoints.addItem(api, body);
+export const updateItem = (
+  arxivId: string,
+  collection: string,
+  body: endpoints.ItemPatch,
+) => endpoints.updateItem(api, arxivId, collection, body);
+export const removeItem = (arxivId: string, collection: string) =>
+  endpoints.removeItem(api, arxivId, collection);
+export const fetchBibtex = (collection: string) =>
+  endpoints.fetchBibtex(api, collection);
+export const deleteUpload = (arxivId: string) =>
+  endpoints.deleteUpload(api, arxivId);
+// The two paid calls of the library: only ever started by a button.
+export const postReview = (
+  body: endpoints.ReviewRequest,
+  signal?: AbortSignal,
+) => endpoints.postReview(api, body, signal);
+export const uploadPdf = (
+  params: endpoints.UploadParams,
+  file: Blob,
+  signal?: AbortSignal,
+) =>
+  endpoints.uploadPdf(
+    (input, init) => fetch(input, init),
+    "/api",
+    params,
+    file,
+    signal,
+  );

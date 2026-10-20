@@ -15,7 +15,7 @@ import { fetchChunk } from "@/lib/api/queries";
 import type { Source } from "@/lib/chat/events";
 import { shouldDismiss } from "@/lib/chat/panel";
 import { formatDate } from "@/lib/format";
-import { arxivAbsUrl, paperPath } from "@/lib/links";
+import { arxivAbsUrl, isLocalId, paperPath } from "@/lib/links";
 import { cn } from "@/lib/utils";
 
 const KIND_LABEL: Record<Source["chunk_type"], string> = {
@@ -75,7 +75,10 @@ export function SourcePanel({
                 {source.title}
               </SheetTitle>
               <SheetDescription>
-                arXiv {source.arxiv_id}, {formatDate(source.published_at)}
+                {isLocalId(source.arxiv_id)
+                  ? "Uploaded document"
+                  : `arXiv ${source.arxiv_id}`}
+                , {formatDate(source.published_at)}
               </SheetDescription>
             </SheetHeader>
 
@@ -99,6 +102,12 @@ export function SourcePanel({
                   <p className="text-sm text-muted-foreground">
                     Only this paper&rsquo;s abstract is indexed, so the claim
                     rests on the summary, not on the paper&rsquo;s own evidence.
+                  </p>
+                )}
+                {source.chunk_type === "analysis" && (
+                  <p className="text-sm text-muted-foreground">
+                    This is a model-generated analysis of the paper, not the
+                    paper&rsquo;s own words. Check a claim against the paper.
                   </p>
                 )}
               </div>

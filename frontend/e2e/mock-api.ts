@@ -12,6 +12,7 @@
 // POST /chat sends the first part of an answer and then HOLDS the stream open until the
 // test calls POST /__release. That makes "the text is on screen while the turn is still
 // running" something the test can assert, instead of a race against a timer.
+import { createHash } from "node:crypto";
 import { createServer } from "node:http";
 import type { IncomingMessage, ServerResponse } from "node:http";
 
@@ -517,6 +518,396 @@ async function exploreRoute(
   return false;
 }
 
+// --- the library (e2e/library-flow.spec.ts): invented, in memory, no model behind it ---------
+// Collections and items live in memory for the life of the server. The papers are the
+// explore papers above (1 and 2 with full text and an analysis, 3 to 6 abstract only) plus
+// uploaded documents. The review cites every item of the collection once.
+type LibItem = {
+  arxiv_id: string;
+  collection: string;
+  status: string;
+  notes: string | null;
+  added_at: string;
+};
+const libCollections = new Map<
+  string,
+  { description: string | null; created_at: string }
+>();
+let libItems: LibItem[] = [];
+const uploads = new Map<string, { title: string; year: number }>();
+const uploadLog: { bytes: number; title: string }[] = [];
+const LIB_NOW = "2026-10-20T08:00:00+00:00";
+
+function libPaper(id: string) {
+  const explore = EXPLORE_PAPERS.find((p) => p.arxiv_id === id);
+  if (explore)
+    return {
+      arxiv_id: id,
+      title: explore.title,
+      published_at: explore.published_at,
+      evidence: explore.has_fulltext ? "full_text" : "abstract_only",
+      abs_url: explore.abs_url,
+      authors: ["Ada Example"],
+      index: EXPLORE_PAPERS.indexOf(explore) + 1,
+    };
+  const upload = uploads.get(id);
+  if (upload)
+    return {
+      arxiv_id: id,
+      title: upload.title,
+      published_at: `${upload.year}-01-01T00:00:00+00:00`,
+      evidence: "uploaded",
+      abs_url: null,
+      authors: [] as string[],
+      index: 0,
+    };
+  return null;
+}
+function libItemOut(item: LibItem) {
+  const paper = libPaper(item.arxiv_id)!;
+  return {
+    ...item,
+    title: paper.title,
+    authors: paper.authors,
+    published_at: paper.published_at,
+    evidence: paper.evidence,
+    abs_url: paper.abs_url,
+  };
+}
+const libNames = () =>
+  new Set([...libCollections.keys(), ...libItems.map((i) => i.collection)]);
+function libCollectionOut(name: string) {
+  const row = libCollections.get(name);
+  return {
+    name,
+    description: row?.description ?? null,
+    paper_count: libItems.filter((i) => i.collection === name).length,
+    created_at: row?.created_at ?? null,
+  };
+}
+const libOrdered = (collection: string) =>
+  libItems
+    .filter((i) => i.collection === collection)
+    .sort((a, b) => a.arxiv_id.localeCompare(b.arxiv_id));
+// The key a paper has in the .bib export AND in the review's references.
+const libKey = (id: string) =>
+  `example2026${(libPaper(id)?.title ?? "paper").toLowerCase().replace(/[^a-z0-9]/g, "")}`;
+function libBibtex(collection: string): string {
+  return libOrdered(collection)
+    .map((item) => {
+      const paper = libPaper(item.arxiv_id)!;
+      const tail = paper.abs_url
+        ? `  eprint = {${paper.arxiv_id}},\n  archivePrefix = {arXiv},\n  url = {${paper.abs_url}},\n`
+        : "  note = {Uploaded document},\n";
+      return `@misc{${libKey(item.arxiv_id)},\n  author = {Example, Ada},\n  title = {{${paper.title}}},\n  year = {${paper.published_at.slice(0, 4)}},\n${tail}}\n`;
+    })
+    .join("\n");
+}
+// Chunk ids of the library's citations: 0d<paper><kind>00, kind 1 abstract, 3 analysis.
+const libChunkId = (paper: number, kind: 1 | 3) =>
+  `00000000-0000-4000-8000-0000000d${paper}${kind}00`;
+function libChunk(id: string) {
+  const m = /^00000000-0000-4000-8000-0000000d(\d)(\d)00$/.exec(id);
+  const paper = m ? EXPLORE_PAPERS[Number(m[1]) - 1] : undefined;
+  if (!m || !paper || (m[2] !== "1" && m[2] !== "3")) return null;
+  const kind = m[2] === "1" ? "abstract" : "analysis";
+  return {
+    chunk_id: id,
+    arxiv_id: paper.arxiv_id,
+    title: paper.title,
+    chunk_type: kind,
+    section_path: kind === "abstract" ? "Abstract" : "Analysis > Summary",
+    ord: kind === "abstract" ? 0 : 10000,
+    text: `Invented ${kind} text of ${paper.title}.`,
+    published_at: paper.published_at,
+    abs_url: paper.abs_url,
+  };
+}
+
+function libReview(collection: string) {
+  const items = libOrdered(collection);
+  const refs = items.map((item, i) => {
+    const paper = libPaper(item.arxiv_id)!;
+    const analysed =
+      paper.index > 0 && EXPLORE_PAPERS[paper.index - 1].has_fulltext;
+    return {
+      n: i + 1,
+      arxiv_id: item.arxiv_id,
+      bibtex_key: libKey(item.arxiv_id),
+      title: paper.title,
+      authors: paper.authors,
+      year: Number(paper.published_at.slice(0, 4)),
+      chunk_id:
+        paper.index > 0
+          ? libChunkId(paper.index, analysed ? 3 : 1)
+          : libChunkId(9, 1),
+      section_path: analysed ? "Analysis > Summary" : "Abstract",
+      published_at: paper.published_at,
+      chunk_type: analysed ? "analysis" : "abstract",
+      evidence: analysed ? "analysis" : "abstract",
+      abs_url: paper.abs_url,
+      cited_count: 1,
+    };
+  });
+  const sentences = [
+    {
+      text: "Several lines of work address adapters.",
+      kind: "transition",
+      source_numbers: [],
+    },
+    ...refs.map((r) => ({
+      text: `Example (${r.year}) studied ${r.title.toLowerCase()}.`,
+      kind: "claim",
+      source_numbers: [r.n],
+    })),
+  ];
+  return {
+    collection,
+    focus: null,
+    sections: [{ heading: "Adapters", paragraphs: [{ sentences }] }],
+    references: refs,
+    counts: {
+      papers: refs.length,
+      papers_without_analysis: refs.filter((r) => r.evidence === "abstract")
+        .length,
+      papers_omitted: 0,
+      papers_uncitable: 0,
+      claims: refs.length,
+      transitions: 1,
+      dropped_uncited: 2,
+      dropped_transitions: 0,
+      invalid_citations_dropped: 0,
+      map_calls: 0,
+      map_notes_dropped: 0,
+    },
+    tokens_in: 2400,
+    tokens_out: 300,
+    cost_usd: 0.00054,
+    prompt_versions: { write: "review_write_v1" },
+  };
+}
+
+function readBody(req: IncomingMessage): Promise<Buffer> {
+  return new Promise((resolve) => {
+    const parts: Buffer[] = [];
+    req.on("data", (chunk: Buffer) => parts.push(chunk));
+    req.on("end", () => resolve(Buffer.concat(parts)));
+  });
+}
+
+async function libraryRoute(
+  req: IncomingMessage,
+  res: ServerResponse,
+  url: string,
+): Promise<boolean> {
+  const [path, queryText = ""] = url.split("?");
+  const query = new URLSearchParams(queryText);
+  const method = req.method ?? "GET";
+  if (method === "GET" && path === "/__uploads") {
+    json(res, 200, uploadLog);
+    return true;
+  }
+  if (!path.startsWith("/library/")) return false;
+  const decoded = decodeURIComponent(path);
+
+  if (path === "/library/collections" && method === "GET") {
+    json(res, 200, [...libNames()].map(libCollectionOut));
+    return true;
+  }
+  if (path === "/library/collections" && method === "POST") {
+    const body = await readJson(req);
+    const name = String(body.name ?? "").trim();
+    if (!name)
+      return (
+        json(res, 422, { detail: "a collection name has 1 to 100 characters" }),
+        true
+      );
+    if (libNames().has(name))
+      return (
+        json(res, 409, {
+          detail: `a collection named '${name}' exists already`,
+        }),
+        true
+      );
+    libCollections.set(name, {
+      description: (body.description as string | null) ?? null,
+      created_at: LIB_NOW,
+    });
+    json(res, 201, libCollectionOut(name));
+    return true;
+  }
+  const one = /^\/library\/collections\/(.+)$/.exec(decoded);
+  if (one) {
+    const name = one[1];
+    if (!libNames().has(name))
+      return (
+        json(res, 404, { detail: `no collection named '${name}'` }),
+        true
+      );
+    if (method === "PUT") {
+      const body = await readJson(req);
+      const to = body.name ? String(body.name).trim() : name;
+      if (to !== name && libNames().has(to))
+        return (
+          json(res, 409, {
+            detail: `a collection named '${to}' exists already`,
+          }),
+          true
+        );
+      const row = libCollections.get(name) ?? {
+        description: null,
+        created_at: LIB_NOW,
+      };
+      libCollections.delete(name);
+      libCollections.set(to, row);
+      for (const item of libItems)
+        if (item.collection === name) item.collection = to;
+      json(res, 200, libCollectionOut(to));
+      return true;
+    }
+    if (method === "DELETE") {
+      const removed = libItems.filter((i) => i.collection === name).length;
+      libItems = libItems.filter((i) => i.collection !== name);
+      libCollections.delete(name);
+      json(res, 200, { name, items_removed: removed });
+      return true;
+    }
+  }
+  if (path === "/library/items" && method === "GET") {
+    const collection = query.get("collection") ?? "";
+    if (!libNames().has(collection))
+      return (
+        json(res, 404, { detail: `no collection named '${collection}'` }),
+        true
+      );
+    json(res, 200, libOrdered(collection).map(libItemOut));
+    return true;
+  }
+  if (path === "/library/items" && method === "POST") {
+    const body = await readJson(req);
+    const id = /\d{4}\.\d{4,5}/.exec(String(body.reference ?? ""))?.[0] ?? "";
+    if (!libPaper(id))
+      return (
+        json(res, 404, {
+          detail: `${id || body.reference} is not in the database yet. Ingest the paper first (adding a paper that is not in the database is a later step).`,
+        }),
+        true
+      );
+    const collection = String(body.collection);
+    const existing = libItems.find(
+      (i) => i.arxiv_id === id && i.collection === collection,
+    );
+    if (existing) return (json(res, 200, libItemOut(existing)), true);
+    const item: LibItem = {
+      arxiv_id: id,
+      collection,
+      status: String(body.status ?? "to_read"),
+      notes: null,
+      added_at: LIB_NOW,
+    };
+    libItems.push(item);
+    json(res, 201, libItemOut(item));
+    return true;
+  }
+  const itemRoute = /^\/library\/items\/(.+)$/.exec(decoded);
+  if (itemRoute) {
+    const item = libItems.find(
+      (i) =>
+        i.arxiv_id === itemRoute[1] && i.collection === query.get("collection"),
+    );
+    if (!item)
+      return (
+        json(res, 404, { detail: `${itemRoute[1]} is not in that collection` }),
+        true
+      );
+    if (method === "PATCH") {
+      const body = await readJson(req);
+      if ("status" in body && body.status) item.status = String(body.status);
+      if ("notes" in body) item.notes = body.notes ? String(body.notes) : null;
+      if (body.collection) item.collection = String(body.collection);
+      json(res, 200, libItemOut(item));
+      return true;
+    }
+    if (method === "DELETE") {
+      libItems = libItems.filter((i) => i !== item);
+      res.writeHead(204).end();
+      return true;
+    }
+  }
+  if (path === "/library/bibtex" && method === "GET") {
+    const collection = query.get("collection") ?? "";
+    if (!libNames().has(collection))
+      return (json(res, 404, { detail: "no such collection" }), true);
+    const slug = collection
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "");
+    res.writeHead(200, {
+      "content-type": "text/plain; charset=utf-8",
+      "content-disposition": `attachment; filename="${slug || "library"}.bib"`,
+    });
+    res.end(libBibtex(collection));
+    return true;
+  }
+  if (path === "/library/review" && method === "POST") {
+    const body = await readJson(req);
+    const collection = String(body.collection ?? "");
+    if (!libNames().has(collection))
+      return (
+        json(res, 404, { detail: `no collection named '${collection}'` }),
+        true
+      );
+    if (libOrdered(collection).length < 2)
+      return (
+        json(res, 422, {
+          detail: "a review needs at least 2 papers with something to cite",
+        }),
+        true
+      );
+    const review = libReview(collection);
+    json(res, 200, { ...review, focus: (body.focus as string | null) ?? null });
+    return true;
+  }
+  if (path === "/library/upload" && method === "POST") {
+    const bytes = await readBody(req);
+    const id = `local-${createHash("sha256").update(bytes).digest("hex").slice(0, 12)}`;
+    const title = query.get("title") ?? "";
+    const year = Number(query.get("year") ?? 2026);
+    const created = !uploads.has(id);
+    uploadLog.push({ bytes: bytes.length, title });
+    if (created) uploads.set(id, { title, year });
+    const collection = query.get("collection");
+    if (
+      collection &&
+      !libItems.some((i) => i.arxiv_id === id && i.collection === collection)
+    )
+      libItems.push({
+        arxiv_id: id,
+        collection,
+        status: "to_read",
+        notes: null,
+        added_at: LIB_NOW,
+      });
+    json(res, created ? 201 : 200, {
+      arxiv_id: id,
+      title: uploads.get(id)!.title,
+      year,
+      created,
+      collection,
+      abs_url: null,
+      chunks: created
+        ? { abstract: 1, section: 4 }
+        : { abstract: 1, section: 4 },
+      embedded: created ? 5 : 0,
+      embedding_requests: created ? 1 : 0,
+      tokens_in: created ? 1200 : 0,
+      cost_usd: created ? 0.000024 : 0,
+    });
+    return true;
+  }
+  return false;
+}
+
 createServer(async (req, res) => {
   const url = req.url ?? "";
   if (req.method === "GET" && url === "/health")
@@ -533,10 +924,11 @@ createServer(async (req, res) => {
   }
   if (await digestRoute(req, res, url)) return;
   if (await exploreRoute(req, res, url)) return;
+  if (await libraryRoute(req, res, url)) return;
   if (req.method === "GET" && paperRoute(res, url)) return;
   const chunk = /^\/chunks\/([0-9a-f-]+)$/.exec(url);
   if (req.method === "GET" && chunk) {
-    const explore = exploreChunk(chunk[1]);
+    const explore = exploreChunk(chunk[1]) ?? libChunk(chunk[1]);
     if (explore) return json(res, 200, explore);
     const source = SOURCES.find((s) => s.chunk_id === chunk[1]);
     if (!source) return json(res, 404, { detail: "unknown chunk" });

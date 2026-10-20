@@ -1497,6 +1497,22 @@
             "title": "N",
             "type": "integer"
           },
+          "published_at": {
+            "format": "date-time",
+            "title": "Published At",
+            "type": "string"
+          },
+          "section_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Section Path"
+          },
           "title": {
             "title": "Title",
             "type": "string"
@@ -1514,6 +1530,8 @@
           "authors",
           "year",
           "chunk_id",
+          "section_path",
+          "published_at",
           "chunk_type",
           "evidence",
           "abs_url",
