@@ -78,6 +78,41 @@ written as decision / alternative / how it is tested.
   setting through (all three values). With the separate count switched off in the code,
   six of these tests fail.
 
+### Measured: retrieval before and after (rule-10 comparison)
+Decisions 1 and 2 were committed (4a34a4d) before this run; nothing was changed after it.
+`make eval-retrieval` on the 20 golden questions (17 scored), cached question embeddings
+(no OpenAI request), egress guard with no approved host (0 external, 104 internal
+requests) and a sandbox that allowed TCP only to the local Postgres and Qdrant. Before:
+eval_runs 13-16 (dae7fbf, the same index of 6,773 points); after: eval_runs 17-20.
+
+| Configuration   | Recall@8      | MRR           | nDCG@10       |
+| --------------- | ------------- | ------------- | ------------- |
+| dense           | 0.794 → 0.824 | 0.667 → 0.667 | 0.685 → 0.703 |
+| BM25            | 0.853 → 0.912 | 0.784 → 0.794 | 0.787 → 0.808 |
+| hybrid (RRF)    | 0.912 → 0.912 | 0.775 → 0.775 | 0.794 → 0.794 |
+| hybrid + rerank | 0.794 → 0.794 | 0.667 → 0.667 | 0.685 → 0.685 |
+
+Where the changes come from (per question, read from eval_results):
+- **The cap (decision 2).** The two cases ADR 0008 recorded, where analysis chunks filled
+  a paper's three slots and pushed a reference section out, are back: dense cmp-01 (Recall
+  0.5 → 1.0) and BM25 cmp-02 (the reference returns at rank 6). In most lists the slots an
+  analysis chunk no longer takes go to further sections at ranks 4-10. Where an analysis
+  chunk of the right paper ranks above the reference passage (the other 11 cases of ADR
+  0008), nothing changes, by design: the ranking is not touched.
+- **The ties (decision 1).** In hybrid two exact RRF ties are now settled by chunk id:
+  attn-02 (the reference and another section both 0.032522473; reference rank 3 → 2) and
+  cmp-02 (both 0.032051284; reference rank 2 → 3). The MRR effects cancel (+1/6, -1/6 over
+  17 questions). In w2v-01 the reference now ties with an analysis chunk (0.032795697) and
+  stays second, as in run 15. Which side of a tie a reference lands on is arbitrary with
+  respect to the golden set, as intended.
+- **Repeatable.** Two further passes of the same retrieval (read-only, nothing stored)
+  returned all 160 lists (20 questions x 4 configurations, twice) identical to the stored
+  runs 17-20. Before, identical runs differed (eval_runs 3 and 7).
+
+The golden references contain no analysis chunk, so these numbers cannot tell whether one
+analysis chunk per paper helps an answer. That is measured with the answer metrics on
+questions outside the golden 20, for the settings 0, 1 and -1.
+
 ## Consequences
 - Identical runs give identical lists, including at the cut. One residual case: a tie at a
   hybrid PREFETCH cut (the 50th and 51st of the dense or BM25 list having exactly the same
