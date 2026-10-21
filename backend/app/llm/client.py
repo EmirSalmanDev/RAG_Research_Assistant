@@ -159,7 +159,11 @@ class ChatStream:
 
 class ChatClient:
     """Chat requests with retries and usage logging. Tests pass a fake `client` with the
-    shape of `openai.OpenAI().chat.completions` and a fake `record_usage`."""
+    shape of `openai.OpenAI().chat.completions` and a fake `record_usage`.
+
+    The model and temperature are the chat settings unless given: the evaluation passes
+    its own (`eval_model`, `eval_temperature`) together with a `record_usage` that prices
+    them, so every request is still logged at the right price (rule 9)."""
 
     def __init__(
         self,
@@ -167,12 +171,14 @@ class ChatClient:
         record_usage: ChatUsageRecorder | None = None,
         *,
         sleep: Callable[[float], None] | None = None,
+        model: str | None = None,
+        temperature: float | None = None,
     ) -> None:
         settings = get_settings()
         self._client = client
         self._record_usage = record_usage or record_chat_usage
-        self.model = settings.chat_model
-        self._temperature = settings.chat_temperature
+        self.model = model or settings.chat_model
+        self._temperature = settings.chat_temperature if temperature is None else temperature
         self._retry_kwargs: dict[str, Any] = {} if sleep is None else {"sleep": sleep}
 
     @property

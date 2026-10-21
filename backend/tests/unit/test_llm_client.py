@@ -45,6 +45,16 @@ def test_complete_returns_text_and_logs_one_row() -> None:
     assert sent["max_completion_tokens"] == 50
 
 
+def test_model_and_temperature_can_be_given_for_the_evaluation() -> None:
+    client, calls, rows = fake_chat(
+        [parsed_reply(Answer(value="x"), 50, 5)], model="invented-judge-model", temperature=0.0
+    )
+    client.parse(MESSAGES, Answer, feature="eval-judge-statements", max_tokens=100)
+    sent = calls.calls[0]
+    assert (sent["model"], sent["temperature"]) == ("invented-judge-model", 0.0)
+    assert rows == [("eval-judge-statements", "invented-judge-model", 50, 5)]
+
+
 def test_parse_returns_the_model_instance() -> None:
     client, calls, rows = fake_chat([parsed_reply(Answer(value="x"))])
     answer, _ = client.parse(MESSAGES, Answer, feature="chat-plan", max_tokens=100)

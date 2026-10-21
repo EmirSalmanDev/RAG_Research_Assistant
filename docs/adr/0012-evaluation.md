@@ -113,6 +113,89 @@ The golden references contain no analysis chunk, so these numbers cannot tell wh
 analysis chunk per paper helps an answer. That is measured with the answer metrics on
 questions outside the golden 20, for the settings 0, 1 and -1.
 
+### 3. The RAGAS metrics, computed by our own judge calls (`eval/judge.py`, `eval/metrics.py`)
+- **Decision.** Context precision, context recall, faithfulness and response relevancy
+  follow the RAGAS definitions (docs.ragas.io, "available metrics"), but the verdicts come
+  from our own Structured Outputs calls and the scores from our own functions:
+  - faithfulness = supported statements / statements (one call writes the statements,
+    one judges them against the sources the answer was given);
+  - response relevancy = mean cosine similarity between the question's embedding and
+    those of `eval_relevancy_questions` (3) questions written back from the answer, 0 for a
+    noncommittal answer;
+  - context precision = average precision of the sources judged useful for reaching the
+    reference answer (precision@k at every useful rank, averaged; 0 without any);
+  - context recall = reference-answer sentences the sources state / sentences.
+  The library `ragas` is not a dependency: adding it needs the owner's approval and
+  network access, and it is listed as an open item.
+- **Why own calls.** Every model call must be a versioned prompt file (rule 7), show
+  third-party text only inside delimited blocks the model is told never to obey (rule 8),
+  and be logged to `llm_usage` with its cost (rule 9). The RAGAS prompts are inline strings
+  in the library and its calls go through its own LLM wrappers. The judge also needs a
+  fixed model and temperature 0, recorded on each run.
+- **Differences from RAGAS, on purpose.** One call per metric judges all items of an
+  answer at once (RAGAS: one per item for some metrics), which is cheaper and keeps the
+  items side by side. The reference answer is split into sentences in code (the chat's own
+  sentence splitter), not by the model. Response relevancy asks for the 3 questions in one
+  call at temperature 0 (RAGAS samples them).
+- **Alternative.** Add `ragas` (pinned, in a dependency group that is never installed in
+  the api image) and run its metrics on the same samples, as a cross-check of these
+  numbers. Possible later; it does not replace the rules above.
+- **Tested by.** The arithmetic against hand-computed values (`test_eval_answer_metrics`:
+  average precision of [yes, no, yes] = (1 + 2/3) / 2, a useful source moving down lowers
+  it, a noncommittal answer scores 0, an empty list is undefined rather than 0). Each judge
+  step against a scripted fake OpenAI (`test_eval_judge`): what it sends (system prompt
+  file, escaped blocks, model, temperature 0, output cap), that verdicts come back in item
+  order whatever order the model uses, and that a missing, extra or repeated verdict is a
+  `JudgeError`, never a guess. One answer scored end to end with scripted verdicts gives the
+  hand-computed five scores (`test_every_answer_metric_from_scripted_verdicts`).
+
+### 4. Citation accuracy and refusal accuracy (our own metrics)
+- **Citation accuracy** = citations whose source supports the sentence / citations, per
+  `[n]`, not per sentence. A sentence citing one source must be fully supported by it; a
+  sentence citing several needs each source to support at least one of its claims and
+  contradict none. A `[n]` that points at no source counts as unsupported without a call.
+  Sentences without any citation are counted apart (`uncited_sentences`), because the
+  chat prompt asks for a citation after every factual sentence.
+  Alternative: reuse the chat's own verify stage, which judges each sentence against all
+  its sources together. Not taken: it cannot say which `[n]` is wrong, and a system that
+  grades itself with its own prompt is not an independent measurement.
+- **Refusal accuracy** = unanswerable questions that got the fallback (the fixed refusal,
+  `no_sources` or `insufficient_sources`) / unanswerable questions. Reported with the
+  **false refusal rate** (answerable questions that got it), because refusing everything
+  would score 1.0 on refusal accuracy alone. A turn that failed (an error) is neither.
+- **Tested by.** `test_aggregate_per_split_with_refusal_accuracy_and_false_refusals`
+  (hand-built rows: 1 of 2 unanswerable refused, 1 of 2 answerable refused, an error left
+  out of both) and the citation item tests (valid and invalid numbers, one and several
+  citations per sentence).
+
+### 5. How an answer is produced and kept for evaluation (`eval/answers.py`)
+- **Decision.** Each question runs through `run_chat_turn` exactly as `POST /chat` runs it,
+  with the configured stage switches, as the first message of a new conversation. The chat
+  store is replaced by one that keeps nothing and the tracer by the no-op tracer, so an
+  evaluation leaves no conversations behind and sends nothing to Langfuse. The search
+  function is wrapped only to remember the returned chunk texts, so the judge sees exactly
+  the sources generate saw. Latency and cost come from the turn itself (the `done` event and
+  a clock); the judge's own cost is kept apart.
+- **Alternative.** Call the stages one by one in the evaluation. Not taken: what is
+  measured must be what the API serves.
+- **Tested by.** A full turn on scripted fakes through the real pipeline: answer, numbered
+  sources with their texts, cost = the three chat calls plus three query embeddings, no
+  condense call for a first message; both refusals and a failed stage are told apart.
+
+### 6. The question set: held-out and generated questions apart (`eval/golden.py`)
+- **Decision.** The 20 golden questions stay in `golden.jsonl` (owner only) and are tagged
+  "heldout"; accepted generated questions go to their own file, `generated.jsonl`, tagged
+  "generated". Ids and question texts must be unique across both. Every choice between
+  settings must use `for_tuning()`, which returns the generated questions only; the
+  held-out ones are reported next to them, never used to choose. Runs report every metric
+  per split and for both together.
+- **Alternative.** One 60-line file with a flag per line. Not taken: the review tool would
+  then write into the owner's file, and a slip could turn a held-out question into a
+  tuning question.
+- **Tested by.** Loader tests: the split tags, a missing or empty generated file, a
+  generated question that repeats a golden id or text is refused, and `for_tuning` returns
+  no golden question.
+
 ## Consequences
 - Identical runs give identical lists, including at the cut. One residual case: a tie at a
   hybrid PREFETCH cut (the 50th and 51st of the dense or BM25 list having exactly the same

@@ -28,7 +28,7 @@ _ID = re.compile(r"^(?P<name>[a-z][a-z_]*)_v(?P<version>[1-9][0-9]*)$")
 # Every tag name used to delimit data in a prompt. Inside data, "<source" becomes
 # "&lt;source", which the model reads as text, not as a block boundary.
 BLOCK_TAGS = ("sources", "source", "question", "conversation", "message", "latest",
-              "sentences", "sentence", "note")  # fmt: skip
+              "sentences", "sentence", "note", "answer", "reference")  # fmt: skip
 _TAG = re.compile(r"<(/?)\s*(" + "|".join(BLOCK_TAGS) + r")\b", re.IGNORECASE)
 
 

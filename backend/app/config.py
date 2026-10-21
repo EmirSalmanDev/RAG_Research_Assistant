@@ -199,6 +199,19 @@ class Settings(BaseSettings):
     upload_abstract_chars: int = 1500  # no abstract given: the abstract chunk is the body's start
     upload_min_text_chars: int = 500  # less parsed text than this: no text layer (scanned PDF)
 
+    # --- Evaluation (docs/adr/0012) --------------------------------------------------
+    # One model writes the test-set questions and judges the answers (faithfulness,
+    # response relevancy, context precision and recall, citation accuracy). It is fixed
+    # here and recorded on every run, always at temperature 0. The prices only feed
+    # `llm_usage.cost_usd`. Nothing here runs unless an evaluation command is started.
+    eval_model: str = "gpt-4o-mini"
+    eval_temperature: float = 0.0
+    eval_price_in_per_1m: float = 0.15
+    eval_price_out_per_1m: float = 0.60
+    eval_judge_max_output_tokens: int = 2000  # one structured verdict list per call
+    eval_relevancy_questions: int = 3  # questions written back from an answer (RAGAS: strictness)
+    eval_testset_max_output_tokens: int = 400  # one question and its reference answer
+
     @field_validator(
         "openai_api_key", "langfuse_public_key", "langfuse_secret_key", "github_token",
         "s2_api_key", mode="before",
