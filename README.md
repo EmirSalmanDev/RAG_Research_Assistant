@@ -42,6 +42,9 @@ Langfuse is not connected yet.
 | `make backfill DAYS=7 [CONFIRM=1]` | fetch the last N days of the configured categories and index abstracts only; more than 7 days needs `CONFIRM=1` |
 | `make fetch-reranker` | download the reranker model once (about 1 GB) into `~/.cache/fastembed` |
 | `make eval-retrieval [EMBED=1]` | retrieval metrics on the golden set for four configurations, stored in `eval_runs` |
+| `make eval-smoke` / `make eval [ESTIMATE=1\|MAX_USD=x] [EMBED=1] [REPORT=dir]` | the configured pipeline end to end: 15 generated questions, or every question (paid; `ESTIMATE=1` is free; `MAX_USD` is a hard cap) |
+| `make eval-ablations STEP=... [ESTIMATE=1\|MAX_USD=x]` / `make eval-select STEP=...` | one step of the ablations (paid unless `ESTIMATE=1`), then the pre-registered rule on generated questions only (free) |
+| `make eval-index VARIANT=... [BASE=a7-...] [ESTIMATE=1\|MAX_USD=x\|DROP=1]` | the Qdrant collection a chunking or embedding ablation searches, built from Postgres (paid for the embeddings it needs) |
 
 `make ingest-one`, `make enrich-one` and `make backfill` run inside the worker container
 and make real network calls (`ingest-one` and `backfill` also small embedding calls). `make fetch-reranker` downloads from Hugging Face.
@@ -246,8 +249,8 @@ Two kinds of numbers, both stored in `eval_runs` with the configuration and the 
   held-out golden questions, the generated ones, and both. Each question's result is
   stored as soon as it is scored; a judge or API failure stops the run. This spends money
   (about $0.004 per question, measured from earlier chat turns): `--estimate` prints the
-  requests and the cost without sending anything. `--limit N` needs `--split heldout` or
-  `--split generated`.
+  requests and the cost without sending anything, and a real run needs `--max-usd` (a hard
+  cap, see Ablations below). `--limit N` needs `--split heldout` or `--split generated`.
 
 The questions: `backend/eval/golden.jsonl` holds 20 AI-drafted questions, verified against
 the stored chunk text. They are the held-out check, and no setting is ever chosen by them.
@@ -270,6 +273,27 @@ with the full text it was made from (an unanswerable one also with the closest p
 the same paper, found by a free local search), warns about near-duplicates of golden,
 generated or accepted questions, and adds the accepted ones to
 `backend/eval/generated.jsonl`.
+
+**Ablations** (`make eval-ablations`, `backend/eval/ablations.py`): the plan's eight ablations
+run step by step (retrieval 1-5, query rewriting 6, chunk size 7, embedding model 8) plus the
+reranker comparisons (threads, memory arena, fewer candidates, a small model). A step after the
+first runs on the winner of the one before, chosen by a rule fixed before any result
+(`backend/eval/selection.py`): only generated questions, context recall as the primary metric,
+a challenger wins only if its paired bootstrap interval lies above the incumbent's, and not if
+it is significantly less faithful. Each configuration's settings are applied to the whole
+process for its run and checked against what the run actually did. Chunking and embedding
+variants search their own collections (`make eval-index`). Every paid run needs `MAX_USD`: the
+egress guard refuses any request that could take the run's worst-case spend past it.
+
+**Dashboard**: `/evals` shows the metric trends across runs, two runs side by side with every
+question's scores, and one question with the retrieved chunks, the answer and the judge's
+verdicts (read-only `GET /evals/...` routes, Postgres only).
+
+**CI** (`.github/workflows/eval.yml`): a 15-question smoke run on pull requests labelled
+`retrieval`, the full run by hand; results as a pull request comment and an artifact. It
+restores a corpus bundle the owner exports (`python -m eval.corpus export`, kept private
+because it holds paper text) and needs the secrets `OPENAI_API_KEY`, `EVAL_CORPUS_URL` and
+`EVAL_CORPUS_SHA256`.
 
 ## Licence
 The project will be released under AGPL-3.0 (see `docs/adr/0004-licence-agpl.md`),

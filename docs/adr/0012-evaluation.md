@@ -470,7 +470,8 @@ questions outside the golden 20, for the settings 0, 1 and -1.
   that a 256-token index gets coverage but no id metrics.
 
 ### 15. A hard spend cap: the egress guard in the evaluation process (`eval/budget.py`)
-- **Decision.** Every paid run needs `--max-usd`. The runner installs the egress guard of
+- **Decision.** Every paid run needs `--max-usd`: the ablation runner, the suites, the
+  index builder and now also part 1's `python -m eval.answers`. The runner installs the egress guard of
   the proof runs with one approved host (api.openai.com), the local stores as internal
   hosts and that cap: before any request is sent, its worst case (each byte of the body
   as an input token, its `max_tokens` as output, at the highest price the run can be
@@ -482,7 +483,11 @@ questions outside the golden 20, for the settings 0, 1 and -1.
   cleanly in the usual case it also stops before a question when the cap left is less
   than the largest bound one question has added. `estimate` prints the requests and the
   expected cost (from measured turns) and a suggested cap; the suggestion is
-  approximate, the cap is not.
+  approximate, the cap is not. Because the bound takes every request at its output limit
+  and every body byte as a token, a cap is about ten times the real spend: on the 20
+  golden questions `make eval ESTIMATE=1` gives about $0.078 expected (measured bound
+  $0.27) and suggests a cap of $0.95, about $0.05 a question. The defaults are set from
+  that bound (smoke $1.00 for 15 questions, a full run $3.50).
 - **Alternative.** Stop when the llm_usage spend passes the cap. Not a cap: the spend is
   only known after the request.
 - **Tested by.** `test_a_tripped_guard_stops_the_run_and_drops_the_unfinished_question`,
@@ -552,6 +557,71 @@ questions outside the golden 20, for the settings 0, 1 and -1.
   and logs it, a paper without text stops the build, the app's collection is never
   written, the command line estimates for free and needs a cap to embed; the real
   collection is checked untouched.
+
+### 19. `eval.yml`: a capped evaluation in CI on a restored corpus (`.github/workflows/eval.yml`, `eval/corpus.py`)
+- **Decision.** The workflow runs the smoke suite on pull requests that carry the
+  `retrieval` label (when that label is added and on every later push; never for a
+  pull request from a fork, which gets no secrets anyway) and the full or the smoke suite
+  by hand (`workflow_dispatch`, with the cap as an input). Every run passes `--max-usd`
+  (1.00 for the smoke run; 3.50 by default by hand), posts the metrics tables as a pull
+  request comment and uploads the runs as an artifact (JSON without chunk texts), also
+  after a stop; a run that did not complete fails the job. A new push cancels the older
+  run of the same pull request. The OpenAI key reaches the paid step only.
+- **The corpus.** A GitHub runner starts with empty stores, and the corpus cannot be in
+  the repository (it holds paper text; the repository will be public). So the owner
+  exports a bundle (`python -m eval.corpus export`: the `papers` and `chunks` tables as a
+  data-only `pg_dump`, a Qdrant snapshot of the collection, a manifest with counts, the
+  alembic revision, the embedding model and SHA-256s), keeps it at a private location, and
+  gives the workflow its URL and SHA-256 as secrets. The workflow checks the hash, applies
+  the migrations, restores both into service containers of the same versions as
+  docker-compose.yml (postgres 16, Qdrant v1.19.1) and runs `eval.corpus check` (counts,
+  revision, model, file hashes) before the paid step. Nothing personal is in a bundle
+  (no conversations, library, interests or spend).
+- **Alternatives.** (a) A self-hosted runner on the owner's Mac, next to the real stores:
+  no bundle, but a public repository's workflows would run on that machine, which GitHub
+  advises against, and every CI run would write to the owner's stores. (b) Ingest a small
+  corpus in CI from arXiv: slow, rate-limited, paid each run, and not the corpus the
+  numbers are about. Not taken.
+- **Tested by.** The workflow cannot run here; `test_eval_workflow` parses it and pins
+  the triggers and the label and fork conditions, the permissions, smoke on pull requests
+  and the cap on every run, the key in one step only, the order verify, restore, check,
+  run, the artifact and the comment after a stop, pinned actions, and that every module
+  it calls imports. `test_eval_corpus` exports a scratch collection and database (an
+  invented dump, a real snapshot that is deleted from the server again), reads the bundle
+  back, and checks that lost points, a changed file and another schema are reported.
+
+### 20. The /evals page (`frontend/app/evals`, `components/evals`, `lib/evals`; `app/api/evals.py`)
+- **Decision.** Four read-only routes (`GET /evals/runs`, `/evals/runs/{id}`,
+  `/evals/runs/{id}/results`, `/evals/runs/{id}/results/{item}`) read Postgres only and
+  normalise every run shape stored so far (the flat metrics of `make eval-retrieval`,
+  part 1's `answers:<name>`, the runner's `<suite>:<variant>:<part>`, selections) into a
+  kind, a series and headline numbers (the "all" split). The page shows: metric trends
+  across runs (one line per series, a series being one variant in one suite kind, or the
+  name of an older run; a metric's runs only; selections never drawn), two runs side by
+  side (headline metrics with B - A coloured by whether lower or higher is better, a
+  split filter that says held-out questions are reported and never used to choose, and
+  every question joined on its id), and one question in a side panel (the reference
+  answer, the answer or refusal, every score, the judge's verdicts drawn by their shape,
+  judge errors, and the retrieved chunks with their texts, source numbers, a reference
+  badge and an arXiv abstract link, never a PDF). A run that stopped or is still running
+  is marked as such everywhere and drawn as a hollow point that no line joins.
+  Chunk texts come from what the run stored; only a run on the app's own collection that
+  stored none is looked up in the chunks table.
+- **Charts in plain SVG (a deviation from the plan's Recharts).** Adding Recharts is a
+  dependency and needs network access, which this change was not cleared for; the
+  timeline page (docs/adr/0010) already draws its chart as plain SVG with the numbers
+  computed in tested TypeScript, and the trend chart follows it. Recharts stays an open
+  item for the owner.
+- **Alternative.** A comparison endpoint that joins two runs on the server. Not taken:
+  the join is a few lines over two lists the page loads anyway, and it is tested in
+  `lib/evals/compare.test.ts`.
+- **Tested by.** `test_evals_api` (every run shape, headline metrics, per-question rows,
+  stored texts versus the chunks table, a variant index never borrowing texts, 404s) and
+  `test_evals_store` on a scratch database; Node tests of the series, scales, states,
+  join, split filter, sort and verdict shapes; and a Playwright flow on a mock API
+  (`e2e/evals-flow.spec.ts`: trends with a stopped run, two runs compared, a question
+  opened with its chunk text, reference badge, answer, verdicts and arXiv link; the
+  empty, error and selection states), run by `make e2e`.
 
 ### Review before merge
 An independent review of this change (a fresh reviewer with only the plan's evaluation text
