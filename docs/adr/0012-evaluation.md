@@ -196,6 +196,58 @@ questions outside the golden 20, for the settings 0, 1 and -1.
   generated question that repeats a golden id or text is refused, and `for_tuning` returns
   no golden question.
 
+### 7. The test set: our own generator, seeded from full-text chunks (`eval/make_testset.py`)
+- **Decision.** One Structured Outputs call per seed writes a question and a reference
+  answer from the seed text (`testset_<type>_v1`, the evaluation model, temperature 0).
+  Four types, 60 candidates for the 40 the plan keeps after review: 30 `fact` (one
+  section chunk), 12 `compare` (two section chunks of two different papers), 8 `filter`
+  (one abstract with its date and categories: "which paper in <period> did X") and 10
+  `unanswerable` (one section chunk: a question about that paper it does not answer).
+  The seed chunks become the question's reference chunk ids, so retrieval and answer
+  metrics both apply; unanswerable questions have none. Seeds are drawn with a fixed
+  random seed, one paper at a time in turns, from section chunks of at least 120 tokens,
+  never from reference lists, acknowledgements or any reference chunk of a golden
+  question. The pool is every full-text paper; generation refuses to start with fewer
+  than 30 (the plan's number) and lists papers to add.
+- **Why not RAGAS test-set generation.** It is not a dependency (see decision 3), it
+  builds a knowledge graph with many model calls per document whose prompts and spend sit
+  outside our rules, and its contexts are texts, not our chunk ids. Seeding from our own
+  chunks gives reference chunk ids for free and bounds the cost at one call per seed.
+- **Which papers to add.** The rule is fixed in advance: abstract-only arXiv papers with
+  the most Hugging Face upvotes first (papers the community picked out), then the
+  newest. The owner may prefer papers from their own research; that is their choice.
+- **Alternative.** Hand-written questions only (best quality, slowest), or one prompt
+  that writes several questions per paper (cheaper, but questions then cluster on a
+  paper's abstract-level claims).
+- **Tested by.** Seed tests on an invented pool (same seed same seeds, another seed
+  different; short chunks, acknowledgements, reference lists and golden evidence never
+  seeds; compare pairs always span two papers; facts visit every paper before any
+  repeats; a small pool gives fewer seeds instead of repeats). The model call against a
+  scripted fake (escaped data blocks, dates only for filter questions, model, temperature
+  and output cap, one llm_usage feature per type, a re-run sends nothing for seeds already
+  done). The estimate equals the locally counted input tokens and the output cap per call.
+  On a scratch database: the pool, the upvote order of the suggestions, and the refusal
+  to generate from too few papers.
+
+### 8. Review: the owner decides every question (`eval/make_testset.py review`)
+- **Decision.** Candidates the model marked unusable are kept (they were paid for) but
+  never shown. Each pending one is shown with the text of its seed chunks (read from
+  Postgres, never stored in the candidates file, so that file holds no paper text and can
+  be committed), and with a warning when its word overlap with a golden or an accepted
+  question is at least 0.6. Accept gives it the next `gen-NNN` id; reject asks for an
+  optional reason; skip leaves it pending; quit stops. Every decision is saved before the
+  next question (write to a temporary file, then rename), and the accepted questions are
+  rewritten to `generated.jsonl` each time. A question whose text equals a golden or an
+  accepted one cannot be accepted.
+- **Alternative.** Accept everything the model marks usable and let the owner delete
+  lines later. Not taken: the plan asks for a review, and the generated questions decide
+  which settings win.
+- **Tested by.** A scripted review session: accept, reject with a reason, an exact
+  repeat of a golden question refused and then skipped; the generated file loads as the
+  "generated" split next to the golden file, whose bytes are unchanged; a second session
+  resumes at the first pending candidate and numbers on from the last id; unknown answers
+  are asked again.
+
 ## Consequences
 - Identical runs give identical lists, including at the cut. One residual case: a tie at a
   hybrid PREFETCH cut (the 50th and 51st of the dense or BM25 list having exactly the same

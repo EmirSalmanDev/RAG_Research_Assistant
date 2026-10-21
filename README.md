@@ -230,6 +230,40 @@ next run's 4-day overlap covers it.
 Postgres is the source of truth; the Qdrant collection is derived from it and can be
 rebuilt. Design decisions are recorded in `docs/adr/`.
 
+## Evaluation
+Two kinds of numbers, both stored in `eval_runs` with the configuration and the git commit
+(decisions: `docs/adr/0005`, `docs/adr/0012`):
+
+- **Retrieval** (`make eval-retrieval`): Recall@8, MRR and nDCG@10 against the reference
+  chunks, for dense, BM25, hybrid and hybrid + rerank. No model call.
+- **Answers** (`python -m eval.answers`, run in `backend/`): every question goes through
+  the chat pipeline as `POST /chat` runs it (nothing is saved), then a judge model
+  (`EVAL_MODEL`, temperature 0) scores the answer: faithfulness, response relevancy,
+  context precision and context recall (the RAGAS definitions), citation accuracy (share
+  of `[n]` whose source supports the sentence) and refusal accuracy (share of unanswerable
+  questions that got the fallback, next to the false refusal rate on answerable ones).
+  Every metric is reported for the held-out golden questions, the generated ones, and
+  both. This spends money (about $0.004 per question, measured from earlier chat turns):
+  `--estimate` prints the requests and the cost without sending anything.
+
+The questions: `backend/eval/golden.jsonl` holds 20 AI-drafted questions, verified against
+the stored chunk text. They are the held-out check, and no setting is ever chosen by them.
+More questions come from the test-set tool, which needs at least 30 full-text papers:
+
+```sh
+cd backend
+uv run python -m eval.make_testset plan                # full-text papers available (read-only)
+uv run python -m eval.make_testset generate --estimate # seeds, requests, cost bound (free)
+uv run python -m eval.make_testset generate            # one model call per seed (paid)
+uv run python -m eval.make_testset review              # accept or reject each question
+uv run python -m eval.make_testset status              # counts by type and decision
+```
+
+Generation writes candidates to `backend/eval/testset_candidates.jsonl` (questions,
+reference answers, chunk ids and decisions, no paper text). Review shows each candidate
+with the text it was made from, warns about near-duplicates of golden or accepted
+questions, and writes the accepted ones to `backend/eval/generated.jsonl`.
+
 ## Licence
 The project will be released under AGPL-3.0 (see `docs/adr/0004-licence-agpl.md`),
 because the PDF parser it uses (PyMuPDF4LLM) is AGPL-licensed. arXiv PDFs are only parsed
