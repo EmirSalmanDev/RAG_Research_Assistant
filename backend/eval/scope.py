@@ -40,6 +40,9 @@ FORBIDDEN = frozenset(
     {
         "database_url", "qdrant_url", "redis_url", "openai_api_key", "langfuse_public_key",
         "langfuse_secret_key", "langfuse_host", "github_token", "s2_api_key",
+        # The BM25 model is loaded once per process (get_sparse_embedder) and no variant
+        # changes it; refusing it keeps that cache from ever holding another one.
+        "sparse_model",
     }
 )  # fmt: skip
 FORBIDDEN_PREFIXES = ("eval_",)

@@ -279,8 +279,9 @@ run step by step (retrieval 1-5, query rewriting 6, chunk size 7, embedding mode
 reranker comparisons (threads, memory arena, fewer candidates, a small model). A step after the
 first runs on the winner of the one before, chosen by a rule fixed before any result
 (`backend/eval/selection.py`): only generated questions, context recall as the primary metric,
-a challenger wins only if its paired bootstrap interval lies above the incumbent's, and not if
-it is significantly less faithful. Each configuration's settings are applied to the whole
+a challenger wins only if the paired bootstrap interval of its difference to the incumbent lies
+above 0 (corrected for the number of challengers), and not if it is significantly less faithful;
+the runs compared come from one suite on one corpus. Each configuration's settings are applied to the whole
 process for its run and checked against what the run actually did. Chunking and embedding
 variants search their own collections (`make eval-index`). Every paid run needs `MAX_USD`: the
 egress guard refuses any request that could take the run's worst-case spend past it.
@@ -293,7 +294,8 @@ verdicts (read-only `GET /evals/...` routes, Postgres only).
 `retrieval`, the full run by hand; results as a pull request comment and an artifact. It
 restores a corpus bundle the owner exports (`python -m eval.corpus export`, kept private
 because it holds paper text) and needs the secrets `OPENAI_API_KEY`, `EVAL_CORPUS_URL` and
-`EVAL_CORPUS_SHA256`.
+`EVAL_CORPUS_SHA256`. The bundle must be exported again after every migration (its schema
+revision must match the code's).
 
 ## Licence
 The project will be released under AGPL-3.0 (see `docs/adr/0004-licence-agpl.md`),

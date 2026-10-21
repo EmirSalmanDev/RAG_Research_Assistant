@@ -5,23 +5,29 @@ It looks at generated questions only: `choose` raises if it is handed a held-out
 question, so the golden set can never decide a setting (CLAUDE.md rule 11).
 
 The rule, for one step (the incumbent is what the app runs today):
-1. Questions: the generated questions both runs answered without an error, with the
-   metric defined in both (paired: the same question under both configurations).
+1. Questions: the generated questions both runs answered without an error and without a
+   stage falling back (a plan that failed and fell back to the default plan did not run
+   the configuration under test), with the metric defined in both (paired: the same
+   question under both configurations).
    If fewer than `min_paired_share` (80 %) of the generated questions where either run
    has the metric are paired, the comparison is "undecided" and the challenger loses.
 2. Primary metric: context recall (does what reached the generator state the reference
    answer?). It is judged per question, does not depend on chunk ids (so chunk sizes can
    be compared), and is defined whenever a question has a reference answer and the turn
    did not fail, also when the generator refused (docs/adr/0012, decision 12).
-3. A challenger is "better" only if the 95 % paired bootstrap interval of its mean
-   difference to the incumbent lies above 0 (10,000 resamples of the paired questions,
-   fixed seed, percentile interval).
+3. A challenger is "better" only if the paired bootstrap interval of its mean difference
+   to the incumbent lies above 0 (10,000 resamples of the paired questions, fixed seed,
+   percentile interval). With m challengers in a step each interval is at 1 - 0.05/m
+   (Bonferroni: 98.75 % for the four challengers of the retrieval step), so the chance
+   that noise alone crowns any challenger stays at or below 5 %.
 4. Guard: a better challenger is disqualified if it is significantly worse on
    faithfulness (the interval of that difference lies below 0).
 5. Winner: the better, not disqualified challenger with the highest mean primary metric
    (ties: the order the step lists its variants); with none, the incumbent stays.
 So with few questions most differences are "not significant" and the incumbent stays,
-which is the honest result of a small test set.
+which is the honest result of a small test set. A percentile bootstrap on about 30
+values is somewhat too narrow; the correction above leans against that, and the stored
+intervals let a reader judge them.
 
 The reranker comparison (moved from M4) asks another question, whether a cheaper runtime
 setting is good enough, so it has its own rule (`qualify_reranker`): the owner's speed and
@@ -65,14 +71,17 @@ class Interval:
     high: float
 
 
-def paired_bootstrap(diffs: Sequence[float], rule: Rule) -> Interval:
-    """Mean of the paired differences and its percentile bootstrap interval."""
+def paired_bootstrap(
+    diffs: Sequence[float], rule: Rule, confidence: float | None = None
+) -> Interval:
+    """Mean of the paired differences and its percentile bootstrap interval (at the
+    rule's confidence unless another is given)."""
     n = len(diffs)
     if n == 0:
         raise ValueError("no paired questions")
     rng = random.Random(rule.seed)
     means = sorted(sum(rng.choices(diffs, k=n)) / n for _ in range(rule.resamples))
-    tail = (1 - rule.confidence) / 2
+    tail = (1 - (rule.confidence if confidence is None else confidence)) / 2
     low = means[int(tail * rule.resamples)]
     high = means[min(rule.resamples - 1, int((1 - tail) * rule.resamples))]
     return Interval(n, sum(diffs) / n, low, high)
@@ -96,15 +105,16 @@ def _check_generated(results: VariantResults) -> None:
 
 
 def _value(metrics: Mapping[str, Any], metric: str) -> float | None:
-    if metrics.get("error"):
-        return None  # a failed turn says nothing about the configuration's quality
+    if metrics.get("error") or metrics.get("stage_errors"):
+        return None  # a failed turn, or one that fell back, did not run the configuration
     value = metrics.get(metric)
     return float(value) if isinstance(value, int | float) else None
 
 
 def compare(
-    incumbent: VariantResults, challenger: VariantResults, metric: str, rule: Rule
-) -> tuple[Interval | None, int, int]:
+    incumbent: VariantResults, challenger: VariantResults, metric: str, rule: Rule,
+    confidence: float | None = None,
+) -> tuple[Interval | None, int, int]:  # fmt: skip
     """(interval of challenger - incumbent, paired questions, questions where either has
     the metric). The interval is None when there is no pair."""
     pairs: list[float] = []
@@ -117,7 +127,7 @@ def compare(
         either += 1
         if a is not None and b is not None:
             pairs.append(b - a)
-    return (paired_bootstrap(pairs, rule) if pairs else None), len(pairs), either
+    return (paired_bootstrap(pairs, rule, confidence) if pairs else None), len(pairs), either
 
 
 @dataclass
@@ -137,6 +147,7 @@ class Decision:
     reason: str
     rule: Rule
     comparisons: list[Comparison] = field(default_factory=list)
+    primary_confidence: float | None = None  # after the Bonferroni correction
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -144,6 +155,7 @@ class Decision:
             "incumbent": self.incumbent,
             "reason": self.reason,
             "rule": asdict(self.rule),
+            "primary_confidence": self.primary_confidence,
             "comparisons": [asdict(c) for c in self.comparisons],
         }
 
@@ -158,8 +170,10 @@ def choose(
         raise ValueError(f"{incumbent.variant}: no generated questions to compare on")
     comparisons: list[Comparison] = []
     better: list[tuple[float, int, str]] = []
+    # Bonferroni: m challengers share the error rate of one comparison.
+    corrected = 1 - (1 - rule.confidence) / max(1, len(challengers))
     for order, challenger in enumerate(challengers):
-        primary, paired, eligible = compare(incumbent, challenger, rule.primary, rule)
+        primary, paired, eligible = compare(incumbent, challenger, rule.primary, rule, corrected)
         guard, _, _ = compare(incumbent, challenger, rule.guard, rule)
         if primary is None or eligible == 0 or paired / eligible < rule.min_paired_share:
             outcome = "undecided"
@@ -177,12 +191,13 @@ def choose(
         return Decision(
             incumbent.variant, incumbent.variant,
             "no challenger is significantly better on the primary metric", rule, comparisons,
+            corrected,
         )  # fmt: skip
     winner = min(better)[2]
     return Decision(
         winner, incumbent.variant,
         f"significantly better on {rule.primary} and not worse on {rule.guard}", rule,
-        comparisons,
+        comparisons, corrected,
     )  # fmt: skip
 
 

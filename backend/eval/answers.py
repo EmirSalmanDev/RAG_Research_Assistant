@@ -100,12 +100,18 @@ def is_unanswerable(question: SetQuestion) -> bool:
 
 
 class NullChatStore:
-    """A ChatStore that keeps nothing: an evaluation turn leaves no conversation behind."""
+    """A ChatStore that keeps nothing: an evaluation turn leaves no conversation behind.
+    It remembers the last turn's record in memory only, so the evaluation can read which
+    stages fell back (`collect_sample`)."""
+
+    def __init__(self) -> None:
+        self.last: TurnRecord | None = None
 
     def load_history(self, conversation_id: uuid.UUID, limit: int) -> list[HistoryMessage]:
         return []
 
     def save_turn(self, turn: TurnRecord) -> int:
+        self.last = turn
         return 0
 
 
@@ -120,6 +126,10 @@ class AnswerSample:
     cost_usd: Decimal  # the turn's own cost (chat calls + question embeddings)
     latency_ms: float  # from the question to the turn's last event
     first_token_ms: float | None
+    # Stages that failed and fell back (plan to the default plan, verify to "unavailable",
+    # condense to the raw message): the turn did not run the configuration as set, so the
+    # selection rule leaves such a question out (eval/selection.py).
+    stage_errors: dict[str, str] = field(default_factory=dict)
 
 
 def collect_sample(
@@ -143,7 +153,8 @@ def collect_sample(
             seen.setdefault(hit.chunk_id, hit)
         return hits
 
-    turn_deps = replace(deps, search_fn=recording_search)
+    store = NullChatStore()  # this turn's own: its record tells which stages fell back
+    turn_deps = replace(deps, search_fn=recording_search, store=store)
     start = clock()
     first_token: float | None = None
     pieces: list[str] = []
@@ -185,6 +196,7 @@ def collect_sample(
         cost_usd=cost,
         latency_ms=round(elapsed, 1),
         first_token_ms=None if first_token is None else round((first_token - start) * 1000, 1),
+        stage_errors={str(k): v for k, v in store.last.meta.errors.items()} if store.last else {},
     )
 
 
@@ -348,6 +360,7 @@ def aggregate(
         m["false_refusal_rate"] = share([a.refusal is not None for a in answerable])
         m["n_answerable"] = len(answerable)
         m["errors"] = len(chosen) - len(ok)
+        m["stage_fallbacks"] = sum(1 for a in ok if a.stage_errors)
         latencies = [a.latency_ms for a in ok]
         m["latency_ms_p50"] = percentile(latencies, 50) if latencies else None
         m["latency_ms_p95"] = percentile(latencies, 95) if latencies else None
@@ -465,6 +478,7 @@ def result_metrics(row: Row) -> dict[str, Any]:
         "first_token_ms": sample.first_token_ms,
         "cost_usd": str(sample.cost_usd),
         "judge_errors": scores.errors,
+        "stage_errors": sample.stage_errors,
         "details": scores.details,
         "sources": [hit_record(s.hit, s.n) for s in sample.sources],
     }

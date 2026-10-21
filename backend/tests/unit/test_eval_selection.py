@@ -114,3 +114,25 @@ def test_without_a_qualifying_variant_the_reference_is_kept() -> None:
         _reranker("r-reference"), [_reranker("r-threads-4", median_rerank_s=9.0)]
     )
     assert out["recommended"] == "r-reference"
+
+
+def test_a_question_whose_stage_fell_back_is_left_out_of_the_pairs() -> None:
+    incumbent = _results("a6-rewrite", [0.2] * N)
+    fallen = _results("a6-no-rewrite", [0.9] * N)
+    for qid in list(incumbent.questions)[:20]:
+        incumbent.questions[qid]["stage_errors"] = {"plan": "BadRequestError: x"}  # type: ignore[index]
+    decision = choose(incumbent, [fallen])
+    assert decision.comparisons[0].paired == 10
+    assert decision.comparisons[0].outcome == "undecided"  # 10 of 30 paired < 80 %
+
+
+def test_several_challengers_share_the_error_rate() -> None:
+    """Bonferroni: a difference that clears 95 % alone does not clear 1 - 0.05/4."""
+    incumbent = _results("a3", [0.0] * N)
+    gain = _results("a1", [1.0] * 4 + [0.0] * (N - 4))  # better on 4 of 30 questions
+    alone = choose(incumbent, [gain])
+    assert alone.comparisons[0].outcome == "better" and alone.primary_confidence == 0.95
+    others = [_results(name, [0.0] * N) for name in ("a2", "a4", "a5")]
+    crowded = choose(incumbent, [gain, *others])
+    assert crowded.primary_confidence == pytest.approx(0.9875)
+    assert crowded.comparisons[0].outcome == "not better" and crowded.winner == "a3"

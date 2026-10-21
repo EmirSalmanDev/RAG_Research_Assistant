@@ -151,6 +151,11 @@ def peak_rss_mib() -> float:
 
 class RunStore(Protocol):
     def check(self, questions: Sequence[SetQuestion], collection: str) -> None: ...
+    def index_state(self, resolved: Resolved, configured: Settings) -> tuple[int, int] | None:
+        """(points the variant's index must hold, points it holds with the right text),
+        from Postgres and the variant collection; None when it cannot be told."""
+        ...
+
     def reference_texts(self, ids: Iterable[uuid.UUID]) -> dict[uuid.UUID, str]: ...
     def sync_items(self, questions: Sequence[SetQuestion]) -> dict[str, int]: ...
     def start(self, name: str, config: dict[str, Any], git_sha: str | None) -> int: ...
@@ -173,6 +178,14 @@ class SqlRunStore:
 
         with session_scope() as session:
             check_references(session, self._qdrant(), collection, [q.item for q in questions])
+
+    def index_state(self, resolved: Resolved, configured: Settings) -> tuple[int, int] | None:
+        from app.db.session import session_scope
+        from eval.indexes import plan_index
+
+        with session_scope() as session:
+            plan = plan_index(session, resolved, configured, self._qdrant())
+        return len(plan.items), len(plan.present)
 
     def reference_texts(self, ids: Iterable[uuid.UUID]) -> dict[uuid.UUID, str]:
         from app.db.session import session_scope
@@ -335,12 +348,25 @@ def verify_observed(observed: Observed, allowed: Observed) -> None:
         raise ConfigMismatch("configuration mismatch: " + "; ".join(problems))
 
 
+def encoder_identity(encoder: DenseEncoder, s: Settings) -> tuple[str, int]:
+    """The model and size an encoder will really embed with: a DenseEmbedder's own (read
+    when it was built), a cached encoder's cache key; else what the settings say."""
+    cache = getattr(encoder, "cache", None)
+    if cache is not None and hasattr(cache, "model"):
+        return str(cache.model), int(cache.dim)
+    model, dim = getattr(encoder, "_model", None), getattr(encoder, "_dim", None)
+    if isinstance(model, str) and isinstance(dim, int):
+        return model, dim
+    return s.embedding_model, s.embedding_dim
+
+
 class ObservingDense:
-    """A DenseEncoder that records the model and dimension the settings give it."""
+    """A DenseEncoder that records the model and dimension it embeds with (taken from the
+    encoder itself, so an encoder built for another configuration is caught)."""
 
     def __init__(self, inner: DenseEncoder, observed: Observed, s: Settings) -> None:
         self._inner = inner
-        observed.embeddings.add((s.embedding_model, s.embedding_dim))
+        observed.embeddings.add(encoder_identity(inner, s))
 
     def embed(self, texts: Sequence[str], feature: str) -> list[list[float]]:
         return self._inner.embed(texts, feature)
@@ -554,16 +580,39 @@ def _scope(resolved: Resolved) -> Iterator[_Scoped]:
 
 
 def _check_index(deps: RunnerDeps, scoped: _Scoped, resolved: Resolved) -> None:
-    """A variant index must be built before a run searches it."""
+    """A variant index must be built, completely and for the corpus as it is now: an
+    interrupted (capped) build, or papers added to Postgres since the build, would let a
+    run search a different corpus than the incumbent's and still look complete."""
     if resolved.index == IndexSpec.configured(scoped.outside):
         return
     client = deps.qdrant()
     name = scoped.s.qdrant_collection
+    build = f"make eval-index VARIANT={resolved.variant.id} (resumable; ESTIMATE=1 first)"
     if not client.collection_exists(name) or not client.count(name, exact=True).count:
+        raise IndexMissing(f"collection {name!r} for {resolved.variant.id} is not built: {build}")
+    state = deps.store.index_state(resolved, scoped.outside)
+    held = client.count(name, exact=True).count
+    if state is not None and (held != state[0] or state[1] != state[0]):
         raise IndexMissing(
-            f"collection {name!r} for {resolved.variant.id} is not built: "
-            f"make eval-index VARIANT={resolved.variant.id} (ESTIMATE=1 first)"
+            f"collection {name!r} holds {held} points, {state[1]} of them current; the corpus "
+            f"in Postgres needs {state[0]} (an interrupted build, or papers added since): {build}"
         )
+
+
+def corpus_record(deps: RunnerDeps, scoped: _Scoped) -> dict[str, Any]:
+    """How big the corpus was when the run started: the app's collection and the one the
+    run searches (runs compared by the selection rule must share it)."""
+    client = deps.qdrant()
+
+    def points(name: str) -> int | None:
+        return client.count(name, exact=True).count if client.collection_exists(name) else None
+
+    return {
+        "configured_collection": scoped.outside.qdrant_collection,
+        "configured_points": points(scoped.outside.qdrant_collection),
+        "collection": scoped.s.qdrant_collection,
+        "points": points(scoped.s.qdrant_collection),
+    }
 
 
 def _all_reference_ids(questions: Sequence[SetQuestion]) -> list[uuid.UUID]:
@@ -635,6 +684,7 @@ def _run_retrieval(
 
     run_config_ = base_config(suite, resolved, "retrieval", questions) | {
         "effective": effective_config(s, resolved, config),
+        "corpus": corpus_record(deps, scoped),
         "top_k": TOP_K,
         "filters": None,
         "same_chunking": same_chunking,
@@ -705,6 +755,7 @@ def _run_answers(
         **run_config(s, judge, questions),  # the judge, prompts and question files (part 1)
         **base_config(suite, resolved, "answers", questions),  # its "questions" lists the ids
         "effective": effective_config(s, resolved, config),
+        "corpus": corpus_record(deps, scoped),
         "same_chunking": same_chunking,
     }
     run_id, item_ids, name = _start(deps, suite, resolved, "answers", questions, run_config_)

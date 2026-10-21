@@ -168,3 +168,17 @@ def test_a_run_on_another_index_never_borrows_texts_from_the_chunks_table() -> N
     assert needs_lookup(variant, record) == []
     assert run_kind(variant) == "retrieval"
     assert run_kind(RunRecord(3, "answers:default", {}, {}, None, WHEN)) == "answers"
+
+
+async def test_no_reference_badge_on_another_chunking(client: AsyncClient) -> None:
+    """Under 256-token chunks the id of the 512-token reference names another text."""
+    from app.api.evals import retrieved
+
+    other = RunRecord(51, "ablation:a7-c256:retrieval",
+                      {"kind": "retrieval", "same_chunking": False}, {}, None, WHEN)  # fmt: skip
+    hits = {"hits": [{"chunk_id": str(REF), "text": "Other chunk text."}]}
+    record = ResultRecord(1, "Q?", None, [REF], [REF], None, hits)
+    (chunk,) = retrieved(other, record, {})
+    assert chunk.is_reference is False and chunk.text == "Other chunk text."
+    (same,) = retrieved(ANSWERS, record, {})
+    assert same.is_reference is True

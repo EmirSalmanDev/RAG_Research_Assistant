@@ -262,8 +262,13 @@ class MemoryStore:
     checked: list[str] = field(default_factory=list)
     texts: dict[uuid.UUID, str] = field(default_factory=lambda: dict(REFERENCE_TEXTS))
 
+    index: tuple[int, int] | None = None  # (needed, current) of a variant index; None: unknown
+
     def check(self, questions: Sequence[SetQuestion], collection: str) -> None:
         self.checked.append(collection)
+
+    def index_state(self, resolved: Any, configured: Any) -> tuple[int, int] | None:
+        return self.index
 
     def reference_texts(self, ids: Iterable[uuid.UUID]) -> dict[uuid.UUID, str]:
         return {i: self.texts[i] for i in ids if i in self.texts}

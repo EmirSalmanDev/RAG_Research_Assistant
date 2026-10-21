@@ -223,18 +223,22 @@ def cmd_suite(args: argparse.Namespace) -> int:
     deps = cli_deps(Decimal(args.max_usd) if paid else None, s)
     suite = Suite(args.command, "suite")
     results: list[PartResult] = []
-    code = guarded(
-        lambda: run_variants(
-            resolved, questions, args.parts, deps, suite, embed=args.embed, out=results
+    try:
+        code = guarded(
+            lambda: run_variants(
+                resolved, questions, args.parts, deps, suite, embed=args.embed, out=results
+            )
         )
-    )
-    with session_scope() as session:
-        run_ids = suite_run_ids(session, suite.id)  # stopped runs too
-    for run_id in run_ids:
-        print(f"eval_runs {run_id} ({args.command})")
-    if args.report_dir and run_ids:
-        write_report(run_ids, Path(args.report_dir))
-        print(f"report: {Path(args.report_dir) / 'report.md'}")
+    finally:
+        # Also after an error guarded() does not know: what was stored gets its report,
+        # so CI can comment and upload it before the job fails.
+        with session_scope() as session:
+            run_ids = suite_run_ids(session, suite.id)  # stopped runs too
+        for run_id in run_ids:
+            print(f"eval_runs {run_id} ({args.command})")
+        if args.report_dir and run_ids:
+            write_report(run_ids, Path(args.report_dir))
+            print(f"report: {Path(args.report_dir) / 'report.md'}")
     return code
 
 

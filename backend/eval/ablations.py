@@ -21,7 +21,12 @@ expected cost and the cap a full run needs, without any request.
 
 The reranker comparison runs every variant in its own process (`--isolate`, the default for
 that step), so each run's peak memory is that variant's own; the cap is shared: each child
-gets what the ones before it left.
+gets what the ones before it left. It runs on generated questions only (`--split generated`,
+its default): its speed and memory are measured over every question a run takes.
+
+`select` reads the runs of ONE suite (one `run` invocation in which every variant of the step
+completed; the newest such suite unless `--suite-id` names one), never a mix of suites, which
+could stand on different bases, corpora or commits.
 """
 
 import argparse
@@ -70,6 +75,7 @@ from eval.variants import (
     Part,
     Resolved,
     Step,
+    embedding_price,
     find,
     resolve,
     resolved_from_record,
@@ -165,9 +171,11 @@ def estimate_lines(
             cache = QueryVectorCache(CACHE_PATH, model, dim)
             missing = cache.missing([q.item.question for q in questions])
             if missing:
-                tokens, requests, cost = embedding_estimate(missing)
+                tokens, requests, _ = embedding_estimate(missing)
+                price = Decimal(str(embedding_price(model, s)))
+                cost = (Decimal(tokens) * price / 1_000_000).quantize(Decimal("1e-6"))
                 notes.append(f"{len(missing)} question vectors missing ({tokens} tokens, "
-                             f"~${cost} at {s.embedding_model} prices; --embed)")  # fmt: skip
+                             f"~${cost} at {model} prices; --embed)")  # fmt: skip
         rerank_model = overrides.get("reranker_model", s.reranker_model)
         if overrides.get("rerank_enabled", s.rerank_enabled) and not reranker_cached(
             rerank_model, s
@@ -335,20 +343,36 @@ def guarded(work: Callable[[], object]) -> int:
 # --- select -----------------------------------------------------------------------------------
 
 
-def _answers_runs(session: Session, step: Step, suite_id: str | None) -> dict[str, EvalRun]:
-    """The newest complete answers run of each variant of `step` (one suite if named)."""
+def suite_runs(
+    session: Session, step: Step, part: Part, variant_ids: Sequence[str], suite_id: str | None
+) -> dict[str, EvalRun]:
+    """The complete `part` runs of one suite of `step`, one per variant: of the named
+    suite, or else of the newest suite in which every variant in `variant_ids` has one.
+    Runs of different suites are never mixed: they can stand on different bases (another
+    winner, another --base), another corpus or another commit."""
     rows = session.scalars(
-        select(EvalRun).where(EvalRun.name.like("ablation:%:answers")).order_by(EvalRun.id.desc())
+        select(EvalRun).where(EvalRun.name.like(f"ablation:%:{part}")).order_by(EvalRun.id.desc())
     ).all()
-    out: dict[str, EvalRun] = {}
+    by_suite: dict[str, dict[str, EvalRun]] = {}
+    order: list[str] = []  # suites, newest first
     for run in rows:
-        cfg = run.config or {}
-        if cfg.get("suite", {}).get("step") != step or run.metrics.get("status") != "complete":
+        suite = (run.config or {}).get("suite", {})
+        if suite.get("step") != step or run.metrics.get("status") != "complete":
             continue
-        if suite_id is not None and cfg["suite"]["id"] != suite_id:
+        if suite_id is not None and suite.get("id") != suite_id:
             continue
-        out.setdefault(cfg["variant"]["variant"], run)
-    return out
+        if suite["id"] not in by_suite:
+            by_suite[suite["id"]] = {}
+            order.append(suite["id"])
+        by_suite[suite["id"]].setdefault(run.config["variant"]["variant"], run)
+    for sid in order:
+        if all(v in by_suite[sid] for v in variant_ids):
+            return {v: by_suite[sid][v] for v in variant_ids}
+    named = f"suite {suite_id}" if suite_id else "any one suite"
+    raise LookupError(
+        f"no complete {part} run of every variant {list(variant_ids)} of step {step!r} in "
+        f"{named}: run the step again as one suite (make eval-ablations STEP={step})"
+    )
 
 
 def _generated_results(
@@ -370,17 +394,23 @@ def _generated_results(
 
 
 def _same_basis(runs: Mapping[str, EvalRun]) -> None:
-    """Runs compared must share the question set, the judge and the code."""
+    """Runs compared must share the question set, the judge, the code, the base they were
+    built on and the corpus they searched."""
 
     def key(run: EvalRun) -> tuple[Any, ...]:
         cfg = run.config
-        return (cfg.get("generated_sha256"), json.dumps(cfg.get("judge"), sort_keys=True),
-                run.git_sha)  # fmt: skip
+        return (
+            cfg.get("generated_sha256"),
+            json.dumps(cfg.get("judge"), sort_keys=True),
+            run.git_sha,
+            (cfg.get("variant") or {}).get("base"),
+            (cfg.get("corpus") or {}).get("configured_points"),
+        )
 
     keys = {key(r) for r in runs.values()}
     if len(keys) > 1:
-        raise ValueError("the runs differ in question set, judge or commit; run the step again "
-                         f"as one suite: {sorted(map(str, keys))}")  # fmt: skip
+        raise ValueError("the runs differ in question set, judge, commit, base or corpus; run "
+                         f"the step again as one suite: {sorted(map(str, keys))}")  # fmt: skip
 
 
 def select_step(session: Session, step: Step, s: Settings, suite_id: str | None) -> dict[str, Any]:
@@ -391,10 +421,7 @@ def select_step(session: Session, step: Step, s: Settings, suite_id: str | None)
     if step == "reranker":
         return _select_reranker(session, s, suite_id, tuning_ids)
     variants = variants_of(step, s)
-    runs = _answers_runs(session, step, suite_id)
-    missing = [v.id for v in variants if v.id not in runs]
-    if missing:
-        raise LookupError(f"no complete answers run for {missing} in step {step!r}")
+    runs = suite_runs(session, step, "answers", [v.id for v in variants], suite_id)
     _same_basis(runs)
     results = {
         v.id: VariantResults(
@@ -427,23 +454,21 @@ def _select_reranker(
     session: Session, s: Settings, suite_id: str | None, tuning_ids: set[str]
 ) -> dict[str, Any]:
     variants = variants_of("reranker", s)
-    retrieval: dict[str, EvalRun] = {}
-    for run in session.scalars(
-        select(EvalRun).where(EvalRun.name.like("ablation:%:retrieval")).order_by(EvalRun.id.desc())
-    ):
-        cfg = run.config or {}
-        if (
-            cfg.get("suite", {}).get("step") != "reranker"
-            or run.metrics.get("status") != "complete"
-        ):
-            continue
-        if suite_id is not None and cfg["suite"]["id"] != suite_id:
-            continue
-        retrieval.setdefault(cfg["variant"]["variant"], run)
-    answers = _answers_runs(session, "reranker", suite_id)
-    missing = [v.id for v in variants if v.id not in retrieval]
-    if missing:
-        raise LookupError(f"no complete retrieval run for {missing} in the reranker step")
+    retrieval = suite_runs(session, "reranker", "retrieval", [v.id for v in variants], suite_id)
+    suite = next(iter(retrieval.values())).config["suite"]["id"]
+    answers = suite_runs(session, "reranker", "answers",
+                         [v.id for v in variants if "answers" in v.parts], suite)  # fmt: skip
+    # Speed and memory are measured over every question a run took, so the reranker
+    # comparison must not take held-out ones at all (it runs --split generated).
+    held_out = [r.id for r in [*retrieval.values(), *answers.values()]
+                if r.config.get("questions", {}).get("heldout")]  # fmt: skip
+    if held_out:
+        raise ValueError(
+            f"runs {held_out} include held-out questions; the reranker step decides on "
+            "generated questions only (run it with --split generated)"
+        )
+    _same_basis(retrieval)  # each part's runs among themselves (only answers have a judge)
+    _same_basis(answers)
 
     def lists(run: EvalRun) -> dict[str, list[str]]:
         return {qid: [h["chunk_id"] for h in m.get("hits", [])]
@@ -451,6 +476,8 @@ def _select_reranker(
 
     reference = next(v for v in variants if v.incumbent)
     ref_lists = lists(retrieval[reference.id])
+    if not ref_lists:
+        raise ValueError("the reference run holds no generated question to compare on")
 
     def result(v_id: str) -> RerankerResult:
         run = retrieval[v_id]
@@ -505,7 +532,12 @@ def main(argv: list[str] | None = None) -> int:
             continue
         p.add_argument("--variants", type=_csv, default=None, help="comma-separated variant ids")
         p.add_argument("--parts", type=_csv, default=list(PARTS))
-        p.add_argument("--split", choices=("all", "heldout", "generated"), default="all")
+        p.add_argument(
+            "--split",
+            choices=("all", "heldout", "generated"),
+            default=None,
+            help="default: all; the reranker step takes generated questions only",
+        )
         p.add_argument(
             "--base", default=None, help="the base variant, instead of the stored winner"
         )
@@ -525,6 +557,10 @@ def main(argv: list[str] | None = None) -> int:
             p.add_argument("--summary-out", default=None, help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
     s = get_settings()
+    if args.command in ("estimate", "run"):
+        args.split = args.split or ("generated" if args.step == "reranker" else "all")
+        if args.step == "reranker" and args.split != "generated":
+            parser.error("the reranker step decides on generated questions only: --split generated")
 
     if args.command == "list":
         for step in STEPS:

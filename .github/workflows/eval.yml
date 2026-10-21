@@ -37,12 +37,6 @@ permissions:
   contents: read
   pull-requests: write # the comment with the metrics table
 
-concurrency:
-  # One evaluation per pull request at a time; a new push cancels the older run (it keeps
-  # what it stored and spent no more than its cap).
-  group: eval-${{ github.event.pull_request.number || github.run_id }}
-  cancel-in-progress: true
-
 jobs:
   eval:
     # By hand, or on a pull request from this repository that carries the `retrieval` label
@@ -52,6 +46,13 @@ jobs:
       (contains(github.event.pull_request.labels.*.name, 'retrieval') &&
        github.event.pull_request.head.repo.full_name == github.repository &&
        (github.event.action != 'labeled' || github.event.label.name == 'retrieval'))
+    # One evaluation per pull request at a time; a new push cancels the older run (it keeps
+    # what it stored and spent no more than its cap). On the job, not the workflow: a job
+    # skipped by the condition above (another label added, say) never joins the group, so
+    # it can never cancel a paid run that is under way.
+    concurrency:
+      group: eval-${{ github.event.pull_request.number || github.run_id }}
+      cancel-in-progress: true
     runs-on: ubuntu-latest
     timeout-minutes: 90
     defaults:

@@ -213,7 +213,7 @@ eval-select:
 # cost without any request. A build is resumable. BASE=a7-... names the chunking an embedding
 # variant builds on (default: the stored chunking winner). DROP=1 deletes that eval collection.
 #   make eval-index VARIANT=a7-c256 ESTIMATE=1
-#   make eval-index VARIANT=a8-large BASE=a7-c512 MAX_USD=0.40
+#   make eval-index VARIANT=a8-large BASE=a7-c512 MAX_USD=1.50   # covers the guard's bound (ESTIMATE=1 prints it)
 eval-index:
 	@test -n "$(VARIANT)" || (echo "usage: make eval-index VARIANT=a7-c256|a7-c1024|a8-large-short|a8-large [BASE=a7-...] [ESTIMATE=1|MAX_USD=x|DROP=1]"; exit 2)
 	cd backend && uv run python -m eval.indexes $(if $(ESTIMATE),estimate,$(if $(DROP),drop,build)) \

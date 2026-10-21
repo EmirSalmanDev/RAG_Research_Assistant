@@ -19,6 +19,7 @@ import pytest
 from app.config import get_settings
 from app.egress_guard import Guard
 from app.rag.rerank import RerankerKey, model_cache_dir
+from app.rag.retrieve import RetrievalConfig
 from eval.budget import Budget, BudgetExhausted, policy
 from eval.golden import SetQuestion
 from eval.run import QueryVectorCache
@@ -321,3 +322,74 @@ def test_a_refused_judge_request_is_a_budget_stop_not_an_api_error(tmp_path: Pat
     (run_id,) = world.store.runs
     assert world.store.runs[run_id]["metrics"]["status"].startswith("stopped: budget")
     assert world.store.of(run_id) == []
+
+
+@pytest.mark.parametrize(("state", "why"), [((10, 4), "holds 5 points, 4 of them current"),
+                                           ((5, 3), "5 points, 3 of them current")])  # fmt: skip
+def test_a_partial_or_stale_variant_index_is_never_searched(
+    tmp_path: Path, state: tuple[int, int], why: str
+) -> None:
+    """An interrupted (capped) build, or papers added to Postgres since the build: the
+    variant would search another corpus than the incumbent and still look complete."""
+    world = World(tmp_path)
+    world.store.index = state  # (points the corpus needs, points built with the right text)
+    with pytest.raises(IndexMissing, match=why):
+        run_part("answers", _variant("a7-c256"), QUESTIONS, world.deps(), SUITE)
+    assert world.store.runs == {}
+
+
+def test_a_complete_variant_index_is_searched_and_the_corpus_size_is_recorded(
+    tmp_path: Path,
+) -> None:
+    world = World(tmp_path)
+    world.store.index = (5, 5)
+    world.cache_vectors(get_settings().embedding_model, get_settings().embedding_dim)
+    result = run_part("retrieval", _variant("a7-c256"), QUESTIONS, world.deps(), SUITE)
+    corpus = world.store.runs[result.run_id]["config"]["corpus"]
+    assert corpus["points"] == 5 and corpus["configured_points"] == 5
+    assert corpus["collection"].startswith(f"{get_settings().qdrant_collection}__eval__c256")
+
+
+def test_a_stale_query_encoder_is_caught_by_its_own_model() -> None:
+    """The observation reads the encoder itself, not the settings: an encoder built for
+    another configuration (a leak) shows up as a mismatch."""
+    from app.ingest.embed import DenseEmbedder
+    from eval.runner import ObservingDense, expected
+
+    s = get_settings()
+    stale = DenseEmbedder(client=FakeOpenAIEmbeddings())
+    stale._model, stale._dim = "an-older-model", 7
+    observed = Observed()
+    ObservingDense(stale, observed, s)
+    with pytest.raises(ConfigMismatch, match="embeddings"):
+        verify_observed(observed, expected(s, RetrievalConfig.from_settings()))
+
+
+def test_a_stage_that_fell_back_is_stored_and_counted(tmp_path: Path) -> None:
+    """A plan that failed falls back to the default plan (no rephrasings): the turn did
+    not run the configuration under test, and the run says so per question."""
+    import openai
+
+    from tests.chat_fakes import status_error
+    from tests.eval_fakes import AutoCompletions
+
+    original = AutoCompletions.parse
+
+    def failing_plan(self: AutoCompletions, **kwargs: Any) -> Any:
+        from app.rag.plan import PlanOutput
+
+        if kwargs["response_format"] is PlanOutput:
+            self.calls.append({"kind": "parse", **kwargs})
+            raise status_error(openai.BadRequestError, 400)
+        return original(self, **kwargs)
+
+    world = World(tmp_path)
+    AutoCompletions.parse = failing_plan  # type: ignore[method-assign]
+    try:
+        result = run_part("answers", _variant("a3-hybrid"), QUESTIONS, world.deps(), SUITE)
+    finally:
+        AutoCompletions.parse = original  # type: ignore[method-assign]
+    first = world.store.of(result.run_id)[0]["metrics"]
+    assert set(first["stage_errors"]) == {"plan"}
+    assert result.metrics["all"]["stage_fallbacks"] == 3
+    assert len(world.search.calls) == 3  # the default plan: one search per question, no rephrasings

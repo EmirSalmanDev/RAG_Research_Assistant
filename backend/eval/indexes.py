@@ -33,6 +33,7 @@ eval/budget.py.
 """
 
 import argparse
+import json
 import math
 import sys
 import uuid
@@ -102,6 +103,17 @@ class IndexPlan:
 
     def requests(self) -> int:
         return math.ceil(len(self.to_embed) / BATCH)
+
+    def guard_bound_usd(self, s: Settings) -> Decimal:
+        """What the build adds to the egress guard's worst-case bound: every byte of the
+        request bodies (the JSON-escaped texts plus a little per request) counted as a
+        token at the dearest embedding price the guard knows (eval/budget.policy). The
+        `--max-usd` of a build must cover this, not only the expected cost."""
+        from eval.budget import policy
+
+        price = policy(Decimal("1"), 1, s).prices_per_1m["embedding"]
+        body = sum(len(json.dumps(i.embedded())) for i in self.to_embed) + 128 * self.requests()
+        return (Decimal(body) * price / 1_000_000).quantize(Decimal("0.000001"), ROUND_HALF_UP)
 
     def cost_usd(self, s: Settings) -> Decimal:
         price = Decimal(str(embedding_price(self.index.embedding_model, s)))
@@ -306,7 +318,8 @@ def main(argv: list[str] | None = None, *, dense: DenseEncoder | None = None,
         f"{plan.collection}: {len(plan.items)} points; {len(plan.present)} already built, "
         f"{len(plan.to_copy)} copied with their vectors, {len(plan.to_embed)} to embed with "
         f"{plan.index.embedding_model}: {plan.tokens()} tokens in {plan.requests()} request(s), "
-        f"about ${plan.cost_usd(s)}"
+        f"about ${plan.cost_usd(s)}; --max-usd must cover the guard's bound "
+        f"${plan.guard_bound_usd(s)}"
     )
     if args.command == "estimate":
         print("nothing was sent or written")

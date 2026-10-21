@@ -306,7 +306,11 @@ def retrieved(
     the result ("sources" of an answer, "hits" of a retrieval run), else from `lookup`."""
     stored = record.metrics.get("sources") or record.metrics.get("hits") or []
     by_id = {str(h.get("chunk_id")): h for h in stored if isinstance(h, dict)}
-    references = set(record.reference_chunk_ids)
+    # Under another chunking (an ablation index) a chunk id names another text than the
+    # reference chunk with the same id (ids are uuid5(paper, version, ord) under any
+    # chunking), so no chunk is marked as the reference there.
+    same_chunking = run.config.get("same_chunking", True) is not False
+    references = set(record.reference_chunk_ids) if same_chunking else set()
     out: list[RetrievedChunkOut] = []
     for rank, chunk_id in enumerate(record.retrieved_chunk_ids, start=1):
         hit = by_id.get(str(chunk_id), {})

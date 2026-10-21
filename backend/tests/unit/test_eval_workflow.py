@@ -58,7 +58,17 @@ def test_it_runs_on_labelled_pull_requests_and_by_hand_only(
 
 def test_permissions_are_the_least_it_needs(workflow: dict[Any, Any]) -> None:
     assert workflow["permissions"] == {"contents": "read", "pull-requests": "write"}
-    assert workflow["concurrency"]["cancel-in-progress"] is True
+
+
+def test_only_a_run_that_starts_can_cancel_an_older_one(
+    workflow: dict[Any, Any], job: dict[str, Any]
+) -> None:
+    """Concurrency on the workflow would let any pull request event (another label) queue
+    a run in the group and cancel the paid one, then skip its own job. On the job, only a
+    job that passed its condition joins the group."""
+    assert "concurrency" not in workflow
+    assert job["concurrency"]["cancel-in-progress"] is True
+    assert "pull_request.number" in job["concurrency"]["group"]
 
 
 def test_smoke_on_pull_requests_full_by_hand_and_always_a_cap(job: dict[str, Any]) -> None:

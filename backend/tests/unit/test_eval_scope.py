@@ -78,3 +78,9 @@ def test_scopes_do_not_nest() -> None:
             with applied_settings({"search_mode": "bm25"}):
                 pass
         assert get_settings().search_mode == "dense"  # the outer scope is untouched
+
+
+def test_the_bm25_model_is_never_a_variant() -> None:
+    with pytest.raises(ScopeError, match="may not change"):
+        with applied_settings({"sparse_model": "another/bm25"}):
+            pass

@@ -187,11 +187,19 @@ def test_the_reranker_comparison_is_read_from_stored_runs(
     cache.save()
     deps = _deps()
     deps.query_cache_path = tmp_path / "vectors.json"
-    suite = Suite("ablation", "reranker")
     base = base_for("reranker", s, None, None)
+    # With held-out questions in the runs (speed and memory are measured over every
+    # question a run took), the reranker comparison refuses to decide.
+    mixed = Suite("ablation", "reranker")
     for variant in variants_of("reranker", s):
         for part in variant.parts:
-            run_part(part, resolve(variant, s, base), QUESTIONS, deps, suite)
+            run_part(part, resolve(variant, s, base), QUESTIONS, deps, mixed)
+    with Session(stored_chunks.get_bind()) as session, pytest.raises(ValueError, match="held-out"):
+        select_step(session, "reranker", s, mixed.id)
+    suite = Suite("ablation", "reranker")
+    for variant in variants_of("reranker", s):
+        for part in variant.parts:
+            run_part(part, resolve(variant, s, base), GENERATED, deps, suite)
     with Session(stored_chunks.get_bind()) as session:
         record = select_step(session, "reranker", s, suite.id)
         session.commit()
@@ -230,3 +238,55 @@ def test_isolated_variants_share_one_cap_and_stop_when_a_bound_is_unknown(
     )
     assert caps == ["2.00", "0.50"]  # the cap was used up before the third variant
     assert ablations.main(["run", "--step", "reranker"]) == ablations.EXIT_SETUP  # paid: no cap
+
+
+def test_the_selection_never_mixes_suites_or_corpora(
+    stored_chunks: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Runs of two suites can stand on different bases (another --base), another corpus or
+    another commit: the rule takes one suite in which every variant ran."""
+    s = get_settings()
+    monkeypatch.setattr(ablations, "load_question_set", lambda: QUESTIONS)
+    deps = _deps()
+    variants = variants_of("retrieval", s)
+    first, second = Suite("ablation", "retrieval"), Suite("ablation", "retrieval")
+    for variant in variants[:3]:
+        run_part("answers", resolve(variant, s), QUESTIONS, deps, first)
+    for variant in variants[3:]:
+        run_part("answers", resolve(variant, s), QUESTIONS, deps, second)
+    with Session(stored_chunks.get_bind()) as session:
+        with pytest.raises(LookupError, match="in any one suite"):
+            select_step(session, "retrieval", s, None)
+    whole = Suite("ablation", "retrieval")
+    for variant in variants:  # the whole step again, as one suite
+        run_part("answers", resolve(variant, s), QUESTIONS, deps, whole)
+    with Session(stored_chunks.get_bind()) as session:
+        record = select_step(session, "retrieval", s, None)
+        runs = session.scalars(select(EvalRun).where(EvalRun.id.in_(record["runs"].values()))).all()
+        assert len({r.config["suite"]["id"] for r in runs}) == 1
+        # The same step on another corpus size cannot be compared.
+        runs[0].config = {**runs[0].config, "corpus": {"configured_points": 999}}
+        session.commit()
+        with pytest.raises(ValueError, match="base or corpus"):
+            select_step(session, "retrieval", s, runs[0].config["suite"]["id"])
+
+
+def test_the_report_is_written_even_when_a_run_crashes(
+    stored_chunks: Session, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """An error the CLI does not know (a judge API error, say) still leaves report.md for
+    the pull request comment and the artifact."""
+    from eval import suite as suite_module
+
+    s = get_settings()
+    monkeypatch.setattr(suite_module, "load_question_set", lambda: QUESTIONS)
+    monkeypatch.setattr(suite_module, "cli_deps", lambda max_usd, settings: _deps())
+
+    def crash(resolved: Any, questions: Any, parts: Any, deps: Any, suite: Any, **kw: Any) -> Any:
+        run_part("retrieval", resolve(find("a2-bm25", s), s), questions, deps, suite)
+        raise RuntimeError("an error guarded() does not know")
+
+    monkeypatch.setattr(suite_module, "run_variants", crash)
+    with pytest.raises(RuntimeError, match="does not know"):
+        suite_module.main(["full", "--max-usd", "1", "--report-dir", str(tmp_path / "r")])
+    assert "full:a2-bm25:retrieval" in (tmp_path / "r" / "report.md").read_text()

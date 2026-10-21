@@ -374,11 +374,16 @@ questions outside the golden 20, for the settings 0, 1 and -1.
   restored exactly and the caches cleared again. Scopes do not nest. Keys, store
   addresses and every `eval_*` setting (the judge, its prices, the relevancy embeddings)
   can never be overridden: an ablation must not move its own yardstick. On top of that,
-  what the run did is observed where it happens (the collection the chat's search reads
-  from the settings at call time, the mode it is asked for, the embedding model each
-  query encoder is built with, the reranker that was actually loaded) and compared with
-  what the settings allow; a difference stops the run as "stopped: configuration
-  mismatch". The configuration stored on a run is read back inside the scope.
+  what the run did is observed (the model and size each query encoder was built with,
+  read from the encoder itself; the reranker that was actually loaded; the mode each
+  search is asked for; the collection the chat's search reads from the settings at call
+  time, which catches a scope lost in the middle of a run, not a stale object) and
+  compared with what the settings allow; a difference stops the run as "stopped:
+  configuration mismatch". The configuration stored on a run is read back inside the
+  scope. The BM25 model (`sparse_model`, loaded once per process) cannot be overridden.
+  Each question also records the stages that failed and fell back
+  (`stage_errors`, read from the turn's own record): a plan that failed runs the default
+  plan without rephrasings, which is not the configuration under test.
   `get_cross_encoder` now keeps the model together with the settings it was loaded with
   and releases it before loading another (decision 17).
 - **Alternative.** Thread the settings through every stage as an argument. That changes
@@ -418,18 +423,24 @@ questions outside the golden 20, for the settings 0, 1 and -1.
 - **Decision.** Written down here and in the code before any ablation ran:
   1. only generated questions (`for_tuning()`); the runs' held-out rows are dropped when
      they are read, and the rule raises if one reaches it anyway;
-  2. paired: the generated questions both runs scored without an error; fewer than 80 %
-     of the questions where either run has the metric paired is "undecided";
+  2. paired: the generated questions both runs scored without an error and without a
+     stage falling back; fewer than 80 % of the questions where either run has the
+     metric paired is "undecided";
   3. primary metric: context recall (it does not depend on chunk ids, so chunk sizes can
      be compared, and it is defined for refusals, decision 12);
-  4. a challenger is better only if the 95 % paired bootstrap interval of its mean
+  4. a challenger is better only if the paired bootstrap interval of its mean
      difference to the incumbent lies above 0 (10,000 resamples, fixed seed, percentile
-     interval);
+     interval), at 1 - 0.05/m for m challengers (Bonferroni; 98.75 % for the four of the
+     retrieval step), so noise crowns any challenger with at most about 5 % chance;
   5. guard: a better challenger significantly worse on faithfulness (its interval below
      0) is disqualified;
   6. the winner is the better, not disqualified challenger with the highest mean; with
      none the incumbent stays.
-  The runs compared must share the question file, the judge and the commit. The decision,
+  The runs compared come from one suite (one `make eval-ablations` invocation, in which
+  every variant of the step completed; the newest such suite unless one is named) and
+  must share the question file, the judge, the commit, the base and the corpus size.
+  The reranker comparison runs on generated questions only (`--split generated`, its
+  default), because its speed and memory are measured over every question a run took. The decision,
   every comparison (pairs, means, intervals, outcome) and the run ids are stored as a
   `selection:<step>` row. The reranker comparison asks whether a cheaper runtime setting
   is good enough, so it has its own rule: the owner's M4 bar (at least 20 candidates,
@@ -441,7 +452,9 @@ questions outside the golden 20, for the settings 0, 1 and -1.
 - **Why this rule.** With about 30 scored generated questions, one question moves a mean
   by about 0.03; a rule that takes the highest mean would pick noise. Requiring an
   interval above 0 makes "no significant difference, keep what runs" the usual outcome,
-  which is the honest result of a small test set.
+  which is the honest result of a small test set. A percentile bootstrap on about 30
+  values tends to be somewhat too narrow; the correction leans against that, and every
+  interval is stored for the reader to judge.
 - **Known bias.** Larger chunks put more text in front of the generator, which raises
   context recall by itself; the chunking step therefore also reports the source tokens
   and coverage, and the owner should read its winner with that in mind.
@@ -487,7 +500,9 @@ questions outside the golden 20, for the settings 0, 1 and -1.
   and every body byte as a token, a cap is about ten times the real spend: on the 20
   golden questions `make eval ESTIMATE=1` gives about $0.078 expected (measured bound
   $0.27) and suggests a cap of $0.95, about $0.05 a question. The defaults are set from
-  that bound (smoke $1.00 for 15 questions, a full run $3.50).
+  that bound (smoke $1.00 for 15 questions, a full run $3.50). The index builder's
+  estimate prints its bound too (`text-embedding-3-large` at 3072 for the corpus today:
+  about $0.25 expected, a bound of $1.35).
 - **Alternative.** Stop when the llm_usage spend passes the cap. Not a cap: the spend is
   only known after the request.
 - **Tested by.** `test_a_tripped_guard_stops_the_run_and_drops_the_unfinished_question`,
@@ -504,7 +519,8 @@ questions outside the golden 20, for the settings 0, 1 and -1.
   change; the ids are stored with each run. With fewer than 15 generated questions the
   smoke run refuses to start. `--report-dir` writes the markdown tables a pull request
   comment shows and a JSON export of the runs without chunk texts (an artifact of a
-  public repository must not re-publish paper text).
+  public repository must not re-publish paper text), in every case, also after an
+  error the command line does not know.
 - **Alternative.** A smoke set with held-out questions (available today). Not taken, for
   the reason above.
 - **Tested by.** `test_eval_suite` (15 generated questions of every type, independent of
@@ -544,7 +560,9 @@ questions outside the golden 20, for the settings 0, 1 and -1.
   variant holds is embedded with its model (with `dimensions` when shortened), logged as
   `eval-embed-index` at that model's price. BM25 vectors are computed locally. The build
   is resumable (points already there with the same text are skipped), checks the final
-  point count against its plan, refuses to write to any collection without the
+  point count against its plan (and the runner refuses to search a variant collection
+  that does not hold exactly what Postgres says now: an interrupted build or papers
+  added since), refuses to write to any collection without the
   `__eval__` mark, and stops when a paper with section chunks has no stored text. An
   embedding variant builds on the chunking winner (stored) or `--base a7-...`.
 - **Alternative.** Re-index into the app's collection with other settings and restore it
@@ -575,7 +593,11 @@ questions outside the golden 20, for the settings 0, 1 and -1.
   gives the workflow its URL and SHA-256 as secrets. The workflow checks the hash, applies
   the migrations, restores both into service containers of the same versions as
   docker-compose.yml (postgres 16, Qdrant v1.19.1) and runs `eval.corpus check` (counts,
-  revision, model, file hashes) before the paid step. Nothing personal is in a bundle
+  revision, model, file hashes) before the paid step. The bundle's alembic revision
+  must equal the code's: after a migration the owner exports the bundle again (a
+  data-only dump of an older schema may not load into a newer one). The concurrency
+  group sits on the job, so only a run that passed the label condition can cancel an
+  older one; a pull request event that skips the job (another label) cannot. Nothing personal is in a bundle
   (no conversations, library, interests or spend).
 - **Alternatives.** (a) A self-hosted runner on the owner's Mac, next to the real stores:
   no bundle, but a public repository's workflows would run on that machine, which GitHub
@@ -606,7 +628,8 @@ questions outside the golden 20, for the settings 0, 1 and -1.
   badge and an arXiv abstract link, never a PDF). A run that stopped or is still running
   is marked as such everywhere and drawn as a hollow point that no line joins.
   Chunk texts come from what the run stored; only a run on the app's own collection that
-  stored none is looked up in the chunks table.
+  stored none is looked up in the chunks table. A run on another chunking marks no chunk
+  as the reference (its chunk ids name other texts than the reference chunks).
 - **Charts in plain SVG (a deviation from the plan's Recharts).** Adding Recharts is a
   dependency and needs network access, which this change was not cleared for; the
   timeline page (docs/adr/0010) already draws its chart as plain SVG with the numbers
@@ -623,7 +646,25 @@ questions outside the golden 20, for the settings 0, 1 and -1.
   opened with its chunk text, reference badge, answer, verdicts and arXiv link; the
   empty, error and selection states), run by `make e2e`.
 
-### Review before merge
+### Review before merge (part 2)
+A fresh reviewer, given only the plan's evaluation text and the diff, found: a variant
+index that was only partly built (a capped build) or older than the corpus would still be
+searched and the run stored as complete; a plan stage that failed and fell back to the
+default plan was stored as a complete run of the configuration under test; workflow-level
+concurrency let any pull request event (another label) cancel a paid run; the selection
+could compare runs of different suites (other bases, corpora); the reranker
+recommendation could rest on held-out timings with no generated question; a chunk on
+another chunking was badged as the reference; a crash outside the known errors left no
+report; the stale-encoder observation could not fail; four challengers at 95 % each
+without correction; estimates that priced large-model vectors at the small model's price
+and did not show the guard's bound; an undocumented corpus revision rule. Each is fixed
+above, with a test that fails without the fix. It also noted that the rule-10 replay
+(decision 17) read the real stores; it was read-only (no write, no network) and is
+reported to the owner as such. Not changed: `make eval-retrieval EMBED=1` (an M3 command)
+embeds without a cap; it embeds only missing golden-question vectors, a fraction of a
+cent, and stays behind its own ask-first rule.
+
+### Review before merge (part 1)
 An independent review of this change (a fresh reviewer with only the plan's evaluation text
 and the diff) found, among others: filter seeds that ignored the golden exclusion, a review
 run with a second candidates file that could delete accepted questions and reuse their ids,
