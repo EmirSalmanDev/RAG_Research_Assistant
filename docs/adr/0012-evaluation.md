@@ -19,8 +19,16 @@ the data, or for reasons the golden set cannot judge:
   whether analysis chunks help an answer; it only counts them as misses.
 
 Both were decided before any evaluation run of this change, on the principles below, and
-never from golden-set results (the golden set is the held-out check). Each decision is
-written as decision / alternative / how it is tested.
+never from golden-set results (the golden set is the held-out check).
+
+The answer metrics of the plan (context precision, context recall, faithfulness, response
+relevancy, citation accuracy, refusal accuracy) need a judge model, a way to run the chat
+pipeline without saving anything, and more questions than the 20 golden ones: 40 more,
+written by a model from 30 full-text papers and reviewed one by one by the owner. Only 3
+papers have full text so far, so the generator and the review tool are built and tested
+here, and generating the questions waits for more full texts.
+
+Each decision is written as decision / alternative / how it is tested.
 
 ## Decision
 
@@ -259,3 +267,19 @@ questions outside the golden 20, for the settings 0, 1 and -1.
   chunk) instead of 3.
 - The chat's own merge of the question and rephrasing lists already broke its ties by first
   appearance; its inputs are now in a fixed order, so the merge is repeatable too.
+- An answer run costs money: about $0.004 per question with gpt-4o-mini as chat and judge
+  model (one chat turn of about $0.001, measured from earlier turns, plus up to five judge
+  calls and one embeddings request). `--estimate` prints requests and cost first; its
+  bound uses the largest measured turn, so it is not a hard limit.
+- The judge is a model: its verdicts can be wrong, and a model alias such as `gpt-4o-mini`
+  can change behind the same name. The model, temperature and prompt versions are stored
+  on every run, so runs judged differently are never compared silently. A dated model
+  snapshot can be set in `EVAL_MODEL`.
+- The judge and the generator use the same model family as the chat, which can favour
+  answers written in its own style. A cross-check with the `ragas` library or another
+  judge model is possible later.
+- The generated questions come from the same 30 papers the corpus holds in full, so they
+  measure answers about full-text papers; abstract-only papers are covered by the filter
+  questions and by the golden set.
+- The retrieval runner (`make eval-retrieval`) still reads the golden file only; the full
+  question set is for the ablation runner of a later step.

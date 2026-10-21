@@ -461,7 +461,9 @@ def estimate(
     faithfulness (S + A in), relevancy (A in), citations (S + A in), plus context
     precision and recall (S in each) when there is a reference answer. Typical judge
     outputs are taken as the answer's size; the bound uses the judge's output cap on
-    every call and assumes every question is answered.
+    every call and assumes every question is answered. The bound is not a hard limit:
+    its inputs are the largest MEASURED ones, and a turn whose sources are longer than
+    any measured turn costs more (each source chunk is at most `chunk_hard_max_tokens`).
     """
     missing = [f for f in TURN_FEATURES if f not in stats]
     if missing:
