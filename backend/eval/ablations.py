@@ -3,7 +3,7 @@ comparisons, step by step, each run stored in eval_runs with its configuration a
 
     python -m eval.ablations list                                   # steps and variants (free)
     python -m eval.ablations estimate --step retrieval              # requests, cost, cap (free)
-    python -m eval.ablations run --step retrieval --max-usd 1.50    # PAID: ask first
+    python -m eval.ablations run --step retrieval --max-usd 5.00    # PAID: ask first
     python -m eval.ablations select --step retrieval                # the rule, on stored runs
 
 Steps, in order (eval/variants.py): retrieval (ablations 1-5), rewriting (6), chunking (7),
@@ -253,8 +253,15 @@ def cmd_run(args: argparse.Namespace) -> int:
 
     isolate = args.isolate if args.isolate is not None else args.step == "reranker"
     if isolate and len(resolved) > 0:
+        # One child process per variant; the cap is shared: each child gets what the ones
+        # before it left of their worst-case bound. A child whose bound is unknown stops the
+        # loop, so the cap holds across all of them.
         left = max_usd
         for r in resolved:
+            if left is not None and left <= 0:
+                print(f"spend cap used up before {r.variant.id}; later variants not run",
+                      file=sys.stderr)  # fmt: skip
+                return EXIT_BUDGET
             with tempfile.TemporaryDirectory() as tmp:
                 summary = Path(tmp) / "summary.json"
                 code = _child(args, r.variant.id, suite, left, summary)
@@ -269,7 +276,10 @@ def cmd_run(args: argparse.Namespace) -> int:
                     file=sys.stderr,
                 )
                 return code
-            if left is not None and used is not None:
+            if left is not None:
+                if used is None:
+                    print(f"{r.variant.id}: its spend bound is unknown; stopping", file=sys.stderr)
+                    return EXIT_BUDGET
                 left -= used
         return 0
 

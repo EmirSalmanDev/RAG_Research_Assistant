@@ -201,3 +201,32 @@ def test_the_reranker_comparison_is_read_from_stored_runs(
     assert any("not run alone" in reason for reason in rows["r-threads-1"]["reasons"])
     assert any("10 candidates" in reason for reason in rows["r-candidates-10"]["reasons"])
     assert record["recommended"] == "r-reference"  # nothing qualifies: keep the reference
+
+
+def test_isolated_variants_share_one_cap_and_stop_when_a_bound_is_unknown(
+    stored_chunks: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The reranker step runs each variant in its own process; each child gets what the
+    ones before left, and a child whose spend bound is unknown stops the loop."""
+    monkeypatch.setattr(ablations, "load_question_set", lambda: QUESTIONS)
+    caps: list[str | None] = []
+    used = iter(["0.40", "0.70", None])
+
+    def child(args: Any, variant: str, suite: Any, max_usd: Any, summary: Path) -> int:
+        caps.append(None if max_usd is None else str(max_usd))
+        bound = next(used, "0")
+        if bound is not None:
+            summary.write_text(json.dumps({"bound_usd": bound}))
+        return 0
+
+    monkeypatch.setattr(ablations, "_child", child)
+    code = ablations.main(["run", "--step", "reranker", "--max-usd", "2.00"])
+    assert code == ablations.EXIT_BUDGET
+    assert caps == ["2.00", "1.60", "0.90"]  # then the third child's bound was unknown
+    caps.clear()
+    used = iter(["1.50", "0.60"])
+    assert (
+        ablations.main(["run", "--step", "reranker", "--max-usd", "2.00"]) == ablations.EXIT_BUDGET
+    )
+    assert caps == ["2.00", "0.50"]  # the cap was used up before the third variant
+    assert ablations.main(["run", "--step", "reranker"]) == ablations.EXIT_SETUP  # paid: no cap

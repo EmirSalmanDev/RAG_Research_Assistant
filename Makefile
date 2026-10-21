@@ -176,9 +176,9 @@ eval-retrieval:
 # request by the egress guard. EMBED=1 embeds questions missing from the vector cache (paid).
 # REPORT=dir writes report.md (the tables CI posts) and runs.json (without chunk texts).
 #   make eval-smoke ESTIMATE=1          # 15 generated questions, never held-out ones
-#   make eval-smoke MAX_USD=0.30
+#   make eval-smoke MAX_USD=1.00     # the cap is the worst case: real spend is about 1/10
 #   make eval ESTIMATE=1                # every question, held-out and generated reported apart
-#   make eval MAX_USD=1.50 REPORT=../eval-report
+#   make eval MAX_USD=3.50 REPORT=../eval-report
 EVAL_SUITE_ARGS = $(if $(ESTIMATE),--estimate,$(if $(MAX_USD),--max-usd "$(MAX_USD)")) \
 	$(if $(EMBED),--embed) $(if $(REPORT),--report-dir "$(abspath $(REPORT))")
 
@@ -194,7 +194,7 @@ eval:
 # one by hand). The chunking and embedding variants need their own index first. PAID unless
 # ESTIMATE=1 (the answers part of each variant): ask first; MAX_USD is the hard cap.
 #   make eval-ablations STEP=retrieval ESTIMATE=1
-#   make eval-ablations STEP=retrieval MAX_USD=1.50 [VARIANTS=a1-dense,a3-hybrid]
+#   make eval-ablations STEP=retrieval MAX_USD=5.00 [VARIANTS=a1-dense,a3-hybrid]
 #   make eval-select STEP=retrieval     # the rule, on generated questions only (free)
 eval-ablations:
 	@test -n "$(STEP)" || (echo "usage: make eval-ablations STEP=retrieval|rewriting|chunking|embedding|reranker [ESTIMATE=1|MAX_USD=x] [VARIANTS=..] [BASE=..] [EMBED=1]"; exit 2)

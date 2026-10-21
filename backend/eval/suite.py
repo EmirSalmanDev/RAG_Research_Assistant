@@ -2,9 +2,9 @@
 that CI posts (docs/adr/0012).
 
     python -m eval.suite smoke --estimate                 # requests, cost, cap (free)
-    python -m eval.suite smoke --max-usd 0.30 [--embed]   # PAID: 15 questions, ask first
+    python -m eval.suite smoke --max-usd 1.00 [--embed]   # PAID: 15 questions, ask first
     python -m eval.suite full --estimate
-    python -m eval.suite full --max-usd 1.50 [--embed]    # PAID: every question, ask first
+    python -m eval.suite full --max-usd 3.50 [--embed]    # PAID: every question, ask first
     python -m eval.suite report --runs 31,32 --out DIR    # markdown table + JSON (free)
 
 Both run the app as it is configured (no setting changed: the variant "configured") in

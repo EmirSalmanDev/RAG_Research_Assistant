@@ -1,7 +1,7 @@
 """Answer evaluation: each question through the chat pipeline, then the answer metrics.
 
     python -m eval.answers --estimate [--split heldout|generated|all] [--limit N]
-    python -m eval.answers [--split ...] [--limit N] [--name NAME]     # PAID: ask first
+    python -m eval.answers --max-usd X [--split ...] [--limit N] [--name NAME]  # PAID: ask first
 
 `--limit N` takes the first N questions of ONE split, so it needs `--split heldout` or
 `--split generated`: a quick run never silently consists of held-out questions only.
@@ -695,6 +695,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--split", choices=SPLITS, default="all")
     parser.add_argument("--limit", type=int, default=None, help="only the first N questions")
     parser.add_argument("--name", default="default", help="stored as eval_runs.name 'answers:NAME'")
+    parser.add_argument("--max-usd", default=None, help="hard spend cap (needed for a real run)")
     args = parser.parse_args(argv)
 
     from app.db.session import session_scope
@@ -715,7 +716,14 @@ def main(argv: list[str] | None = None) -> int:
             f"requests; about ${est.typical_usd} (bound ${est.bound_usd}). Nothing was sent."
         )
         return 0
+    if not args.max_usd:
+        parser.error("a real run needs --max-usd, the hard spend cap (see --estimate)")
 
+    from eval.budget import BudgetExhausted, install_budget
+
+    # The egress guard refuses any request that could take the worst case past the cap
+    # (eval/budget.py); a question during which it refused one is not stored.
+    budget = install_budget(Decimal(args.max_usd), settings)
     judge = default_judge()
     deps = ChatDeps(chat=ChatClient(), store=NullChatStore(), tracer=NoopTracer())
     with session_scope() as session:
@@ -728,6 +736,7 @@ def main(argv: list[str] | None = None) -> int:
     rows: list[Row] = []
 
     def keep(row: Row) -> None:
+        budget.check()
         rows.append(row)
         with session_scope() as session:  # committed per question
             store_result(session, run_id, item_ids[row[0].question.item.id], row)
@@ -739,6 +748,9 @@ def main(argv: list[str] | None = None) -> int:
             progress=lambda line: print(line, file=sys.stderr, flush=True), on_row=keep,
         )  # fmt: skip
     except BaseException as err:  # also Ctrl-C: record what was done, then stop
+        if budget.guard.tripped is not None and not isinstance(err, BudgetExhausted):
+            status = f"stopped: budget: the egress guard stopped the run: {budget.guard.tripped}"
+            raise BudgetExhausted(status) from err
         status = f"stopped: {describe(err)}"
         raise
     finally:

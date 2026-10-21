@@ -45,7 +45,7 @@ strict = true
 plugins = ["pydantic.mypy"]
 
 [[tool.mypy.overrides]]
-module = ["celery.*", "arxiv.*", "vcr.*", "pymupdf4llm.*"]
+module = ["celery.*", "arxiv.*", "vcr.*", "pymupdf4llm.*", "yaml.*"]
 ignore_missing_imports = true
 
 # Celery ships no type hints, so its task decorators are untyped.

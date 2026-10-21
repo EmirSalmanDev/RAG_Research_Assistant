@@ -300,3 +300,24 @@ def test_the_stored_configuration_names_the_variant_suite_and_questions(tmp_path
     assert len(world.search.calls) == 3  # no rephrasings: one search per question
     assert uuid.UUID(world.store.of(result.run_id)[0]["metrics"]["sources"][0]["chunk_id"])
     assert isinstance(QUESTIONS[0], SetQuestion)
+
+
+def test_a_refused_judge_request_is_a_budget_stop_not_an_api_error(tmp_path: Path) -> None:
+    """The guard refuses inside a judge step: the OpenAI client reports a connection
+    error, but the run is stopped by the cap and says so (exit code 5 on the CLI)."""
+    world = World(tmp_path, budget=_budget("1.00"))
+    assert world.budget is not None
+    guard = world.budget.guard
+
+    class RefusedJudge(FakeJudge):
+        def statements(self, question: str, answer: str) -> list[str]:
+            guard.tripped = "spend bound would pass the cap"
+            raise ConnectionError("Connection error.")  # what the client raises after retries
+
+    deps = world.deps()
+    deps.judge = RefusedJudge
+    with pytest.raises(BudgetExhausted, match="egress guard stopped the run"):
+        run_part("answers", _variant("a3-hybrid"), QUESTIONS, deps, SUITE)
+    (run_id,) = world.store.runs
+    assert world.store.runs[run_id]["metrics"]["status"].startswith("stopped: budget")
+    assert world.store.of(run_id) == []

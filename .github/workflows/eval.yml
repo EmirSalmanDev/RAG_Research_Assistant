@@ -1,0 +1,165 @@
+name: Evaluation
+
+# The answer and retrieval evaluation (backend/eval/suite.py, docs/adr/0012). It spends money
+# (OpenAI chat, judge and embeddings requests), so it never runs on every push:
+# - a smoke run (15 generated questions) on pull requests labelled `retrieval`, when the
+#   label is added and on every later push to such a pull request;
+# - the full run (every question), or the smoke run, by hand (Actions -> Evaluation -> Run).
+# Each run is capped by --max-usd, enforced before every request by the egress guard, so a
+# run can never spend more than its cap. The cap bounds the worst case (every request at its
+# output limit, every request byte as a token), about $0.05 a question; a question really
+# costs about $0.004, so a run spends roughly a tenth of its cap. The results are posted as a pull request comment
+# (the metrics tables) and uploaded as an artifact (the runs as JSON, without chunk texts).
+#
+# Repository secrets it needs (Settings -> Secrets and variables -> Actions):
+#   OPENAI_API_KEY      the key the evaluation's requests use
+#   EVAL_CORPUS_URL     where the corpus bundle can be downloaded (a private location; the
+#                       bundle holds paper text): `python -m eval.corpus export` makes it
+#   EVAL_CORPUS_SHA256  the bundle's SHA-256, checked before anything is restored
+# Pull requests from forks get no secrets, so they never run it.
+
+on:
+  pull_request:
+    types: [labeled, opened, reopened, synchronize]
+  workflow_dispatch:
+    inputs:
+      suite:
+        description: "smoke (15 generated questions) or full (every question)"
+        type: choice
+        options: [full, smoke]
+        default: full
+      max_usd:
+        description: "hard spend cap in USD (see `make eval ESTIMATE=1`)"
+        type: string
+        default: "3.50"
+
+permissions:
+  contents: read
+  pull-requests: write # the comment with the metrics table
+
+concurrency:
+  # One evaluation per pull request at a time; a new push cancels the older run (it keeps
+  # what it stored and spent no more than its cap).
+  group: eval-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  eval:
+    # By hand, or on a pull request from this repository that carries the `retrieval` label
+    # (when a label is added, only if it is that label).
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (contains(github.event.pull_request.labels.*.name, 'retrieval') &&
+       github.event.pull_request.head.repo.full_name == github.repository &&
+       (github.event.action != 'labeled' || github.event.label.name == 'retrieval'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      TIKTOKEN_CACHE_DIR: /home/runner/.cache/tiktoken
+      SUITE: ${{ github.event_name == 'workflow_dispatch' && inputs.suite || 'smoke' }}
+      MAX_USD: ${{ github.event_name == 'workflow_dispatch' && inputs.max_usd || '1.00' }}
+      REPORT_DIR: ${{ github.workspace }}/eval-report
+    services:
+      postgres:
+        image: postgres:16 # the same major version as docker-compose.yml (pg_restore)
+        env:
+          POSTGRES_USER: copilot
+          POSTGRES_PASSWORD: copilot
+          POSTGRES_DB: copilot
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U copilot" --health-interval 5s
+          --health-timeout 3s --health-retries 10
+      qdrant:
+        image: qdrant/qdrant:v1.19.1 # the version the snapshot is made with
+        ports: ["6333:6333"]
+    steps:
+      - name: Check the secrets are set
+        working-directory: .
+        env:
+          HAS_KEY: ${{ secrets.OPENAI_API_KEY != '' }}
+          HAS_URL: ${{ secrets.EVAL_CORPUS_URL != '' }}
+          HAS_SHA: ${{ secrets.EVAL_CORPUS_SHA256 != '' }}
+        run: |
+          if [ "$HAS_KEY" != "true" ] || [ "$HAS_URL" != "true" ] || [ "$HAS_SHA" != "true" ]; then
+            echo "::error::OPENAI_API_KEY, EVAL_CORPUS_URL and EVAL_CORPUS_SHA256 must be repository secrets"
+            exit 1
+          fi
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: "0.12.21"
+      - run: uv sync --locked
+      # The tokenizer file is fetched before the evaluation starts: the evaluation process
+      # allows no host but api.openai.com.
+      - uses: actions/cache@v4
+        with:
+          path: /home/runner/.cache/tiktoken
+          key: tiktoken-9b5ad71b2ce5302211f9c61530b329a4922fc6a4
+      - name: Pre-fetch the tokenizer (no-op when cached)
+        run: uv run python -c "from app.ingest.tokens import get_encoding; print(get_encoding().name)"
+      - name: Wait for Qdrant
+        run: |
+          for i in $(seq 1 30); do
+            curl -fsS http://localhost:6333/readyz && exit 0
+            sleep 1
+          done
+          echo "Qdrant did not become ready in 30 s" >&2
+          exit 1
+      - name: Download and verify the corpus bundle
+        env:
+          EVAL_CORPUS_URL: ${{ secrets.EVAL_CORPUS_URL }}
+          EVAL_CORPUS_SHA256: ${{ secrets.EVAL_CORPUS_SHA256 }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/corpus"
+          curl -fsSL "$EVAL_CORPUS_URL" -o "$RUNNER_TEMP/corpus.tar.gz"
+          echo "$EVAL_CORPUS_SHA256  $RUNNER_TEMP/corpus.tar.gz" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/corpus.tar.gz" -C "$RUNNER_TEMP/corpus"
+      - name: Restore the corpus into the service containers
+        run: |
+          uv run alembic upgrade head
+          docker exec -i "${{ job.services.postgres.id }}" \
+            pg_restore -U copilot -d copilot --data-only --disable-triggers \
+            < "$RUNNER_TEMP/corpus/postgres.dump"
+          collection=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['collection'])" "$RUNNER_TEMP/corpus/manifest.json")
+          curl -fsS -X POST "http://localhost:6333/collections/$collection/snapshots/upload?priority=snapshot&wait=true" \
+            -F "snapshot=@$RUNNER_TEMP/corpus/$collection.snapshot"
+      - name: Check the restored corpus against its manifest
+        run: uv run python -m eval.corpus check "$RUNNER_TEMP/corpus/manifest.json"
+      - name: Run the evaluation (paid, capped)
+        id: eval
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          set +e
+          uv run python -m eval.suite "$SUITE" --max-usd "$MAX_USD" --embed --report-dir "$REPORT_DIR"
+          echo "code=$?" >> "$GITHUB_OUTPUT"
+      - name: Upload the runs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-${{ env.SUITE }}-${{ github.run_id }}
+          path: ${{ github.workspace }}/eval-report
+          if-no-files-found: warn
+          retention-days: 30
+      - name: Comment the metrics on the pull request
+        if: always() && github.event_name == 'pull_request' && hashFiles('eval-report/report.md') != ''
+        working-directory: .
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          {
+            echo "### Evaluation (${SUITE}, cap \$${MAX_USD}), commit ${GITHUB_SHA::12}"
+            echo
+            cat eval-report/report.md
+          } > "$RUNNER_TEMP/comment.md"
+          gh pr comment "$PR" --body-file "$RUNNER_TEMP/comment.md"
+      - name: Fail when the evaluation did not complete
+        if: steps.eval.outputs.code != '0'
+        run: |
+          echo "::error::the evaluation stopped with exit code ${{ steps.eval.outputs.code }} (2 setup, 3 question vectors, 4 reranker, 5 spend cap, 6 configuration mismatch)"
+          exit 1

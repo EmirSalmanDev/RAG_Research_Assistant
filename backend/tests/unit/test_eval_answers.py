@@ -483,3 +483,13 @@ def test_no_measured_turns_means_no_estimate() -> None:
         estimate(
             [_question()], {k: v for k, v in STATS.items() if k != "chat-verify"}, get_settings()
         )
+
+
+def test_a_real_run_needs_a_hard_cap(capsys: pytest.CaptureFixture[str]) -> None:
+    """Without --max-usd nothing is sent or stored (eval/budget.py is the cap)."""
+    from eval.answers import main
+
+    with pytest.raises(SystemExit) as stop:
+        main(["--split", "heldout", "--limit", "1"])
+    assert stop.value.code == 2
+    assert "needs --max-usd" in capsys.readouterr().err

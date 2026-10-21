@@ -741,6 +741,12 @@ def _run_answers(
         status = f"stopped: budget: {err}"
         raise
     except BaseException as err:  # also Ctrl-C: record what was done, then stop
+        tripped = deps.budget.guard.tripped if deps.budget is not None else None
+        if tripped is not None:
+            # A refused request surfaces as the OpenAI client's connection error (for
+            # example inside a judge step): it is the cap that stopped the run.
+            status = f"stopped: budget: the egress guard stopped the run: {tripped}"
+            raise BudgetExhausted(status) from err
         status = f"stopped: {describe(err)}"
         raise
     finally:
