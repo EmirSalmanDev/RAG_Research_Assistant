@@ -11,7 +11,14 @@ from qdrant_client import models as m
 from qdrant_client.http import models as rest
 
 from app.ingest.index import DENSE_VECTOR, SPARSE_VECTOR
-from app.rag.search import QUERY_FEATURE, SearchFilters, SearchMode, build_filter, search
+from app.rag.search import (
+    QUERY_FEATURE,
+    SearchFilters,
+    SearchMode,
+    build_filter,
+    complete_ties,
+    search,
+)
 
 CHUNK = uuid.UUID("0214d8ce-b010-59e2-b4d6-06b4e659c8d5")
 PAYLOAD = {
@@ -93,14 +100,14 @@ def test_hybrid_is_one_call_with_two_filtered_prefetches_fused_by_rrf() -> None:
     # The same filter on BOTH prefetches: BM25 cannot bring back a filtered-out chunk.
     assert dense_pf.filter == sparse_pf.filter == build_filter(FILTERS)
     assert kw["query"] == m.RrfQuery(rrf=m.Rrf(k=60))
-    assert kw["limit"] == 10
+    assert kw["limit"] == 11  # one more than needed, to see a tie at the cut
     assert dense.calls == [(["what is low-rank adaptation"], QUERY_FEATURE)]
 
 
 def test_dense_mode_queries_the_dense_vector_only() -> None:
     client, dense, _ = _search("dense")
     _, kw = client.calls[0]
-    assert (kw["using"], kw["query"], kw["limit"]) == (DENSE_VECTOR, [0.1, 0.2, 0.3], 10)
+    assert (kw["using"], kw["query"], kw["limit"]) == (DENSE_VECTOR, [0.1, 0.2, 0.3], 11)
     assert kw["query_filter"] == build_filter(FILTERS)
     assert "prefetch" not in kw
     assert len(dense.calls) == 1
@@ -139,11 +146,21 @@ def test_stopword_only_question_in_hybrid_mode_falls_back_to_dense() -> None:
 
 @pytest.mark.parametrize(
     ("mode", "query", "message"),
-    [("fuzzy", "a question", "unknown search mode"), ("dense", "   ", "empty question")],
+    [
+        ("fuzzy", "a question", "unknown search mode"),
+        ("dense", "   ", "empty question"),
+        ("dense", "a question", "limit must be at least 1"),
+    ],
 )
 def test_bad_input_fails_before_any_call(mode: Any, query: str, message: str) -> None:
+    limit = 0 if "limit" in message else 10
+    client, dense = FakeClient(), FakeDense()
     with pytest.raises(ValueError, match=message):
-        _search(mode, query=query)
+        search(
+            query, None, mode=mode, limit=limit, prefetch_limit=50, rrf_k=60, dense=dense,
+            sparse=FakeSparse(), client=cast(QdrantClient, client), collection="chunks_unit",
+        )  # fmt: skip
+    assert client.calls == [] and dense.calls == []
 
 
 def test_no_filters_means_no_filter() -> None:
@@ -177,3 +194,84 @@ def test_an_open_ended_date_range_sets_one_bound() -> None:
     assert flt is not None and flt.must == [
         m.FieldCondition(key="published_at", range=m.DatetimeRange(gte=start, lte=None))
     ]
+
+
+# --- ties: a fixed order, also at the cut ------------------------------------------------------
+
+
+def _uuid(n: int) -> uuid.UUID:
+    return uuid.UUID(int=n)
+
+
+class PoolClient:
+    """Answers query_points from a fixed pool: sorted by score, but equal scores in the
+    order given (Qdrant promises no order for them). Records each requested limit."""
+
+    def __init__(self, pool: list[tuple[int, float]]) -> None:
+        self.pool = pool
+        self.limits: list[int] = []
+
+    def query_points(self, collection_name: str, **kwargs: Any) -> rest.QueryResponse:
+        self.limits.append(kwargs["limit"])
+        ranked = sorted(self.pool, key=lambda p: -p[1])  # stable: ties keep the pool's order
+        points = [
+            m.ScoredPoint(id=str(_uuid(n)), version=0, score=score, payload=PAYLOAD)
+            for n, score in ranked[: kwargs["limit"]]
+        ]
+        return rest.QueryResponse(points=points)
+
+
+def _pool_search(pool: list[tuple[int, float]], limit: int, mode: SearchMode = "hybrid") -> Any:
+    client, dense = PoolClient(pool), FakeDense()
+    hits = search(
+        "a question", None, mode=mode, limit=limit, prefetch_limit=50, rrf_k=60, dense=dense,
+        sparse=FakeSparse(), client=cast(QdrantClient, client), collection="chunks_unit",
+    )  # fmt: skip
+    return [h.chunk_id for h in hits], client.limits, dense.calls
+
+
+@pytest.mark.parametrize("mode", ["hybrid", "dense", "bm25"])
+def test_equal_scores_come_out_in_chunk_id_order_whatever_qdrant_returns(mode: Any) -> None:
+    """An exact RRF tie (dense #1 + BM25 #2 = dense #2 + BM25 #1), returned in either order."""
+    tie = 1 / 61 + 1 / 62
+    forward = [(1, 0.5), (5, tie), (3, tie), (9, 0.01)]
+    backward = [(1, 0.5), (3, tie), (5, tie), (9, 0.01)]
+    out_forward, _, _ = _pool_search(forward, 4, mode)
+    out_backward, _, _ = _pool_search(backward, 4, mode)
+    assert out_forward == out_backward == [_uuid(1), _uuid(3), _uuid(5), _uuid(9)]
+
+
+def test_a_tie_at_the_cut_is_settled_by_the_same_rule() -> None:
+    """Points 7 and 2 tie for the last place; Qdrant's order alone would keep 7. The
+    extra point shows the tie, a second fetch finds the end of the tied group, and the
+    smaller id wins."""
+    pool = [(1, 0.9), (7, 0.5), (2, 0.5), (4, 0.1)]
+    out, limits, dense_calls = _pool_search(pool, 2)
+    assert out == [_uuid(1), _uuid(2)]
+    assert limits == [3, 6]  # 3: the 3rd point ties the 2nd; 6: only 4 points exist
+    assert len(dense_calls) == 1  # the question is embedded once for both fetches
+
+
+def test_a_long_tied_group_is_fetched_until_it_ends() -> None:
+    pool = [(1, 0.9), *[(n, 0.5) for n in (80, 60, 50, 30, 20, 70, 40)], (99, 0.1)]
+    out, limits, _ = _pool_search(pool, 2)
+    assert out == [_uuid(1), _uuid(20)]  # the smallest id of the seven tied points
+    assert limits == [3, 6, 12]  # 6 points all tie at the end; 12 > the 9 in the pool
+
+
+def test_without_a_tie_at_the_cut_one_request_is_enough() -> None:
+    pool = [(1, 0.9), (2, 0.8), (3, 0.7), (4, 0.6)]
+    out, limits, _ = _pool_search(pool, 2)
+    assert (out, limits) == ([_uuid(1), _uuid(2)], [3])
+
+
+def test_complete_ties_stops_when_the_pool_runs_out() -> None:
+    points = [m.ScoredPoint(id=str(_uuid(n)), version=0, score=1.0) for n in (3, 1, 2)]
+    sizes: list[int] = []
+
+    def fetch(size: int) -> list[m.ScoredPoint]:
+        sizes.append(size)
+        return points[:size]
+
+    assert [str(p.id) for p in complete_ties(fetch, 5)] == [str(_uuid(n)) for n in (1, 2, 3)]
+    assert sizes == [6]

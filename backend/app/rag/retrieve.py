@@ -23,7 +23,9 @@ class RetrievalConfig:
     candidates: int  # results from search, i.e. what the reranker rescores
     rerank: bool  # rerank stage on/off
     rerank_batch_size: int
-    max_chunks_per_paper: int  # diversity cap; 0 = off
+    max_chunks_per_paper: int  # diversity cap on a paper's own text; 0 = off
+    # generated analysis chunks per paper, counted apart; 0 = none, < 0 = no separate count
+    max_analysis_chunks_per_paper: int
 
     @classmethod
     def from_settings(cls) -> "RetrievalConfig":
@@ -36,6 +38,7 @@ class RetrievalConfig:
             rerank=s.rerank_enabled,
             rerank_batch_size=s.rerank_batch_size,
             max_chunks_per_paper=s.max_chunks_per_paper,
+            max_analysis_chunks_per_paper=s.max_analysis_chunks_per_paper,
         )
 
 
@@ -55,7 +58,8 @@ def retrieve(
 
     1. search: `candidates` chunks (at least `limit`) in the configured mode;
     2. rerank (if on): the cross-encoder reorders them;
-    3. cap (if on): at most `max_chunks_per_paper` chunks per paper;
+    3. cap: at most `max_chunks_per_paper` chunks of each paper's own text (if on) and
+       at most `max_analysis_chunks_per_paper` generated analysis chunks per paper;
     4. the first `limit` are returned.
 
     Encoders default to the process-wide ones, and only for the stages that run: the
@@ -80,5 +84,9 @@ def retrieve(
     if config.rerank:
         encoder = cross_encoder or get_cross_encoder()
         hits = rerank(query, hits, encoder, batch_size=config.rerank_batch_size)
-    hits = cap_per_paper(hits, config.max_chunks_per_paper)
+    hits = cap_per_paper(
+        hits,
+        config.max_chunks_per_paper,
+        max_analysis_per_paper=config.max_analysis_chunks_per_paper,
+    )
     return hits[:limit]

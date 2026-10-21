@@ -28,13 +28,15 @@ from app.rag.search import SearchHit
 MODEL = "BAAI/bge-reranker-base"
 
 
-def _hit(name: str, arxiv_id: str = "2601.00001", score: float = 0.0) -> SearchHit:
+def _hit(
+    name: str, arxiv_id: str = "2601.00001", score: float = 0.0, chunk_type: str = "section"
+) -> SearchHit:
     return SearchHit(
         chunk_id=uuid.uuid5(uuid.NAMESPACE_URL, name),
         arxiv_id=arxiv_id,
         title=f"Invented {arxiv_id}",
         section_path="2 Method",
-        chunk_type="section",
+        chunk_type=chunk_type,
         published_at="2026-01-02T00:00:00+00:00",
         text=f"text of {name}",
         score=score,
@@ -100,13 +102,64 @@ def test_cap_keeps_the_best_chunks_of_each_paper_in_order() -> None:
         _hit("a1", "A"), _hit("a2", "A"), _hit("b1", "B"), _hit("a3", "A"), _hit("a4", "A"),
         _hit("c1", "C"),
     )  # fmt: skip
-    assert cap_per_paper([a1, a2, b1, a3, a4, c1], 3) == [a1, a2, b1, a3, c1]
-    assert cap_per_paper([a1, a2, b1, a3], 1) == [a1, b1]
+    for analysis in (1, -1):  # no analysis chunk here: both rules give the same list
+        assert cap_per_paper([a1, a2, b1, a3, a4, c1], 3, max_analysis_per_paper=analysis) == [
+            a1, a2, b1, a3, c1,
+        ]  # fmt: skip
+        assert cap_per_paper([a1, a2, b1, a3], 1, max_analysis_per_paper=analysis) == [a1, b1]
 
 
 def test_cap_zero_switches_it_off() -> None:
     hits = [_hit(str(i), "A") for i in range(5)]
-    assert cap_per_paper(hits, 0) == hits
+    assert cap_per_paper(hits, 0, max_analysis_per_paper=1) == hits
+
+
+def _analysis(name: str, arxiv_id: str = "A") -> SearchHit:
+    return _hit(name, arxiv_id, chunk_type="analysis")
+
+
+def test_analysis_chunks_never_take_a_slot_of_the_papers_own_text() -> None:
+    x1, x2, s1, s2, s3, s4 = (
+        _analysis("x1"), _analysis("x2"), _hit("s1", "A"), _hit("s2", "A"), _hit("s3", "A"),
+        _hit("s4", "A"),
+    )  # fmt: skip
+    # Three sections of A survive, as without analysis chunks, plus A's best analysis chunk.
+    assert cap_per_paper([x1, x2, s1, s2, s3, s4], 3, max_analysis_per_paper=1) == [
+        x1, s1, s2, s3,
+    ]  # fmt: skip
+
+
+def test_each_paper_keeps_its_own_best_analysis_chunks_in_order() -> None:
+    xa1, sb1, xa2, xb1, xb2, sa1 = (
+        _analysis("xa1", "A"), _hit("sb1", "B"), _analysis("xa2", "A"), _analysis("xb1", "B"),
+        _analysis("xb2", "B"), _hit("sa1", "A"),
+    )  # fmt: skip
+    hits = [xa1, sb1, xa2, xb1, xb2, sa1]
+    assert cap_per_paper(hits, 3, max_analysis_per_paper=1) == [xa1, sb1, xb1, sa1]
+    assert cap_per_paper(hits, 3, max_analysis_per_paper=2) == [xa1, sb1, xa2, xb1, xb2, sa1]
+
+
+def test_an_analysis_limit_of_zero_leaves_them_out() -> None:
+    x1, s1, x2 = _analysis("x1"), _hit("s1", "A"), _analysis("x2", "B")
+    assert cap_per_paper([x1, s1, x2], 3, max_analysis_per_paper=0) == [s1]
+    assert cap_per_paper([x1, s1, x2], 0, max_analysis_per_paper=0) == [s1]
+
+
+def test_a_negative_analysis_limit_counts_them_like_any_chunk() -> None:
+    """The behaviour before the separate count: analysis chunks fill the paper's cap."""
+    x1, x2, s1, s2 = _analysis("x1"), _analysis("x2"), _hit("s1", "A"), _hit("s2", "A")
+    assert cap_per_paper([x1, x2, s1, s2], 3, max_analysis_per_paper=-1) == [x1, x2, s1]
+    assert cap_per_paper([x1, x2, s1, s2], 0, max_analysis_per_paper=-1) == [x1, x2, s1, s2]
+
+
+def test_the_analysis_limit_holds_when_the_cap_is_off() -> None:
+    x1, x2, s1, s2, s3, s4 = (
+        _analysis("x1"), _analysis("x2"), _hit("s1", "A"), _hit("s2", "A"), _hit("s3", "A"),
+        _hit("s4", "A"),
+    )  # fmt: skip
+    assert cap_per_paper([s1, x1, s2, x2, s3, s4], 0, max_analysis_per_paper=1) == [
+        s1, x1, s2, s3, s4,
+    ]  # fmt: skip
 
 
 # --- loading: offline only --------------------------------------------------------------------

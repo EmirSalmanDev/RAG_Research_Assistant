@@ -72,6 +72,10 @@ class Settings(BaseSettings):
     reranker_model: str = "BAAI/bge-reranker-base"  # a FastEmbed TextCrossEncoder model
     rerank_batch_size: int = 16  # (question, chunk) pairs per model run; bounds memory
     max_chunks_per_paper: int = 3  # diversity cap after reranking; 0 switches it off
+    # Generated analysis chunks (a model's summary, not the paper's words) are capped on
+    # their own and never take one of the paper's slots above (docs/adr/0012): at most
+    # this many per paper. 0 leaves them out; -1 counts them like any chunk (as before).
+    max_analysis_chunks_per_paper: int = 1
     # Where the reranker's files are. They are never downloaded at runtime: only
     # `make fetch-reranker` downloads them (a deliberate step, see app/rag/rerank.py).
     fastembed_cache_dir: str = "~/.cache/fastembed"

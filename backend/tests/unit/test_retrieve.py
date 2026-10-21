@@ -14,14 +14,14 @@ from app.rag.search import SearchHit
 
 CONFIG = RetrievalConfig(
     mode="hybrid", prefetch_limit=50, rrf_k=60, candidates=6, rerank=True,
-    rerank_batch_size=16, max_chunks_per_paper=2,
+    rerank_batch_size=16, max_chunks_per_paper=2, max_analysis_chunks_per_paper=1,
 )  # fmt: skip
 
 
-def _hit(name: str, arxiv_id: str) -> SearchHit:
+def _hit(name: str, arxiv_id: str, chunk_type: str = "section") -> SearchHit:
     return SearchHit(
         chunk_id=uuid.uuid5(uuid.NAMESPACE_URL, name), arxiv_id=arxiv_id, title="T",
-        section_path=None, chunk_type="section", published_at="2026-01-02T00:00:00+00:00",
+        section_path=None, chunk_type=chunk_type, published_at="2026-01-02T00:00:00+00:00",
         text=name, score=0.0,
     )  # fmt: skip
 
@@ -133,8 +133,32 @@ def test_config_comes_from_settings(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("SEARCH_MODE", "bm25")
     monkeypatch.setenv("RERANK_ENABLED", "false")
     monkeypatch.setenv("MAX_CHUNKS_PER_PAPER", "0")
+    monkeypatch.setenv("MAX_ANALYSIS_CHUNKS_PER_PAPER", "-1")
     get_settings.cache_clear()
     config = RetrievalConfig.from_settings()
     assert (config.mode, config.rerank, config.max_chunks_per_paper) == ("bm25", False, 0)
+    assert config.max_analysis_chunks_per_paper == -1
     assert (config.prefetch_limit, config.rrf_k, config.candidates) == (50, 60, 50)
     get_settings.cache_clear()
+
+
+def test_the_default_keeps_one_analysis_chunk_per_paper() -> None:
+    get_settings.cache_clear()
+    assert RetrievalConfig.from_settings().max_analysis_chunks_per_paper == 1
+
+
+@pytest.mark.parametrize(
+    ("max_analysis", "expected"),
+    [
+        (1, ["x1", "a1", "a2", "b1", "c1"]),  # one analysis chunk, outside the cap of 2
+        (0, ["a1", "a2", "b1", "c1"]),  # analysis chunks left out
+        (-1, ["x1", "x2", "b1", "c1"]),  # counted like any chunk: they fill A's 2 slots
+    ],
+)
+def test_the_analysis_limit_reaches_the_cap(
+    monkeypatch: pytest.MonkeyPatch, max_analysis: int, expected: list[str]
+) -> None:
+    hits = [_hit("x1", "A", "analysis"), _hit("x2", "A", "analysis"), *SEARCH_HITS]
+    monkeypatch.setattr(retrieve_module, "search", lambda query, filters, **kw: list(hits))
+    config = replace(CONFIG, rerank=False, max_analysis_chunks_per_paper=max_analysis)
+    assert _names(_retrieve(config)) == expected

@@ -57,12 +57,14 @@ link. Optional parameters: `limit` (1-50, default 10), `category` and `arxiv_id`
 
 1. **search**: one Qdrant query in `dense`, `bm25` or `hybrid` mode. Hybrid takes 50
    candidates from each vector and fuses them with Reciprocal Rank Fusion; filters run
-   inside Qdrant.
+   inside Qdrant. Equal scores are ordered by chunk id, so the same question always gets
+   the same list (`docs/adr/0012`).
 2. **rerank** (only with `rerank=true`, or `RERANK_ENABLED=true`): a cross-encoder
    (`BAAI/bge-reranker-base`) rescores the candidates. On a laptop CPU this takes about
    20 s for 50 candidates, which is why it is off by default. The model is only read from
    the local cache (`make fetch-reranker`), never downloaded by the app.
-3. **cap**: at most 3 chunks per paper.
+3. **cap**: at most 3 chunks of a paper's own text (abstract, sections) per paper, plus
+   at most 1 generated analysis chunk, which never takes one of those 3 slots.
 
 The dense and hybrid modes embed the question with OpenAI (one small paid request per
 search, logged in `llm_usage`).

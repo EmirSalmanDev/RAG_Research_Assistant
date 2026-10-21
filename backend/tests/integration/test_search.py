@@ -157,3 +157,61 @@ def test_filters_run_inside_qdrant(
 ) -> None:
     hits = _search(qdrant, collection, "dense", "q", filters=filters)
     assert set(_names(hits)) == expected
+
+
+# --- an exact RRF tie in a real Qdrant (docs/adr/0012) ------------------------------------------
+
+# Two chunks that rank in opposite orders: "near" is closer in the dense space, "words"
+# repeats the question's words more often, so BM25 puts it first. RRF then gives both
+# 1/60 + 1/61: an exact tie, which Qdrant may return in either order.
+TIE = {
+    "near": ([1.0, 0.0, 0.0, 0.0], "Experts route each token once."),
+    "words": ([0.6, 0.8, 0.0, 0.0], "Experts route token after token: token routing to experts."),
+}
+TIE_IDS = {name: uuid.uuid5(uuid.NAMESPACE_URL, f"tie-{name}") for name in TIE}
+
+
+@pytest.fixture
+def tie_collection(qdrant: QdrantClient, scratch_collection: str) -> str:
+    ensure_collection(qdrant, scratch_collection, DIM)
+    sparse = get_sparse_embedder().embed([text for _, text in TIE.values()])
+    qdrant.upsert(
+        scratch_collection,
+        points=[
+            m.PointStruct(
+                id=str(TIE_IDS[name]),
+                vector={DENSE_VECTOR: vector, SPARSE_VECTOR: sv},
+                payload={
+                    "arxiv_id": "2601.00009",
+                    "chunk_type": "section",
+                    "section_path": "2 Method",
+                    "title": "Invented Paper",
+                    "published_at": "2026-01-10T00:00:00+00:00",
+                    "categories": ["cs.CL"],
+                    "text": text,
+                },
+            )
+            for (name, (vector, text)), sv in zip(TIE.items(), sparse, strict=True)
+        ],
+        wait=True,
+    )
+    return scratch_collection
+
+
+def test_an_exact_rrf_tie_always_comes_back_in_chunk_id_order(
+    qdrant: QdrantClient, tie_collection: str
+) -> None:
+    query = "token routing experts"
+    dense = _search(qdrant, tie_collection, "dense", query, [1.0, 0.0, 0.0, 0.0])
+    bm25 = _search(qdrant, tie_collection, "bm25", query)
+    by_id = {v: k for k, v in TIE_IDS.items()}
+    # The premise: the two lists disagree, so the fused scores are exactly equal.
+    assert [by_id[h.chunk_id] for h in dense] == ["near", "words"]
+    assert [by_id[h.chunk_id] for h in bm25] == ["words", "near"]
+    runs = [
+        _search(qdrant, tie_collection, "hybrid", query, [1.0, 0.0, 0.0, 0.0]) for _ in range(10)
+    ]
+    first = runs[0]
+    assert first[0].score == first[1].score == pytest.approx(1 / 60 + 1 / 61)
+    for hits in runs:
+        assert [h.chunk_id for h in hits] == sorted(TIE_IDS.values())

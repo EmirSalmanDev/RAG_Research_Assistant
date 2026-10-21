@@ -171,7 +171,8 @@ rather than a tracing SDK.
   deterministically (first appearance), but it inherits the order Qdrant returned. The
   retrieval evaluation is therefore not exactly repeatable for questions with tied top
   chunks. A deterministic tie-break in the search stage is planned as a separate change,
-  with the rule chosen in advance and a before/after retrieval evaluation.
+  with the rule chosen in advance and a before/after retrieval evaluation. (Done: equal
+  scores are now ordered by chunk id, also at the cut; docs/adr/0012.)
 - `/chat` needs migration 0003 applied (`make migrate`).
 - Changing a prompt means a new file and version. Comparisons across versions should use
   the version recorded on each message.
