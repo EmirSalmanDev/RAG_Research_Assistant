@@ -49,3 +49,4 @@ def test_response_relevancy_is_the_mean_cosine_unless_noncommittal() -> None:
     assert response_relevancy(question, generated, noncommittal=False) == pytest.approx(0.5)
     assert response_relevancy(question, generated, noncommittal=True) == 0.0
     assert response_relevancy(question, [], noncommittal=False) is None
+    assert response_relevancy(question, [], noncommittal=True) == 0.0  # evasive: still 0

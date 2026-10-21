@@ -20,6 +20,7 @@ from eval.make_testset import (
     PROMPTS,
     Candidate,
     GeneratedQuestion,
+    MakeTestsetError,
     Seed,
     SeedChunk,
     build_messages,
@@ -51,31 +52,44 @@ def _chunk(name: str, arxiv_id: str, *, kind: str = "section", tokens: int = 300
 
 
 PAPERS = ("2601.00001", "2601.00002", "2601.00003")
+GOLDEN_PAPER = "2601.00009"  # a paper a golden question refers to: never a seed
 POOL = [
-    *[_chunk(f"{p}-s{i}", p) for p in PAPERS for i in range(6)],
-    *[_chunk(f"{p}-abs", p, kind="abstract") for p in PAPERS],
+    *[_chunk(f"{p}-s{i}", p) for p in (*PAPERS, GOLDEN_PAPER) for i in range(6)],
+    *[_chunk(f"{p}-abs", p, kind="abstract") for p in (*PAPERS, GOLDEN_PAPER)],
     _chunk("short", PAPERS[0], tokens=MIN_SEED_TOKENS - 1),
     _chunk("ack", PAPERS[1], section="7 Acknowledgements"),
     _chunk("refs", PAPERS[2], section="References"),
 ]
-GOLDEN_REF = POOL[0].chunk_id  # a golden question's reference chunk: never a seed
-COUNTS: dict[Any, int] = {"fact": 6, "compare": 3, "filter": 2, "unanswerable": 3}
+COUNTS: dict[Any, int] = {"fact": 6, "compare": 3, "filter": 3, "unanswerable": 3}
 
 
 def _seeds(seed: int = 7, counts: dict[Any, int] | None = None) -> list[Seed]:
-    return pick_seeds(POOL, counts or COUNTS, seed=seed, exclude={GOLDEN_REF})
+    return pick_seeds(POOL, counts or COUNTS, seed=seed, exclude_papers={GOLDEN_PAPER})
 
 
 # --- seeds ----------------------------------------------------------------------------------------
 
 
-def test_short_chunks_reference_lists_and_golden_evidence_are_never_seeds() -> None:
-    eligible = {c.chunk_id for c in eligible_sections(POOL, {GOLDEN_REF})}
-    names = {c.chunk_id: c.text for c in POOL}
-    assert GOLDEN_REF not in eligible
+def test_short_chunks_reference_lists_and_golden_papers_are_never_seeds() -> None:
+    eligible = eligible_sections(POOL, {GOLDEN_PAPER})
+    assert GOLDEN_PAPER not in {c.arxiv_id for c in eligible}
     excluded = {"Invented text of short.", "Invented text of ack.", "Invented text of refs."}
-    assert not excluded & {names[i] for i in eligible}
-    assert len(eligible) == 3 * 6 - 1
+    assert not excluded & {c.text for c in eligible}
+    assert len(eligible) == 3 * 6
+
+
+def test_no_chunk_of_a_golden_paper_seeds_any_type_not_even_its_abstract() -> None:
+    every: dict[Any, int] = {"fact": 50, "compare": 20, "filter": 20, "unanswerable": 50}
+    for seed in range(20):
+        used = {
+            c.arxiv_id
+            for s in pick_seeds(POOL, every, seed=seed, exclude_papers={GOLDEN_PAPER})
+            for c in s.chunks
+        }
+        assert GOLDEN_PAPER not in used  # fmt: skip
+    filters = [s for s in pick_seeds(POOL, every, seed=1, exclude_papers={GOLDEN_PAPER})
+               if s.type == "filter"]  # fmt: skip
+    assert sorted(s.chunks[0].arxiv_id for s in filters) == sorted(PAPERS)  # all three, no more
 
 
 def test_seeds_are_the_same_for_the_same_random_seed_and_differ_for_another() -> None:
@@ -107,7 +121,7 @@ def test_fact_seeds_take_the_papers_in_turns() -> None:
 def test_a_small_pool_gives_fewer_seeds_than_asked() -> None:
     pool = [_chunk("only-1", PAPERS[0]), _chunk("only-2", PAPERS[0])]
     seeds = pick_seeds(pool, {"fact": 5, "compare": 2, "filter": 1, "unanswerable": 1},
-                       seed=1, exclude=set())  # fmt: skip
+                       seed=1, exclude_papers=set())  # fmt: skip
     assert Counter(s.type for s in seeds) == Counter({"fact": 2})  # one paper: no comparison
 
 
@@ -250,11 +264,13 @@ def _texts(ids: Any) -> dict[uuid.UUID, tuple[str, str | None, str]]:
     return {i: ("Invented Paper", "3 Method", f"seed text for {i}") for i in ids}
 
 
-def _review(files: tuple[Path, Path, Path], script: Script) -> Counter[str]:
-    golden, candidates, generated = files
+def _review(
+    files: tuple[Path, Path, Path], script: Script, candidates: Path | None = None, **kw: Any
+) -> Counter[str]:
+    golden, default_candidates, generated = files
     return review(
-        candidates, generated, [GOLDEN_QUESTION], _texts, ask=script.ask, show=script.show,
-        now=lambda: datetime(2026, 10, 21, tzinfo=UTC),
+        candidates or default_candidates, generated, [GOLDEN_QUESTION], _texts,
+        ask=script.ask, show=script.show, now=lambda: datetime(2026, 10, 21, tzinfo=UTC), **kw,
     )  # fmt: skip
 
 
@@ -305,3 +321,77 @@ def test_similarity_and_status_table() -> None:
     assert similarity("alpha beta", "gamma delta") == 0.0
     table = status_table([_cand("c", "fact", "q?"), _cand("d", "fact", "r?", status="accepted")])
     assert "| fact | 1 | 1 | 0 | 0 |" in table and "| compare | 0 | 0 | 0 | 0 |" in table
+
+
+def test_review_shows_the_whole_seed_and_same_paper_passages_for_unanswerable(
+    files: tuple[Path, Path, Path],
+) -> None:
+    long_text = "A long invented seed sentence. " * 80  # about 2,500 characters
+    asked: list[str] = []
+
+    def related(candidate: Candidate) -> list[tuple[str, str | None, str]]:
+        asked.append(candidate.id)
+        return [("Invented Paper", "5 Results", "a same-paper passage")]
+
+    script = Script("s", "s", "s", "q")
+    golden, candidates, generated = files
+    review(
+        candidates, generated, [GOLDEN_QUESTION],
+        lambda ids: {i: ("Invented Paper", "3 Method", long_text) for i in ids},
+        ask=script.ask, show=script.show, related=related,
+    )  # fmt: skip
+    assert any(long_text in line for line in script.shown)  # never cut
+    assert asked == ["cand-3"]  # only for the unanswerable candidate
+    assert any("a same-paper passage" in line for line in script.shown)
+
+
+def test_a_second_candidates_file_keeps_the_first_files_questions_and_numbers_on(
+    files: tuple[Path, Path, Path], tmp_path: Path
+) -> None:
+    _review(files, Script("a", "r", "", "a", "q"))  # gen-001 and gen-002 from the first file
+    second = tmp_path / "second.jsonl"
+    save_candidates(second, [_cand("cand-9", "fact", "A question from a second run?")])
+    _review(files, Script("a"), candidates=second)
+    golden, _, generated = files
+    items = [(q.item.id, q.item.question) for q in load_question_set(golden, generated)][1:]
+    assert items == [
+        ("gen-001", "Which optimiser does the invented paper use?"),
+        ("gen-002", "What did the invented paper cost to train?"),
+        ("gen-003", "A question from a second run?"),
+    ]
+
+
+def test_a_question_already_generated_elsewhere_cannot_be_accepted(
+    files: tuple[Path, Path, Path], tmp_path: Path
+) -> None:
+    _review(files, Script("a", "q"))
+    second = tmp_path / "second.jsonl"
+    save_candidates(
+        second, [_cand("cand-9", "fact", "which OPTIMISER does the invented paper use?")]
+    )
+    script = Script("a", "s")
+    assert _review(files, script, candidates=second) == Counter({"skipped": 1})
+    assert any("same question is already in the set" in line for line in script.shown)
+    assert any("word overlap with a generated question" in line for line in script.shown)
+
+
+def test_a_hand_edited_generated_file_is_refused_not_overwritten(
+    files: tuple[Path, Path, Path],
+) -> None:
+    _review(files, Script("a", "q"))
+    golden, candidates, generated = files
+    edited = generated.read_text().replace("Which optimiser", "Which learning rate")
+    generated.write_text(edited)
+    before = candidates.read_bytes()
+    with pytest.raises(MakeTestsetError, match="gen-001"):
+        _review(files, Script("a"))
+    assert generated.read_text() == edited and candidates.read_bytes() == before
+
+
+def test_a_half_written_candidates_line_is_a_clear_error(tmp_path: Path) -> None:
+    path = tmp_path / "candidates.jsonl"
+    save_candidates(path, [_cand("cand-1", "fact", "A whole line?")])
+    with path.open("a") as f:
+        f.write('{"id": "cand-2", "type": "fa')  # an interrupted append
+    with pytest.raises(MakeTestsetError, match="line 2 .*delete that line"):
+        load_candidates(path)

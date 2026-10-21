@@ -30,9 +30,9 @@ from dataclasses import dataclass, field
 
 from pydantic import BaseModel
 
-from app.llm.client import ChatClient, ChatMessage, ChatUsage
+from app.llm.client import ChatClient, ChatMessage, ChatResponseError, ChatUsage
 from app.rag.citations import Source, format_sources
-from app.rag.prompts import escape_block, load_prompt
+from app.rag.prompts import EVAL_TAGS, escape_block, load_prompt
 
 PROMPTS = {
     "statements": "judge_statements_v1",
@@ -119,15 +119,19 @@ class CitationItem:
     sentence_cites: tuple[int, ...]
 
 
+def _escape(text: str) -> str:
+    """Untrusted text for a judge prompt: our block tags, including <answer> and
+    <reference>, are neutralised."""
+    return escape_block(text, EVAL_TAGS)
+
+
 def _check_keys(got: Sequence[int], asked: Sequence[int], step: str, usage: ChatUsage) -> None:
     if sorted(got) != sorted(asked):
         raise JudgeError(f"{step}: verdicts for {sorted(got)}, asked for {sorted(asked)}", usage)
 
 
 def _sentence_blocks(items: Sequence[tuple[int, str]]) -> str:
-    blocks = "\n".join(
-        f'<sentence index="{i}">\n{escape_block(text)}\n</sentence>' for i, text in items
-    )
+    blocks = "\n".join(f'<sentence index="{i}">\n{_escape(text)}\n</sentence>' for i, text in items)
     return f"<sentences>\n{blocks}\n</sentences>"
 
 
@@ -153,17 +157,22 @@ class Judge:
             {"role": "system", "content": load_prompt(PROMPTS[step]).text},
             {"role": "user", "content": user},
         ]
-        out, usage = self.client.parse(
-            messages, schema, feature=f"{FEATURE}-{step}", max_tokens=self.max_tokens
-        )
+        try:
+            out, usage = self.client.parse(
+                messages, schema, feature=f"{FEATURE}-{step}", max_tokens=self.max_tokens
+            )
+        except ChatResponseError as err:  # billed (and logged) but unusable: still counted
+            if err.usage is not None:
+                self.spent.append(err.usage)
+            raise
         self.spent.append(usage)
         return out, usage
 
     def statements(self, question: str, answer: str) -> list[str]:
         """The answer's claims as standalone statements (empty for an answer without any)."""
         user = (
-            f"<question>\n{escape_block(question)}\n</question>\n\n"
-            f"<answer>\n{escape_block(answer)}\n</answer>"
+            f"<question>\n{_escape(question)}\n</question>\n\n"
+            f"<answer>\n{_escape(answer)}\n</answer>"
         )
         out, _ = self._ask("statements", user, StatementsOutput)
         return [s.strip() for s in out.statements if s.strip()]
@@ -173,7 +182,7 @@ class Judge:
         if not statements:
             return []
         items = list(enumerate(statements))
-        user = f"{format_sources(sources)}\n\n{_sentence_blocks(items)}"
+        user = f"{format_sources(sources, EVAL_TAGS)}\n\n{_sentence_blocks(items)}"
         out, usage = self._ask("faithfulness", user, SupportOutput)
         _check_keys([v.index for v in out.verdicts], [i for i, _ in items], "faithfulness", usage)
         by_index = {v.index: v for v in out.verdicts}
@@ -182,7 +191,7 @@ class Judge:
     def relevancy(self, answer: str) -> tuple[list[str], bool]:
         """Questions the answer would answer, and whether it is noncommittal."""
         n = self.relevancy_questions
-        user = f"Number of questions: {n}\n\n<answer>\n{escape_block(answer)}\n</answer>"
+        user = f"Number of questions: {n}\n\n<answer>\n{_escape(answer)}\n</answer>"
         out, _ = self._ask("relevancy", user, RelevancyOutput)
         return [q.strip() for q in out.questions if q.strip()][:n], out.noncommittal
 
@@ -193,8 +202,9 @@ class Judge:
         if not sources:
             return []
         user = (
-            f"<question>\n{escape_block(question)}\n</question>\n\n"
-            f"<reference>\n{escape_block(reference)}\n</reference>\n\n{format_sources(sources)}"
+            f"<question>\n{_escape(question)}\n</question>\n\n"
+            f"<reference>\n{_escape(reference)}\n</reference>\n\n"
+            f"{format_sources(sources, EVAL_TAGS)}"
         )
         out, usage = self._ask("context_precision", user, UsefulOutput)
         _check_keys([v.n for v in out.verdicts], [s.n for s in sources], "precision", usage)
@@ -211,8 +221,8 @@ class Judge:
         if not sources:  # nothing was retrieved, so nothing can be attributed
             return [Verdict(i, False, "no sources were retrieved") for i, _ in items]
         user = (
-            f"<question>\n{escape_block(question)}\n</question>\n\n"
-            f"{format_sources(sources)}\n\n{_sentence_blocks(items)}"
+            f"<question>\n{_escape(question)}\n</question>\n\n"
+            f"{format_sources(sources, EVAL_TAGS)}\n\n{_sentence_blocks(items)}"
         )
         out, usage = self._ask("context_recall", user, AttributedOutput)
         _check_keys([v.index for v in out.verdicts], [i for i, _ in items], "recall", usage)
@@ -233,10 +243,10 @@ class Judge:
         blocks = "\n".join(
             f'<sentence index="{k}" source="{it.source}" '
             f'sentence_cites="{",".join(map(str, it.sentence_cites))}">\n'
-            f"{escape_block(it.sentence)}\n</sentence>"
+            f"{_escape(it.sentence)}\n</sentence>"
             for k, it in enumerate(items)
         )
-        user = f"{format_sources(cited)}\n\n<sentences>\n{blocks}\n</sentences>"
+        user = f"{format_sources(cited, EVAL_TAGS)}\n\n<sentences>\n{blocks}\n</sentences>"
         out, usage = self._ask("citations", user, SupportOutput)
         _check_keys([v.index for v in out.verdicts], list(range(len(items))), "citations", usage)
         by_index = {v.index: v for v in out.verdicts}

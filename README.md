@@ -57,8 +57,8 @@ link. Optional parameters: `limit` (1-50, default 10), `category` and `arxiv_id`
 
 1. **search**: one Qdrant query in `dense`, `bm25` or `hybrid` mode. Hybrid takes 50
    candidates from each vector and fuses them with Reciprocal Rank Fusion; filters run
-   inside Qdrant. Equal scores are ordered by chunk id, so the same question always gets
-   the same list (`docs/adr/0012`).
+   inside Qdrant. Equal scores are ordered by chunk id, so a tie never depends on the order
+   Qdrant returns it in (`docs/adr/0012`).
 2. **rerank** (only with `rerank=true`, or `RERANK_ENABLED=true`): a cross-encoder
    (`BAAI/bge-reranker-base`) rescores the candidates. On a laptop CPU this takes about
    20 s for 50 candidates, which is why it is off by default. The model is only read from
@@ -240,15 +240,20 @@ Two kinds of numbers, both stored in `eval_runs` with the configuration and the 
   the chat pipeline as `POST /chat` runs it (nothing is saved), then a judge model
   (`EVAL_MODEL`, temperature 0) scores the answer: faithfulness, response relevancy,
   context precision and context recall (the RAGAS definitions), citation accuracy (share
-  of `[n]` whose source supports the sentence) and refusal accuracy (share of unanswerable
-  questions that got the fallback, next to the false refusal rate on answerable ones).
-  Every metric is reported for the held-out golden questions, the generated ones, and
-  both. This spends money (about $0.004 per question, measured from earlier chat turns):
-  `--estimate` prints the requests and the cost without sending anything.
+  of `[n]` whose source supports the sentence, next to the share of sentences without
+  any `[n]`) and refusal accuracy (share of unanswerable questions that got the fallback,
+  next to the false refusal rate on answerable ones). Every metric is reported for the
+  held-out golden questions, the generated ones, and both. Each question's result is
+  stored as soon as it is scored; a judge or API failure stops the run. This spends money
+  (about $0.004 per question, measured from earlier chat turns): `--estimate` prints the
+  requests and the cost without sending anything. `--limit N` needs `--split heldout` or
+  `--split generated`.
 
 The questions: `backend/eval/golden.jsonl` holds 20 AI-drafted questions, verified against
 the stored chunk text. They are the held-out check, and no setting is ever chosen by them.
-More questions come from the test-set tool, which needs at least 30 full-text papers:
+More questions come from the test-set tool, which needs at least 30 full-text papers that
+no golden question refers to (the golden papers are left out whole, so the held-out check
+stays independent):
 
 ```sh
 cd backend
@@ -261,8 +266,10 @@ uv run python -m eval.make_testset status              # counts by type and deci
 
 Generation writes candidates to `backend/eval/testset_candidates.jsonl` (questions,
 reference answers, chunk ids and decisions, no paper text). Review shows each candidate
-with the text it was made from, warns about near-duplicates of golden or accepted
-questions, and writes the accepted ones to `backend/eval/generated.jsonl`.
+with the full text it was made from (an unanswerable one also with the closest passages of
+the same paper, found by a free local search), warns about near-duplicates of golden,
+generated or accepted questions, and adds the accepted ones to
+`backend/eval/generated.jsonl`.
 
 ## Licence
 The project will be released under AGPL-3.0 (see `docs/adr/0004-licence-agpl.md`),

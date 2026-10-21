@@ -28,8 +28,10 @@ _ID = re.compile(r"^(?P<name>[a-z][a-z_]*)_v(?P<version>[1-9][0-9]*)$")
 # Every tag name used to delimit data in a prompt. Inside data, "<source" becomes
 # "&lt;source", which the model reads as text, not as a block boundary.
 BLOCK_TAGS = ("sources", "source", "question", "conversation", "message", "latest",
-              "sentences", "sentence", "note", "answer", "reference")  # fmt: skip
-_TAG = re.compile(r"<(/?)\s*(" + "|".join(BLOCK_TAGS) + r")\b", re.IGNORECASE)
+              "sentences", "sentence", "note")  # fmt: skip
+# Blocks that only the evaluation's prompts use (the judge and the test-set generator). They
+# are escaped only where those prompts are built, so chat prompts stay exactly as they were.
+EVAL_TAGS = ("answer", "reference")
 
 
 @dataclass(frozen=True)
@@ -59,6 +61,14 @@ def load_prompt(prompt_id: str) -> Prompt:
     return Prompt(match["name"], int(match["version"]), text)
 
 
-def escape_block(text: str) -> str:
-    """Untrusted text, made safe to put inside a delimited block (see the module doc)."""
-    return _TAG.sub(lambda m: f"&lt;{m[1]}{m[2]}", text)
+@lru_cache
+def _tag_pattern(tags: tuple[str, ...]) -> re.Pattern[str]:
+    return re.compile(r"<(/?)\s*(" + "|".join(tags) + r")\b", re.IGNORECASE)
+
+
+def escape_block(text: str, extra_tags: tuple[str, ...] = ()) -> str:
+    """Untrusted text, made safe to put inside a delimited block (see the module doc).
+
+    `extra_tags` adds the tag names of the prompt being built (EVAL_TAGS for the
+    evaluation's prompts) to BLOCK_TAGS."""
+    return _tag_pattern(BLOCK_TAGS + extra_tags).sub(lambda m: f"&lt;{m[1]}{m[2]}", text)

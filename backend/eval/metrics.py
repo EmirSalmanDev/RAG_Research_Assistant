@@ -121,11 +121,12 @@ def response_relevancy(
     The judge writes a few questions that the answer would answer; the score is the mean
     cosine similarity between the embedding of the real question and the embeddings of
     those questions. An answer that drifts off topic produces questions unlike the real
-    one. A noncommittal answer ("the sources do not say") scores 0 whatever its words.
-    None when the judge wrote no question.
+    one. A noncommittal answer ("the sources do not say") scores 0 whatever its words,
+    also when the judge wrote no question for it. Otherwise None when the judge wrote no
+    question.
     """
-    if not generated:
-        return None
     if noncommittal:
         return 0.0
+    if not generated:
+        return None
     return sum(cosine(question, g) for g in generated) / len(generated)

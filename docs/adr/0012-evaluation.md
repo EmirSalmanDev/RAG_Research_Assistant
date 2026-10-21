@@ -18,8 +18,13 @@ the data, or for reasons the golden set cannot judge:
   and none of their reference chunks is an analysis chunk, so the golden set cannot say
   whether analysis chunks help an answer; it only counts them as misses.
 
-Both were decided before any evaluation run of this change, on the principles below, and
-never from golden-set results (the golden set is the held-out check).
+Both rules were decided before any evaluation run of this change, on the principles
+below, not by trying settings on the golden set (the golden set is the held-out check).
+To be clear about what that does and does not mean: the analysis-chunk problem itself was
+found on the golden set (ADR 0008), and the run after the change recovers two of exactly
+those golden cases. Those gains are therefore no independent confirmation of the rule;
+the setting that would have helped the golden set most (leaving analysis chunks out) was
+not chosen, and whether the rule helps answers is measured on generated questions.
 
 The answer metrics of the plan (context precision, context recall, faithfulness, response
 relevancy, citation accuracy, refusal accuracy) need a judge model, a way to run the chat
@@ -133,6 +138,10 @@ questions outside the golden 20, for the settings 0, 1 and -1.
   - context precision = average precision of the sources judged useful for reaching the
     reference answer (precision@k at every useful rank, averaged; 0 without any);
   - context recall = reference-answer sentences the sources state / sentences.
+  The embeddings of response relevancy come from `eval_embedding_model`, fixed apart from
+  the retrieval's `embedding_model`, so an ablation of the retrieval embeddings does not
+  change the yardstick it is measured with. A noncommittal answer scores 0 without any
+  embedding request, also when the judge wrote no question for it.
   The library `ragas` is not a dependency: adding it needs the owner's approval and
   network access, and it is listed as an open item.
 - **Why own calls.** Every model call must be a versioned prompt file (rule 7), show
@@ -155,15 +164,21 @@ questions outside the golden 20, for the settings 0, 1 and -1.
   file, escaped blocks, model, temperature 0, output cap), that verdicts come back in item
   order whatever order the model uses, and that a missing, extra or repeated verdict is a
   `JudgeError`, never a guess. One answer scored end to end with scripted verdicts gives the
-  hand-computed five scores (`test_every_answer_metric_from_scripted_verdicts`).
+  hand-computed scores, the uncited sentence share included
+  (`test_every_answer_metric_from_scripted_verdicts`).
 
 ### 4. Citation accuracy and refusal accuracy (our own metrics)
 - **Citation accuracy** = citations whose source supports the sentence / citations, per
   `[n]`, not per sentence. A sentence citing one source must be fully supported by it; a
   sentence citing several needs each source to support at least one of its claims and
   contradict none. A `[n]` that points at no source counts as unsupported without a call.
-  Sentences without any citation are counted apart (`uncited_sentences`), because the
-  chat prompt asks for a citation after every factual sentence.
+  An item names only the sentence's valid source numbers, so "X [1][7]" with no source 7
+  is judged by the one-source rule for [1], and [7] counts as unsupported.
+  Citation accuracy cannot see an answer that cites nothing (it has no `[n]`, so the
+  metric is undefined for it), so the **uncited sentence share** (sentences without any
+  `[n]` / sentences) is reported next to it, per question and per run: the chat prompt
+  asks for a citation after every factual sentence, and a setting that stops citing must
+  show up somewhere.
   Alternative: reuse the chat's own verify stage, which judges each sentence against all
   its sources together. Not taken: it cannot say which `[n]` is wrong, and a system that
   grades itself with its own prompt is not an independent measurement.
@@ -174,7 +189,7 @@ questions outside the golden 20, for the settings 0, 1 and -1.
 - **Tested by.** `test_aggregate_per_split_with_refusal_accuracy_and_false_refusals`
   (hand-built rows: 1 of 2 unanswerable refused, 1 of 2 answerable refused, an error left
   out of both) and the citation item tests (valid and invalid numbers, one and several
-  citations per sentence).
+  citations per sentence, a missing source never makes the rule for the others lenient).
 
 ### 5. How an answer is produced and kept for evaluation (`eval/answers.py`)
 - **Decision.** Each question runs through `run_chat_turn` exactly as `POST /chat` runs it,
@@ -183,12 +198,28 @@ questions outside the golden 20, for the settings 0, 1 and -1.
   evaluation leaves no conversations behind and sends nothing to Langfuse. The search
   function is wrapped only to remember the returned chunk texts, so the judge sees exactly
   the sources generate saw. Latency and cost come from the turn itself (the `done` event and
-  a clock); the judge's own cost is kept apart.
+  a clock); the judge's own cost is kept apart, including calls that were billed but gave
+  no usable answer.
+- **Stopping and keeping.** A judge answer that does not fit what was asked (a wrong
+  verdict list, a refusal, output cut off) loses only that metric for that question, with
+  the reason stored. Any other failure (an API or network error, a wrong model name) stops
+  the run, so a broken judge never pays for a whole run of empty scores. The eval_runs row
+  is written before the first paid call (status "running"), each question's result is
+  committed as soon as it is scored, and the end writes the metrics with status
+  "complete" or "stopped: <reason>" and the run's real spend, read back from the
+  llm_usage rows written since it started (which also covers turns that failed).
+- **Quick runs.** `--limit N` needs `--split heldout` or `--split generated`: the held-out
+  questions come first in the set, so a limit over both would quietly be a held-out-only
+  run.
 - **Alternative.** Call the stages one by one in the evaluation. Not taken: what is
   measured must be what the API serves.
 - **Tested by.** A full turn on scripted fakes through the real pipeline: answer, numbered
   sources with their texts, cost = the three chat calls plus three query embeddings, no
-  condense call for a first message; both refusals and a failed stage are told apart.
+  condense call for a first message; both refusals and a failed stage are told apart. A
+  refused judge answer loses one metric and is still counted in the judge's cost; an
+  unexpected judge error stops scoring; `run` hands every row on as soon as it is scored;
+  on a scratch database, a stopped run keeps its result rows and its spend counts only
+  the llm_usage rows written after it started.
 
 ### 6. The question set: held-out and generated questions apart (`eval/golden.py`)
 - **Decision.** The 20 golden questions stay in `golden.jsonl` (owner only) and are tagged
@@ -214,53 +245,105 @@ questions outside the golden 20, for the settings 0, 1 and -1.
   The seed chunks become the question's reference chunk ids, so retrieval and answer
   metrics both apply; unanswerable questions have none. Seeds are drawn with a fixed
   random seed, one paper at a time in turns, from section chunks of at least 120 tokens,
-  never from reference lists, acknowledgements or any reference chunk of a golden
-  question. The pool is every full-text paper; generation refuses to start with fewer
-  than 30 (the plan's number) and lists papers to add.
+  never from reference lists or acknowledgements. The pool is every full-text paper that
+  no golden question refers to; generation refuses to start with fewer than 30 (the
+  plan's number) and lists papers to add.
+- **Golden papers are left out whole.** Every paper a golden question refers to (found
+  through the golden reference chunks; one missing from the database stops the tool) is
+  left out of the pool: its abstract, all its sections, not only the reference chunks.
+  Leaving out only the reference chunks would leave their neighbours, which repeat 64
+  tokens of the same passage, and the paper's abstract, which a filter question would be
+  built on. It also keeps the held-out set an independent check, on other papers than the
+  ones tuning looks at. Cost: the 3 papers that have full text today are all golden
+  papers, so all 30 seed papers still have to be added, and the papers with generated
+  analyses (only those 3 so far) cannot seed questions, so comparing the analysis
+  settings 0, 1 and -1 on generated questions needs analyses of new papers.
 - **Why not RAGAS test-set generation.** It is not a dependency (see decision 3), it
   builds a knowledge graph with many model calls per document whose prompts and spend sit
   outside our rules, and its contexts are texts, not our chunk ids. Seeding from our own
   chunks gives reference chunk ids for free and bounds the cost at one call per seed.
 - **Which papers to add.** The rule is fixed in advance: abstract-only arXiv papers with
   the most Hugging Face upvotes first (papers the community picked out), then the
-  newest. The owner may prefer papers from their own research; that is their choice.
+  newest; never a golden paper. The owner may prefer papers from their own research;
+  that is their choice.
 - **Alternative.** Hand-written questions only (best quality, slowest), or one prompt
   that writes several questions per paper (cheaper, but questions then cluster on a
   paper's abstract-level claims).
 - **Tested by.** Seed tests on an invented pool (same seed same seeds, another seed
-  different; short chunks, acknowledgements, reference lists and golden evidence never
-  seeds; compare pairs always span two papers; facts visit every paper before any
-  repeats; a small pool gives fewer seeds instead of repeats). The model call against a
+  different; short chunks, acknowledgements and reference lists never seeds; no chunk of
+  a golden paper seeds any type over 20 random seeds, its abstract included; compare
+  pairs always span two papers; facts visit every paper before any repeats; a small pool
+  gives fewer seeds instead of repeats). The model call against a
   scripted fake (escaped data blocks, dates only for filter questions, model, temperature
   and output cap, one llm_usage feature per type, a re-run sends nothing for seeds already
   done). The estimate equals the locally counted input tokens and the output cap per call.
-  On a scratch database: the pool, the upvote order of the suggestions, and the refusal
-  to generate from too few papers.
+  On a scratch database: the pool, the golden papers found through their reference
+  chunks, the upvote order of the suggestions (never a golden paper), golden papers not
+  counted toward the 30, and a golden set that disagrees with the database stopping the
+  tool.
 
 ### 8. Review: the owner decides every question (`eval/make_testset.py review`)
 - **Decision.** Candidates the model marked unusable are kept (they were paid for) but
-  never shown. Each pending one is shown with the text of its seed chunks (read from
+  never shown. Each pending one is shown with the full text of its seed chunks (read from
   Postgres, never stored in the candidates file, so that file holds no paper text and can
-  be committed), and with a warning when its word overlap with a golden or an accepted
-  question is at least 0.6. Accept gives it the next `gen-NNN` id; reject asks for an
-  optional reason; skip leaves it pending; quit stops. Every decision is saved before the
-  next question (write to a temporary file, then rename), and the accepted questions are
-  rewritten to `generated.jsonl` each time. A question whose text equals a golden or an
-  accepted one cannot be accepted.
+  be committed); an unanswerable one also with the 3 closest passages of the same paper
+  by a BM25 search on this machine (free), because the seed chunk alone cannot show
+  whether another part of the paper answers the question. A warning appears when the
+  question's word overlap with a golden, a generated or an accepted question is at least
+  0.6. Accept gives it the next `gen-NNN` id after the highest in `generated.jsonl` and in
+  the candidates file; reject asks for an optional reason; skip leaves it pending; quit
+  stops. Every decision is saved before the next question (write to a temporary file,
+  then rename). `generated.jsonl` is rewritten as its questions that the candidates file
+  does not hold (for example from an earlier candidates file) plus the candidates file's
+  accepted ones; if the two files disagree about an accepted question (an id with another
+  text, after a hand edit), review stops before changing anything. A question whose text
+  equals a golden, a generated or an accepted one cannot be accepted. A half-written last
+  line in the candidates file (an interrupted run) is reported with how to fix it.
 - **Alternative.** Accept everything the model marks usable and let the owner delete
   lines later. Not taken: the plan asks for a review, and the generated questions decide
   which settings win.
 - **Tested by.** A scripted review session: accept, reject with a reason, an exact
   repeat of a golden question refused and then skipped; the generated file loads as the
   "generated" split next to the golden file, whose bytes are unchanged; a second session
-  resumes at the first pending candidate and numbers on from the last id; unknown answers
-  are asked again.
+  resumes at the first pending candidate and numbers on from the last id; a second
+  candidates file keeps the first file's questions and numbers on after them; a question
+  already generated elsewhere cannot be accepted; a hand-edited `generated.jsonl` stops
+  the review with both files unchanged; the whole seed text and the same-paper passages
+  are shown; unknown answers are asked again; a half-written line is a clear error.
+
+### 9. The evaluation's own block tags are escaped only in its own prompts
+- **Decision.** The judge and the test-set prompts use two more data blocks, `<answer>`
+  and `<reference>`. Text that goes into those prompts is escaped for them too
+  (`escape_block(text, EVAL_TAGS)`); the chat's, comparison's, review's and analysis's
+  escaping keeps exactly its old tag list, so their prompts are byte for byte what they
+  were (no generation change, so no answer evaluation is owed for it).
+- **Alternative.** Add the two tags to the shared list. Simpler, but it changes the input
+  of every chat prompt whose source text contains such a tag (common in papers about
+  reasoning models), which is a generation change.
+- **Tested by.** The shared escaping leaves `<answer>` alone and the evaluation escaping
+  neutralises it (and still the shared tags); a judge prompt neutralises `</answer>` and
+  `<reference>` inside a source, while the chat's sources show them unchanged.
+
+### Review before merge
+An independent review of this change (a fresh reviewer with only the plan's evaluation text
+and the diff) found, among others: filter seeds that ignored the golden exclusion, a review
+run with a second candidates file that could delete accepted questions and reuse their ids,
+a noncommittal answer scored "undefined" instead of 0 when no question was written back,
+answers without any citation invisible to citation accuracy, billed judge failures missing
+from the judge's cost, a paid run that kept nothing until its end and paid on through a
+broken judge, the relevancy yardstick moving with the retrieval embedding model, and
+claims here and in the README that were stronger than the code. Each is fixed above, with
+a test that fails without the fix.
 
 ## Consequences
-- Identical runs give identical lists, including at the cut. One residual case: a tie at a
-  hybrid PREFETCH cut (the 50th and 51st of the dense or BM25 list having exactly the same
-  score) is still settled inside Qdrant, because the prefetches run inside one Query API
-  call. That needs two chunks with identical raw scores exactly at position 50.
+- Equal fused (or single-list) scores no longer depend on the order Qdrant returns them
+  in, at the cut included; the retrieval evaluation, which reads cached question
+  vectors, now gives identical lists on identical runs. Two cases remain outside this
+  rule. (a) Inside one prefetch list, chunks with exactly equal raw scores (the same
+  text twice, identical vectors) get their positions from Qdrant, and RRF turns
+  positions into different fused scores, so their order can still change; the same holds
+  at a prefetch's cut. (b) A live query is embedded again on every call, and the
+  embeddings API can return slightly different vectors for the same text.
 - Search sends one more point per query (`limit + 1`) and, on a tie at the cut, a second
   Qdrant request. No extra OpenAI request.
 - A paper can now give up to 4 chunks to a result list (3 of its own text and 1 analysis
@@ -268,7 +351,7 @@ questions outside the golden 20, for the settings 0, 1 and -1.
 - The chat's own merge of the question and rephrasing lists already broke its ties by first
   appearance; its inputs are now in a fixed order, so the merge is repeatable too.
 - An answer run costs money: about $0.004 per question with gpt-4o-mini as chat and judge
-  model (one chat turn of about $0.001, measured from earlier turns, plus up to five judge
+  model (one chat turn of about $0.001, measured from earlier turns, plus up to six judge
   calls and one embeddings request). `--estimate` prints requests and cost first; its
   bound uses the largest measured turn, so it is not a hard limit.
 - The judge is a model: its verdicts can be wrong, and a model alias such as `gpt-4o-mini`
@@ -278,8 +361,10 @@ questions outside the golden 20, for the settings 0, 1 and -1.
 - The judge and the generator use the same model family as the chat, which can favour
   answers written in its own style. A cross-check with the `ragas` library or another
   judge model is possible later.
-- The generated questions come from the same 30 papers the corpus holds in full, so they
-  measure answers about full-text papers; abstract-only papers are covered by the filter
-  questions and by the golden set.
+- The generated questions all come from full-text papers (filter questions use those
+  papers' abstracts), so they measure answers about full-text papers; questions about
+  abstract-only papers come only from the golden set. A filter question's only reference
+  chunk is the paper's abstract, so retrieval metrics count the paper's own sections as
+  misses for it, as for the golden filter and find-papers questions.
 - The retrieval runner (`make eval-retrieval`) still reads the golden file only; the full
   question set is for the ablation runner of a later step.

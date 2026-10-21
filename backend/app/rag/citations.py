@@ -50,22 +50,24 @@ def number_sources(hits: Sequence[SearchHit]) -> list[Source]:
     return [Source(i, hit) for i, hit in enumerate(hits, start=1)]
 
 
-def format_source(source: Source) -> str:
-    """One source as a data block. Title, section and text come from papers: escaped."""
+def format_source(source: Source, extra_tags: tuple[str, ...] = ()) -> str:
+    """One source as a data block. Title, section and text come from papers: escaped
+    (`extra_tags`: the further block names of the prompt it goes into)."""
     h = source.hit
     return (
         f'<source n="{source.n}" evidence="{h.chunk_type}">\n'
-        f"Title: {escape_block(h.title)}\n"
+        f"Title: {escape_block(h.title, extra_tags)}\n"
         f"arXiv: {h.arxiv_id}\n"
-        f"Section: {escape_block(h.section_path or 'Abstract')}\n"
+        f"Section: {escape_block(h.section_path or 'Abstract', extra_tags)}\n"
         f"Evidence: {h.chunk_type}\n"
-        f"Text:\n{escape_block(h.text)}\n"
+        f"Text:\n{escape_block(h.text, extra_tags)}\n"
         f"</source>"
     )
 
 
-def format_sources(sources: Sequence[Source]) -> str:
-    return "<sources>\n" + "\n\n".join(format_source(s) for s in sources) + "\n</sources>"
+def format_sources(sources: Sequence[Source], extra_tags: tuple[str, ...] = ()) -> str:
+    blocks = "\n\n".join(format_source(s, extra_tags) for s in sources)
+    return "<sources>\n" + blocks + "\n</sources>"
 
 
 def cited_numbers(text: str) -> list[int]:

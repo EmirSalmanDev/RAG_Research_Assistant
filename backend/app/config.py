@@ -71,7 +71,9 @@ class Settings(BaseSettings):
     rerank_enabled: bool = False
     reranker_model: str = "BAAI/bge-reranker-base"  # a FastEmbed TextCrossEncoder model
     rerank_batch_size: int = 16  # (question, chunk) pairs per model run; bounds memory
-    max_chunks_per_paper: int = 3  # diversity cap after reranking; 0 switches it off
+    # diversity cap after reranking, on a paper's own text; 0 switches this cap off (the
+    # analysis limit below still applies)
+    max_chunks_per_paper: int = 3
     # Generated analysis chunks (a model's summary, not the paper's words) are capped on
     # their own and never take one of the paper's slots above (docs/adr/0012): at most
     # this many per paper. 0 leaves them out; -1 counts them like any chunk (as before).
@@ -210,6 +212,11 @@ class Settings(BaseSettings):
     eval_price_out_per_1m: float = 0.60
     eval_judge_max_output_tokens: int = 2000  # one structured verdict list per call
     eval_relevancy_questions: int = 3  # questions written back from an answer (RAGAS: strictness)
+    # Response relevancy compares embeddings. Its model is fixed here, apart from the
+    # retrieval's embedding_model, so an ablation of the retrieval embeddings does not change
+    # the yardstick it is measured with.
+    eval_embedding_model: str = "text-embedding-3-small"
+    eval_embedding_price_per_1m: float = 0.02
     eval_testset_max_output_tokens: int = 400  # one question and its reference answer
 
     @field_validator(

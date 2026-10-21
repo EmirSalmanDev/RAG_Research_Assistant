@@ -232,7 +232,8 @@ def _pool_search(pool: list[tuple[int, float]], limit: int, mode: SearchMode = "
 
 @pytest.mark.parametrize("mode", ["hybrid", "dense", "bm25"])
 def test_equal_scores_come_out_in_chunk_id_order_whatever_qdrant_returns(mode: Any) -> None:
-    """An exact RRF tie (dense #1 + BM25 #2 = dense #2 + BM25 #1), returned in either order."""
+    """An exact RRF tie (positions 1 and 2 in one list, 2 and 1 in the other: both
+    1/61 + 1/62 with k = 60), returned by Qdrant in either order."""
     tie = 1 / 61 + 1 / 62
     forward = [(1, 0.5), (5, tie), (3, tie), (9, 0.01)]
     backward = [(1, 0.5), (3, tie), (5, tie), (9, 0.01)]

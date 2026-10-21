@@ -1,7 +1,10 @@
 """Answer evaluation: each question through the chat pipeline, then the answer metrics.
 
-    python -m eval.answers --estimate [--limit N] [--split heldout|generated|all]
-    python -m eval.answers [--limit N] [--split ...] [--name NAME]     # PAID: ask first
+    python -m eval.answers --estimate [--split heldout|generated|all] [--limit N]
+    python -m eval.answers [--split ...] [--limit N] [--name NAME]     # PAID: ask first
+
+`--limit N` takes the first N questions of ONE split, so it needs `--split heldout` or
+`--split generated`: a quick run never silently consists of held-out questions only.
 
 For every question, in order:
 1. `collect_sample`: one chat turn exactly as POST /chat runs it (condense, plan, search,
@@ -15,20 +18,28 @@ For every question, in order:
    - context precision and context recall: only for questions with a reference answer;
    - citation accuracy (own): share of the answer's [n] whose source supports the sentence
      (a [n] pointing at no source counts as unsupported);
-   A refused question gets no answer metrics, only its refusal.
+   - uncited sentence share: sentences without any [n] / sentences. Citation accuracy
+     cannot see an answer that cites nothing, so this is reported next to it.
+   A refused question gets no answer metrics, only its refusal. A judge step whose answer
+   does not fit what was asked loses only that metric (its reason is stored); any other
+   failure (an API error, a wrong model name) stops the run, so a broken judge never
+   pays for a whole run of empty scores.
 3. `aggregate`: per split ("heldout" = golden.jsonl, "generated", and "all"): the mean
    of every metric over the questions where it is defined (and how many those are), and:
    - refusal accuracy (own): share of the unanswerable questions that got the fallback
      (the fixed refusal), the "Behaviour" metric of the evaluation plan;
    - false refusal rate: share of the answerable questions that got it. Reported next to
      refusal accuracy because refusing everything would score 1.0 on that alone;
-   - p50 / p95 latency of a turn and the mean cost of an answer (from the turn's own
-     llm_usage rows), and the judge's cost apart from it.
-4. The run is stored in eval_runs (name "answers:<name>", the configuration, the git
-   commit, the metrics) with one eval_results row per question.
+   - p50 / p95 latency of a turn and the mean cost of an answer (the turn's own cost from
+     its `done` event; a failed turn has none), and the judge's cost apart from it.
+4. Storage: the eval_runs row (name "answers:<name>", the configuration, the git commit)
+   is written first with status "running"; every question's eval_results row is
+   committed as soon as it is scored, so a stopped run keeps what it paid for. At the end
+   the metrics are written with status "complete" (or "stopped" and the reason), and the
+   run's total spend is read back from the llm_usage rows written during it.
 
 Cost: each question costs one chat turn (about $0.001, measured), and each answered one up
-to five judge calls and one embeddings request more. Every request is logged to
+to six judge calls and one embeddings request more. Every request is logged to
 llm_usage. `--estimate` prints the number of requests and the cost from measured token
 counts without any request; the real run spends money: ask first (CLAUDE.md).
 """
@@ -49,8 +60,8 @@ from sqlalchemy.orm import Session
 
 from app.config import Settings, get_settings
 from app.db.models import EvalResult, EvalRun, LLMUsage
-from app.ingest.embed import DenseEmbedder, DenseEncoder
-from app.llm.client import ChatClient
+from app.ingest.embed import DenseEncoder
+from app.llm.client import ChatClient, ChatResponseError
 from app.observability.tracing import NoopTracer
 from app.rag.citations import Source, split_sentences
 from app.rag.condense import HistoryMessage
@@ -61,8 +72,8 @@ from app.rag.retrieve import RetrievalConfig
 from app.rag.search import SearchHit
 from eval.golden import GENERATED_PATH, GOLDEN_PATH, SetQuestion, load_question_set
 from eval.judge import PROMPTS as JUDGE_PROMPTS
-from eval.judge import CitationItem, Judge, default_judge
-from eval.llm import eval_cost
+from eval.judge import CitationItem, Judge, JudgeError, default_judge
+from eval.llm import EvalEmbedder, eval_cost
 from eval.metrics import average_precision, mean, response_relevancy, share
 from eval.run import git_commit, percentile, sync_items
 
@@ -72,6 +83,7 @@ ANSWER_METRICS = (
     "context_precision",
     "context_recall",
     "citation_accuracy",
+    "uncited_sentence_share",  # lower is better; computed in code, no judge call
 )
 SPLITS: tuple[str, ...] = ("all", "heldout", "generated")
 RELEVANCY_FEATURE = "eval-embed-relevancy"  # llm_usage.feature of the relevancy embeddings
@@ -186,25 +198,28 @@ class SampleScores:
 
 def citation_items(answer: str, sources: Sequence[Source]) -> tuple[list[CitationItem], int]:
     """Every [n] of the answer as (sentence, source) items for the judge, and the number
-    of [n] that point at no source (they count as unsupported without asking)."""
+    of [n] that point at no source (they count as unsupported without asking).
+
+    An item names only the sentence's VALID source numbers: a sentence citing [1] and a
+    missing [7] is judged by the one-source rule for [1], not the lenient several-sources
+    rule (judge_citation_v1)."""
     valid = {s.n for s in sources}
     items: list[CitationItem] = []
     invalid = 0
     for sentence in split_sentences(answer):
-        for n in sentence.citations:
-            if n in valid:
-                items.append(CitationItem(sentence.index, sentence.text, n, sentence.citations))
-            else:
-                invalid += 1
+        cites = tuple(n for n in sentence.citations if n in valid)
+        invalid += len(sentence.citations) - len(cites)
+        items += [CitationItem(sentence.index, sentence.text, n, cites) for n in cites]
     return items, invalid
 
 
 def score_sample(sample: AnswerSample, judge: Judge, embed: DenseEncoder) -> SampleScores:
     """The answer metrics of one answered question (nothing for a refusal or an error).
 
-    Each metric is computed on its own: if the judge fails on one (a wrong verdict list,
-    an API error), that metric is recorded as missing with the reason and the others
-    still count.
+    Each metric is computed on its own: if the judge's answer for one does not fit (a
+    wrong verdict list, a refusal, output cut off), that metric is recorded as missing
+    with the reason and the others still count. Any other error (an API or network
+    error, a wrong model name) is raised: the run stops instead of paying on for nothing.
     """
     scores = SampleScores()
     if sample.answer is None:
@@ -215,7 +230,7 @@ def score_sample(sample: AnswerSample, judge: Judge, embed: DenseEncoder) -> Sam
     def attempt(metric: str, compute: Callable[[], float | None]) -> None:
         try:
             scores.metrics[metric] = compute()
-        except Exception as err:  # keep the run going; the reason is stored
+        except (JudgeError, ChatResponseError) as err:  # this answer only: reason stored
             scores.metrics[metric] = None
             scores.errors[metric] = describe(err)
 
@@ -234,8 +249,8 @@ def score_sample(sample: AnswerSample, judge: Judge, embed: DenseEncoder) -> Sam
             "questions": questions,
             "noncommittal": noncommittal,
         }
-        if not questions:
-            return None
+        if noncommittal or not questions:  # 0 or undefined: nothing to embed
+            return response_relevancy([], [], noncommittal=noncommittal)
         vectors = embed.embed([item.question, *questions], RELEVANCY_FEATURE)
         return response_relevancy(vectors[0], vectors[1:], noncommittal=noncommittal)
 
@@ -275,8 +290,10 @@ def score_sample(sample: AnswerSample, judge: Judge, embed: DenseEncoder) -> Sam
         attempt("context_recall", lambda: recall(reference))
     attempt("citation_accuracy", citations)
     sentences = split_sentences(answer)
-    scores.details["uncited_sentences"] = sum(1 for s in sentences if not s.citations)
+    uncited = sum(1 for s in sentences if not s.citations)
+    scores.details["uncited_sentences"] = uncited
     scores.details["sentences"] = len(sentences)
+    scores.metrics["uncited_sentence_share"] = uncited / len(sentences) if sentences else None
     return scores
 
 
@@ -349,6 +366,7 @@ def run_config(
             "relevancy_questions": judge.relevancy_questions,
         },
         "embedding_model": settings.embedding_model,
+        "relevancy_embedding_model": settings.eval_embedding_model,
         "questions": {
             split: sum(1 for q in questions if q.split == split)
             for split in ("heldout", "generated")
@@ -356,6 +374,85 @@ def run_config(
         "golden_sha256": sha(GOLDEN_PATH),
         "generated_sha256": sha(GENERATED_PATH),
     }
+
+
+def _last_usage_id(session: Session) -> int:
+    return int(session.scalar(select(func.coalesce(func.max(LLMUsage.id), 0))) or 0)
+
+
+def start_run(
+    session: Session, name: str, *, config: dict[str, Any], git_sha: str | None
+) -> EvalRun:
+    """The eval_runs row ("answers:<name>"), written before the first paid call with
+    status "running" and the last llm_usage id, so the run's spend can be read back."""
+    run = EvalRun(
+        name=f"answers:{name}",
+        git_sha=git_sha,
+        config=config,
+        metrics={"status": "running", "llm_usage_after_id": _last_usage_id(session)},
+    )
+    session.add(run)
+    session.flush()
+    return run
+
+
+def store_result(session: Session, run_id: int, item_id: int, row: Row) -> None:
+    """One question's eval_results row."""
+    sample, scores = row
+    item = sample.question.item
+    session.add(
+        EvalResult(
+            run_id=run_id,
+            item_id=item_id,
+            retrieved_chunk_ids=[s.hit.chunk_id for s in sample.sources],
+            answer=sample.answer,
+            metrics={
+                **scores.metrics,
+                "golden_id": item.id,
+                "split": sample.question.split,
+                "type": item.type,
+                "refusal": sample.refusal,
+                "error": sample.error,
+                "intent": sample.intent,
+                "latency_ms": sample.latency_ms,
+                "first_token_ms": sample.first_token_ms,
+                "cost_usd": str(sample.cost_usd),
+                "judge_errors": scores.errors,
+                "details": scores.details,
+            },
+        )
+    )
+    session.flush()
+
+
+def finish_run(
+    session: Session,
+    run_id: int,
+    rows: Sequence[Row],
+    *,
+    judge_cost_usd: Decimal,
+    status: str = "complete",
+) -> EvalRun:
+    """The run's metrics, its status and its real spend: every llm_usage row written
+    since the run started (the chat turns, the judge, the embeddings; also anything
+    else that used the same database meanwhile, so run evaluations alone)."""
+    run = session.get(EvalRun, run_id)
+    if run is None:
+        raise LookupError(f"eval_runs {run_id} does not exist")
+    after = int(run.metrics.get("llm_usage_after_id", 0))
+    spend = session.scalar(
+        select(func.coalesce(func.sum(LLMUsage.cost_usd), 0)).where(LLMUsage.id > after)
+    )
+    run.metrics = {  # a new dict, so SQLAlchemy sees the JSONB change
+        **aggregate(rows),
+        "status": status,
+        "llm_usage_after_id": after,
+        "llm_usage_until_id": _last_usage_id(session),
+        "spend_usd": str(spend),
+        "judge_cost_usd": str(judge_cost_usd),
+    }
+    session.flush()
+    return run
 
 
 def store_run(
@@ -367,38 +464,12 @@ def store_run(
     judge_cost_usd: Decimal,
     git_sha: str | None,
 ) -> EvalRun:
-    """One eval_runs row ("answers:<name>") and one eval_results row per question."""
+    """A whole run at once (start, every result, finish), in one session."""
     item_ids = sync_items(session, [a.question.item for a, _ in rows])
-    metrics: dict[str, Any] = {**aggregate(rows), "judge_cost_usd": str(judge_cost_usd)}
-    run = EvalRun(name=f"answers:{name}", git_sha=git_sha, config=config, metrics=metrics)
-    session.add(run)
-    session.flush()
-    for sample, scores in rows:
-        item = sample.question.item
-        session.add(
-            EvalResult(
-                run_id=run.id,
-                item_id=item_ids[item.id],
-                retrieved_chunk_ids=[s.hit.chunk_id for s in sample.sources],
-                answer=sample.answer,
-                metrics={
-                    **scores.metrics,
-                    "golden_id": item.id,
-                    "split": sample.question.split,
-                    "type": item.type,
-                    "refusal": sample.refusal,
-                    "error": sample.error,
-                    "intent": sample.intent,
-                    "latency_ms": sample.latency_ms,
-                    "first_token_ms": sample.first_token_ms,
-                    "cost_usd": str(sample.cost_usd),
-                    "judge_errors": scores.errors,
-                    "details": scores.details,
-                },
-            )
-        )
-    session.flush()
-    return run
+    run = start_run(session, name, config=config, git_sha=git_sha)
+    for row in rows:
+        store_result(session, run.id, item_ids[row[0].question.item.id], row)
+    return finish_run(session, run.id, rows, judge_cost_usd=judge_cost_usd)
 
 
 # --- the cost estimate ------------------------------------------------------------------------
@@ -523,13 +594,15 @@ def run(
     embed: DenseEncoder,
     settings: Settings,
     progress: Callable[[str], None] = lambda line: None,
+    on_row: Callable[[Row], None] = lambda row: None,
 ) -> list[Row]:
-    """Collect and score every question, in order."""
+    """Collect and score every question, in order; `on_row` stores each one at once."""
     rows: list[Row] = []
     for k, question in enumerate(questions, start=1):
         sample = collect_sample(question, deps, settings)
         scores = score_sample(sample, judge, embed)
         rows.append((sample, scores))
+        on_row((sample, scores))
         state = sample.error or (f"refused ({sample.refusal})" if sample.refusal else "answered")
         progress(f"[{k}/{len(questions)}] {question.item.id}: {state}")
     return rows
@@ -538,6 +611,11 @@ def run(
 def select_questions(
     questions: Sequence[SetQuestion], split: str, limit: int | None
 ) -> list[SetQuestion]:
+    """The questions of `split` ("all": both), the first `limit` of them. A limit needs
+    one split: the held-out questions come first in the set, so "all" with a limit
+    would quietly be a held-out-only run."""
+    if limit is not None and split == "all":
+        raise ValueError("--limit needs --split heldout or --split generated")
     chosen = [q for q in questions if split == "all" or q.split == split]
     return chosen[:limit] if limit is not None else chosen
 
@@ -562,7 +640,12 @@ def main(argv: list[str] | None = None) -> int:
     from app.db.session import session_scope
 
     settings = get_settings()
-    questions = select_questions(load_question_set(), args.split, args.limit)
+    try:
+        questions = select_questions(load_question_set(), args.split, args.limit)
+    except ValueError as err:
+        parser.error(str(err))
+    if not questions:
+        parser.error(f"no questions in split {args.split!r}")
     if args.estimate:
         with session_scope() as session:
             est = estimate(questions, measured_stats(session), settings)
@@ -575,18 +658,40 @@ def main(argv: list[str] | None = None) -> int:
 
     judge = default_judge()
     deps = ChatDeps(chat=ChatClient(), store=NullChatStore(), tracer=NoopTracer())
-    rows = run(
-        questions, deps=deps, judge=judge, embed=DenseEmbedder(), settings=settings,
-        progress=lambda line: print(line, file=sys.stderr, flush=True),
-    )  # fmt: skip
-    judge_cost = sum((u.cost_usd for u in judge.spent), Decimal("0"))
     with session_scope() as session:
-        stored = store_run(
-            session, args.name, rows, config=run_config(settings, judge, questions),
-            judge_cost_usd=judge_cost, git_sha=git_commit(),
+        item_ids = sync_items(session, [q.item for q in questions])
+        run_id = start_run(
+            session, args.name, config=run_config(settings, judge, questions),
+            git_sha=git_commit(),
+        ).id  # fmt: skip
+
+    rows: list[Row] = []
+
+    def keep(row: Row) -> None:
+        rows.append(row)
+        with session_scope() as session:  # committed per question
+            store_result(session, run_id, item_ids[row[0].question.item.id], row)
+
+    status = "complete"
+    try:
+        run(
+            questions, deps=deps, judge=judge, embed=EvalEmbedder(), settings=settings,
+            progress=lambda line: print(line, file=sys.stderr, flush=True), on_row=keep,
         )  # fmt: skip
-        print(f"eval_runs {stored.id}: answers:{args.name}; judge cost ${judge_cost}")
-        print(_table(aggregate(rows)))
+    except BaseException as err:  # also Ctrl-C: record what was done, then stop
+        status = f"stopped: {describe(err)}"
+        raise
+    finally:
+        judge_cost = sum((u.cost_usd for u in judge.spent), Decimal("0"))
+        with session_scope() as session:
+            done = finish_run(session, run_id, rows, judge_cost_usd=judge_cost, status=status)
+            print(
+                f"eval_runs {run_id}: answers:{args.name}, {status}, {len(rows)} of "
+                f"{len(questions)} questions; spend ${done.metrics['spend_usd']} "
+                f"(judge ${judge_cost})"
+            )
+        if rows:
+            print(_table(aggregate(rows)))
     return 0
 
 

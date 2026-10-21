@@ -8,10 +8,12 @@ full-text papers, and the owner accepts or rejects each one.
     python -m eval.make_testset status                # counts by type and decision
 
 How a candidate is made (docs/adr/0012):
-1. The pool: every paper with full text (it has `section` chunks), at least `--min-papers`
-   (30) of them. Its section chunks of at least MIN_SEED_TOKENS tokens are seeds, except
-   reference lists and acknowledgements, and except every reference chunk of the golden
-   questions, so a generated question is never built on a held-out question's evidence.
+1. The pool: every paper with full text (it has `section` chunks) EXCEPT the papers the
+   golden questions refer to, at least `--min-papers` (30) of them. A generated question
+   is never built on a held-out question's paper (its abstract, its sections, or a
+   neighbouring window that repeats a golden passage), so the golden set stays an
+   independent check. Section chunks of at least MIN_SEED_TOKENS tokens are seeds, except
+   reference lists and acknowledgements.
 2. Seeds are drawn with a fixed random seed, spread over the papers in turns:
    - fact: one section chunk -> a question that chunk alone answers;
    - compare: two section chunks of two different papers -> a comparison;
@@ -24,11 +26,15 @@ How a candidate is made (docs/adr/0012):
 4. Every candidate is appended to the candidates file at once, so an interrupted run
    keeps what it paid for and a re-run skips seeds already done.
 
-Review shows each pending candidate with its seed text and warns when it resembles a
-golden or an already accepted question. Accept, reject (with a reason), skip or quit;
+Review shows each pending candidate with the full text of its seed chunks (and, for an
+unanswerable one, the closest passages of the same paper by a free local BM25 search, to
+check the paper really does not answer it) and warns when it resembles a golden, an
+accepted or an already generated question. Accept, reject (with a reason), skip or quit;
 every decision is saved at once. Accepted questions are written to `generated.jsonl` in
-the golden format, numbered gen-001, gen-002, ...: the evaluation loads them as the
-"generated" split. `golden.jsonl` is only ever read.
+the golden format, numbered gen-001, gen-002, ... after the highest number in that file
+or in the candidates file; questions in `generated.jsonl` that the candidates file does
+not know are kept. The evaluation loads them as the "generated" split. `golden.jsonl` is
+only ever read.
 
 Files: the candidates file holds questions, reference answers, ids and decisions, never
 chunk text (review reads the text from Postgres), so it can be committed.
@@ -57,7 +63,7 @@ from app.db.models import Chunk, Paper
 from app.ids import is_local_id
 from app.ingest.tokens import count_tokens
 from app.llm.client import MESSAGE_OVERHEAD_TOKENS, ChatClient, ChatMessage
-from app.rag.prompts import escape_block, load_prompt
+from app.rag.prompts import EVAL_TAGS, escape_block, load_prompt
 from eval.golden import GENERATED_PATH, GOLDEN_PATH, GoldenItem, load_golden
 from eval.llm import eval_cost
 
@@ -79,6 +85,12 @@ SKIP_SECTIONS = re.compile(r"acknowledg|references|bibliography", re.IGNORECASE)
 DEFAULT_SEED = 20261021
 FEATURE = "eval-testset"  # llm_usage.feature is "eval-testset-<type>"
 SIMILAR = 0.6  # word overlap (Jaccard) from which review warns about a near duplicate
+RELATED_PASSAGES = 3  # same-paper passages shown with an unanswerable candidate
+
+
+class MakeTestsetError(RuntimeError):
+    """The files or the database are not in a state the tool can work from; the message
+    says what to fix."""
 
 
 # --- the pool of seed chunks ------------------------------------------------------------------
@@ -125,29 +137,55 @@ def load_pool(session: Session) -> list[SeedChunk]:
     ]
 
 
+def golden_papers(session: Session, golden: Path = GOLDEN_PATH) -> set[str]:
+    """The papers the golden questions refer to, through their reference chunks
+    (read-only). A reference chunk missing from the database is an error: the golden set
+    and the stored chunks disagree (a new paper version or re-chunking; eval/golden.py)."""
+    refs = {cid for item in load_golden(golden) for cid in item.reference_chunk_ids}
+    if not refs:
+        return set()
+    rows = session.execute(select(Chunk.id, Chunk.arxiv_id).where(Chunk.id.in_(refs))).all()
+    found = {cid: arxiv_id for cid, arxiv_id in rows}
+    missing = sorted(str(cid) for cid in refs - set(found))
+    if missing:
+        raise MakeTestsetError(f"golden reference chunks not in the database: {missing}")
+    return set(found.values())
+
+
+def seedable(pool: Iterable[SeedChunk], exclude_papers: set[str]) -> list[SeedChunk]:
+    """The pool without the excluded (golden) papers: no chunk of theirs is ever a seed."""
+    return [c for c in pool if c.arxiv_id not in exclude_papers]
+
+
 def papers_of(pool: Iterable[SeedChunk]) -> list[str]:
     return sorted({c.arxiv_id for c in pool})
 
 
-def eligible_sections(pool: Iterable[SeedChunk], exclude: set[uuid.UUID]) -> list[SeedChunk]:
+def eligible_sections(pool: Iterable[SeedChunk], exclude_papers: set[str]) -> list[SeedChunk]:
     return [
         c
-        for c in pool
+        for c in seedable(pool, exclude_papers)
         if c.chunk_type == "section"
         and c.token_count >= MIN_SEED_TOKENS
-        and c.chunk_id not in exclude
         and not SKIP_SECTIONS.search(c.section_path or "")
     ]
 
 
-def ingest_suggestions(session: Session, n: int) -> list[tuple[str, str, int | None]]:
+def ingest_suggestions(
+    session: Session, n: int, exclude_papers: set[str]
+) -> list[tuple[str, str, int | None]]:
     """Papers to add full text for, by a rule fixed in advance: the most Hugging Face
-    upvotes first (papers the community picked out), then the newest, then the id.
+    upvotes first (papers the community picked out), then the newest, then the id. A
+    paper a golden question refers to is never suggested: it could not be a seed.
     (arxiv_id, title, upvotes); read-only."""
     fulltext = select(Chunk.arxiv_id).where(Chunk.chunk_type == "section").distinct()
     rows = session.execute(
         select(Paper.arxiv_id, Paper.title, Paper.hf_upvotes)
-        .where(Paper.arxiv_id.not_in(fulltext), Paper.arxiv_id.not_like("local-%"))
+        .where(
+            Paper.arxiv_id.not_in(fulltext),
+            Paper.arxiv_id.not_like("local-%"),
+            Paper.arxiv_id.not_in(sorted(exclude_papers)),
+        )
         .order_by(Paper.hf_upvotes.desc().nulls_last(), Paper.published_at.desc(), Paper.arxiv_id)
         .limit(n)
     ).all()
@@ -190,13 +228,14 @@ def pick_seeds(
     counts: dict[CandidateType, int],
     *,
     seed: int,
-    exclude: set[uuid.UUID],
+    exclude_papers: set[str],
 ) -> list[Seed]:
-    """Seeds for every type, the same for the same pool, counts and seed. A chunk seeds
-    at most one fact or unanswerable question; a type gets fewer seeds than asked when the
-    pool runs out (the caller reports it)."""
+    """Seeds for every type, the same for the same pool, counts and seed. No chunk of an
+    excluded paper is used, section or abstract. A chunk seeds at most one fact or
+    unanswerable question; a type gets fewer seeds than asked when the pool runs out
+    (the caller reports it)."""
     rng = random.Random(seed)
-    sections = eligible_sections(pool, exclude)
+    sections = eligible_sections(pool, exclude_papers)
     by_paper: dict[str, list[SeedChunk]] = defaultdict(list)
     for chunk in sections:
         by_paper[chunk.arxiv_id].append(chunk)
@@ -221,7 +260,10 @@ def pick_seeds(
         a, b = pairs[k % len(pairs)]
         seeds.append(Seed("compare", (rng.choice(by_paper[a]), rng.choice(by_paper[b]))))
 
-    abstracts = sorted((c for c in pool if c.chunk_type == "abstract"), key=lambda c: c.arxiv_id)
+    abstracts = sorted(
+        (c for c in seedable(pool, exclude_papers) if c.chunk_type == "abstract"),
+        key=lambda c: c.arxiv_id,
+    )
     rng.shuffle(abstracts)
     for chunk in abstracts[: counts.get("filter", 0)]:
         seeds.append(Seed("filter", (chunk,)))
@@ -263,21 +305,22 @@ class Candidate(BaseModel):
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
+def _escape(text: str) -> str:
+    """Paper text for a test-set prompt, with every block tag of the evaluation escaped."""
+    return escape_block(text, EVAL_TAGS)
+
+
 def _source_block(n: int, chunk: SeedChunk, *, with_dates: bool) -> str:
     """One seed as a data block; everything taken from the paper is escaped (rule 8)."""
-    lines = [
-        f'<source n="{n}">',
-        f"Title: {escape_block(chunk.title)}",
-        f"arXiv: {chunk.arxiv_id}",
-    ]
+    lines = [f'<source n="{n}">', f"Title: {_escape(chunk.title)}", f"arXiv: {chunk.arxiv_id}"]
     if with_dates:
         lines += [
             f"Published: {chunk.published_at:%Y-%m-%d}",
             f"Categories: {', '.join(chunk.categories)}",
         ]
     lines += [
-        f"Section: {escape_block(chunk.section_path or 'Abstract')}",
-        f"Text:\n{escape_block(chunk.text)}",
+        f"Section: {_escape(chunk.section_path or 'Abstract')}",
+        f"Text:\n{_escape(chunk.text)}",
         "</source>",
     ]
     return "\n".join(lines)
@@ -295,19 +338,16 @@ def build_messages(seed: Seed) -> list[ChatMessage]:
 
 
 def candidate_from(seed: Seed, out: GeneratedQuestion, model: str) -> Candidate:
+    unanswerable = seed.type == "unanswerable"
     usable = out.usable and bool(out.question.strip())
-    if seed.type != "unanswerable":
+    if not unanswerable:
         usable = usable and bool(out.reference_answer.strip())
     return Candidate(
         id=seed.id,
         type=seed.type,
         question=out.question.strip(),
-        reference_answer=(out.reference_answer.strip() or None)
-        if seed.type != "unanswerable"
-        else None,
-        reference_chunk_ids=[]
-        if seed.type == "unanswerable"
-        else [c.chunk_id for c in seed.chunks],
+        reference_answer=None if unanswerable else (out.reference_answer.strip() or None),
+        reference_chunk_ids=[] if unanswerable else [c.chunk_id for c in seed.chunks],
         seed_chunk_ids=[c.chunk_id for c in seed.chunks],
         arxiv_ids=sorted({c.arxiv_id for c in seed.chunks}),
         prompt=PROMPTS[seed.type],
@@ -319,11 +359,19 @@ def candidate_from(seed: Seed, out: GeneratedQuestion, model: str) -> Candidate:
 def load_candidates(path: Path) -> list[Candidate]:
     if not path.is_file():
         return []
-    return [
-        Candidate.model_validate_json(line)
-        for line in path.read_text().splitlines()
-        if line.strip()
-    ]
+    out: list[Candidate] = []
+    for number, line in enumerate(path.read_text().splitlines(), start=1):
+        if not line.strip():
+            continue
+        try:
+            out.append(Candidate.model_validate_json(line))
+        except ValueError as err:  # pydantic's ValidationError is a ValueError
+            raise MakeTestsetError(
+                f"{path.name} line {number} is not a valid candidate ({type(err).__name__}). "
+                "If it is the last line, an interrupted run left it half-written: delete that "
+                "line and run generate again (that one seed is made again, one call)."
+            ) from err
+    return out
 
 
 def save_candidates(path: Path, candidates: Sequence[Candidate]) -> None:
@@ -406,20 +454,49 @@ def to_item(candidate: Candidate) -> GoldenItem:
     )
 
 
-def write_generated(path: Path, candidates: Sequence[Candidate]) -> None:
-    accepted = sorted(
-        (c for c in candidates if c.status == "accepted"), key=lambda c: c.item_id or ""
-    )
+def load_generated(path: Path) -> list[GoldenItem]:
+    """The accepted questions already on disk (none if the file is missing or empty)."""
+    if not path.is_file() or not path.read_text().strip():
+        return []
+    return load_golden(path)
+
+
+def check_generated(existing: Sequence[GoldenItem], candidates: Sequence[Candidate]) -> None:
+    """Refuse to go on when generated.jsonl and the candidates file disagree about an
+    accepted question (an id with another text, for example after a hand edit), instead
+    of silently overwriting either of them."""
+    on_disk = {i.id: i for i in existing}
+    for c in candidates:
+        if c.status == "accepted" and c.item_id in on_disk:
+            if on_disk[c.item_id].question != c.question:
+                raise MakeTestsetError(
+                    f"{c.item_id} in generated.jsonl is not the question of {c.id} in the "
+                    "candidates file; make the two agree before reviewing on"
+                )
+
+
+def write_generated(
+    path: Path, candidates: Sequence[Candidate], existing: Sequence[GoldenItem]
+) -> None:
+    """generated.jsonl = the questions already there that the candidates file does not
+    hold, plus the candidates file's accepted ones, ordered by id. Written to a temporary
+    file first, then renamed."""
+    items = {i.id: i for i in existing}
+    items |= {c.item_id: to_item(c) for c in candidates if c.status == "accepted" and c.item_id}
     tmp = path.with_suffix(".tmp")
-    tmp.write_text("".join(to_item(c).model_dump_json(exclude_none=True) + "\n" for c in accepted))
+    tmp.write_text(
+        "".join(items[k].model_dump_json(exclude_none=True) + "\n" for k in sorted(items))
+    )
     tmp.replace(path)
 
 
 ChunkText = tuple[str, str | None, str]  # (title, section_path, text)
 
 
-def _next_item_id(candidates: Sequence[Candidate]) -> str:
-    used = [int(c.item_id[4:]) for c in candidates if c.item_id and c.item_id.startswith("gen-")]
+def _next_item_id(candidates: Sequence[Candidate], existing: Sequence[GoldenItem]) -> str:
+    """One after the highest gen-NNN in either file, so an id is never given twice."""
+    ids = [c.item_id for c in candidates if c.item_id] + [i.id for i in existing]
+    used = [int(i[4:]) for i in ids if re.fullmatch(r"gen-\d+", i)]
     return f"gen-{max(used, default=0) + 1:03d}"
 
 
@@ -431,16 +508,22 @@ def review(
     *,
     ask: Callable[[str], str],
     show: Callable[[str], None],
+    related: Callable[[Candidate], list[ChunkText]] | None = None,
     now: Callable[[], datetime] = lambda: datetime.now(UTC),
-    excerpt_chars: int = 900,
 ) -> Counter[str]:
     """Walk the pending candidates in file order; return what was decided this session.
 
     a = accept (gets the next gen-NNN id), r = reject (asks for an optional reason),
     s = skip (stays pending), q = quit. Each decision is saved before the next question.
-    A question whose text equals a golden or an accepted one cannot be accepted.
+    A question whose text equals a golden, a generated or an accepted one cannot be
+    accepted. `related` (for unanswerable candidates) gives the closest passages of the
+    same paper, so the reviewer can see whether the paper answers it after all.
     """
     candidates = load_candidates(candidates_path)
+    existing = load_generated(generated_path)
+    check_generated(existing, candidates)
+    known = {c.item_id for c in candidates if c.item_id}
+    elsewhere = [i.question for i in existing if i.id not in known]  # e.g. another file's
     decided: Counter[str] = Counter()
     pending = [c for c in candidates if c.status == "pending"]
     evidence = texts([cid for c in pending for cid in c.seed_chunk_ids])
@@ -452,13 +535,16 @@ def review(
         show(f"Reference answer: {cand.reference_answer or '(none: should be unanswerable)'}")
         for cid in cand.seed_chunk_ids:
             title, section, text = evidence.get(cid, ("(chunk not found)", None, ""))
-            show(f"--- seed {cid} | {title} | {section or 'Abstract'}\n{text[:excerpt_chars]}")
-        exact = cand.question.strip().lower() in {
-            q.strip().lower() for q in [*golden_questions, *accepted]
-        }
-        for other, label in [(q, "golden") for q in golden_questions] + [
-            (q, "accepted") for q in accepted
-        ]:
+            show(f"--- seed {cid} | {title} | {section or 'Abstract'}\n{text}")
+        if cand.type == "unanswerable" and related is not None:
+            show("--- closest passages of the same paper (does one answer it after all?)")
+            for title, section, text in related(cand):
+                show(f"--- {title} | {section or 'Abstract'}\n{text}")
+        others = [(q, "golden") for q in golden_questions] + [
+            (q, "generated") for q in elsewhere
+        ] + [(q, "accepted") for q in accepted]  # fmt: skip
+        exact = cand.question.strip().lower() in {q.strip().lower() for q, _ in others}
+        for other, label in others:
             score = similarity(cand.question, other)
             if score >= SIMILAR:
                 show(f"WARNING: {score:.2f} word overlap with a {label} question: {other}")
@@ -475,14 +561,14 @@ def review(
             decided["skipped"] += 1
             continue
         if choice == "a":
-            cand.status, cand.item_id = "accepted", _next_item_id(candidates)
+            cand.status, cand.item_id = "accepted", _next_item_id(candidates, existing)
         else:
             cand.status = "rejected"
             cand.reason = ask("Reason (optional) > ").strip() or None
         cand.reviewed_at = now()
         decided[cand.status] += 1
         save_candidates(candidates_path, candidates)
-        write_generated(generated_path, candidates)
+        write_generated(generated_path, candidates, existing)
     return decided
 
 
@@ -498,10 +584,6 @@ def status_table(candidates: Sequence[Candidate]) -> str:
 # --- command line -----------------------------------------------------------------------------
 
 
-def _golden_reference_ids(path: Path) -> set[uuid.UUID]:
-    return {cid for item in load_golden(path) for cid in item.reference_chunk_ids}
-
-
 def _chunk_texts(ids: Sequence[uuid.UUID]) -> dict[uuid.UUID, ChunkText]:
     from app.db.session import session_scope
 
@@ -512,6 +594,21 @@ def _chunk_texts(ids: Sequence[uuid.UUID]) -> dict[uuid.UUID, ChunkText]:
             .where(Chunk.id.in_(list(ids)))
         ).all()
     return {cid: (title, section, text) for cid, title, section, text in rows}
+
+
+def _same_paper_passages(candidate: Candidate) -> list[ChunkText]:
+    """The candidate's question as a BM25 search inside its own paper: local and free
+    (the sparse encoder and Qdrant on this machine; no embedding request)."""
+    from app.ingest.embed import get_sparse_embedder
+    from app.rag.search import SearchFilters, search
+
+    s = get_settings()
+    hits = search(
+        candidate.question, SearchFilters(arxiv_ids=tuple(candidate.arxiv_ids)), mode="bm25",
+        limit=RELATED_PASSAGES, prefetch_limit=s.search_prefetch_limit, rrf_k=s.search_rrf_k,
+        sparse=get_sparse_embedder(),
+    )  # fmt: skip
+    return [(h.title, h.section_path, h.text) for h in hits]
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -529,27 +626,45 @@ def main(argv: list[str] | None = None) -> int:
         p.add_argument("--candidates", type=Path, default=CANDIDATES_PATH)
     args = parser.parse_args(argv)
 
+    try:
+        return _run(args)
+    except MakeTestsetError as err:
+        print(f"make_testset: {err}", file=sys.stderr)
+        return 2
+
+
+def _run(args: argparse.Namespace) -> int:
     if args.command == "status":
         print(status_table(load_candidates(args.candidates)))
         return 0
     if args.command == "review":
+        from app.ingest.index import close_qdrant
+
         golden = [i.question for i in load_golden(GOLDEN_PATH)]
-        decided = review(
-            args.candidates, GENERATED_PATH, golden, _chunk_texts, ask=input, show=print
-        )
+        try:
+            decided = review(
+                args.candidates, GENERATED_PATH, golden, _chunk_texts, ask=input, show=print,
+                related=_same_paper_passages,
+            )  # fmt: skip
+        finally:
+            close_qdrant()
         print(f"\nthis session: {dict(decided)}; accepted questions are in {GENERATED_PATH}")
         return 0
 
     from app.db.session import session_scope
 
     with session_scope() as session:
-        pool = load_pool(session)
+        excluded = golden_papers(session, GOLDEN_PATH)
+        pool = seedable(load_pool(session), excluded)
         papers = papers_of(pool)
         missing = max(0, args.min_papers - len(papers))
-        suggestions = ingest_suggestions(session, missing) if missing else []
+        suggestions = ingest_suggestions(session, missing, excluded) if missing else []
     if args.command == "plan" or missing:
-        print(f"full-text papers: {len(papers)} ({', '.join(papers) or 'none'}); "
-              f"needed: {args.min_papers}")  # fmt: skip
+        print(
+            f"full-text papers that can seed questions: {len(papers)} "
+            f"({', '.join(papers) or 'none'}); needed: {args.min_papers}. Left out because "
+            f"golden questions refer to them: {', '.join(sorted(excluded)) or 'none'}."
+        )
         if missing:
             print(f"missing {missing}. Suggested full-text ingests (most HF upvotes first):")
             for arxiv_id, title, upvotes in suggestions:
@@ -560,7 +675,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     counts: dict[CandidateType, int] = {t: getattr(args, t) for t in TYPES}
-    seeds = pick_seeds(pool, counts, seed=args.seed, exclude=_golden_reference_ids(GOLDEN_PATH))
+    seeds = pick_seeds(pool, counts, seed=args.seed, exclude_papers=excluded)
     got = Counter(s.type for s in seeds)
     short = {t: f"{got[t]}/{n}" for t, n in counts.items() if got[t] < n}
     settings = get_settings()

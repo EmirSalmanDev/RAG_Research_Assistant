@@ -31,7 +31,9 @@ from eval.answers import (
     collect_sample,
     estimate,
     is_unanswerable,
+    run,
     score_sample,
+    select_questions,
 )
 from eval.golden import GoldenItem, SetQuestion
 from eval.judge import (
@@ -263,6 +265,7 @@ def test_every_answer_metric_from_scripted_verdicts() -> None:
             "context_precision": 1.0,  # the only useful source is ranked first
             "context_recall": 0.5,  # 1 of 2 reference sentences found
             "citation_accuracy": 2 / 3,  # [1] and [2] supported, [9] points at no source
+            "uncited_sentence_share": 1 / 3,  # "That is all." cites nothing
         }
     )
     assert scores.errors == {}
@@ -283,7 +286,9 @@ def test_without_a_reference_answer_there_is_no_context_precision_or_recall() ->
     del replies[3:5]  # no precision or recall call
     judge, rows = _judge(replies)
     scores = score_sample(_sample(_question()), judge, FakeEmbed())
-    assert set(scores.metrics) == {"faithfulness", "response_relevancy", "citation_accuracy"}
+    assert set(scores.metrics) == {
+        "faithfulness", "response_relevancy", "citation_accuracy", "uncited_sentence_share",
+    }  # fmt: skip
     assert len(rows) == 4
 
 
@@ -306,11 +311,67 @@ def test_a_refused_or_failed_question_gets_no_answer_metrics_and_no_judge_call()
 
 
 def test_citation_items_split_valid_and_invalid_numbers() -> None:
-    items, invalid = citation_items("A [1]. B [1, 2]. C [7].", [Source(1, SEC), Source(2, ABS)])
+    items, invalid = citation_items(
+        "A [1]. B [1, 2]. C [7]. D [1][7].", [Source(1, SEC), Source(2, ABS)]
+    )
     assert [(i.index, i.source, i.sentence_cites) for i in items] == [
         (0, 1, (1,)), (1, 1, (1, 2)), (1, 2, (1, 2)),
+        (3, 1, (1,)),  # [7] does not exist: [1] is judged as the sentence's only source
     ]  # fmt: skip
-    assert invalid == 1
+    assert invalid == 2
+
+
+@pytest.mark.parametrize("questions", [[], ["on topic", "off topic"]])
+def test_a_noncommittal_answer_scores_zero_without_an_embeddings_request(
+    questions: list[str],
+) -> None:
+    replies = _judge_replies()
+    replies[2] = parsed_reply(RelevancyOutput(questions=questions, noncommittal=True))
+    judge, _ = _judge(replies)
+    embed = FakeEmbed()
+    scores = score_sample(_sample(), judge, embed)
+    assert scores.metrics["response_relevancy"] == 0.0
+    assert embed.calls == []  # the score is 0 whatever the vectors: nothing is paid for
+
+
+def test_a_refused_or_cut_off_judge_answer_loses_only_that_metric() -> None:
+    replies = _judge_replies()
+    replies[0] = parsed_reply(None, 1500, 40)  # the statements call is refused (billed)
+    del replies[1]  # so no faithfulness call follows
+    judge, rows = _judge(replies)
+    scores = score_sample(_sample(), judge, FakeEmbed())
+    assert scores.metrics["faithfulness"] is None
+    assert scores.errors["faithfulness"].startswith("ChatResponseError")
+    assert scores.metrics["context_recall"] == 0.5
+    assert len(judge.spent) == len(rows) == 5  # the refused call is counted too
+
+
+def test_any_other_judge_failure_stops_the_run() -> None:
+    replies = _judge_replies()
+    replies[0] = RuntimeError("invented: the model does not exist")
+    judge, _ = _judge(replies)
+    with pytest.raises(RuntimeError, match="does not exist"):
+        score_sample(_sample(), judge, FakeEmbed())
+
+
+def test_a_limit_needs_one_split() -> None:
+    questions = [_question("q01", "heldout"), _question("gen-001"), _question("gen-002")]
+    with pytest.raises(ValueError, match="--split"):
+        select_questions(questions, "all", 1)
+    assert [q.item.id for q in select_questions(questions, "generated", 1)] == ["gen-001"]
+    assert len(select_questions(questions, "all", None)) == 3
+
+
+def test_run_hands_every_scored_question_on_at_once() -> None:
+    stored: list[str] = []
+    deps, _ = _deps([parsed_reply(_plan(), 300, 40)] * 2, FakeSearch([]))  # two refusals
+    judge, _ = _judge([])
+    rows = run(
+        [_question("gen-001"), _question("gen-002", question="Another question?")],
+        deps=deps, judge=judge, embed=FakeEmbed(), settings=get_settings(),
+        on_row=lambda row: stored.append(row[0].question.item.id),
+    )  # fmt: skip
+    assert stored == ["gen-001", "gen-002"] and len(rows) == 2
 
 
 # --- aggregates -------------------------------------------------------------------------------
