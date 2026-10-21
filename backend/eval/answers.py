@@ -20,7 +20,9 @@ For every question, in order:
      (a [n] pointing at no source counts as unsupported);
    - uncited sentence share: sentences without any [n] / sentences. Citation accuracy
      cannot see an answer that cites nothing, so this is reported next to it.
-   A refused question gets no answer metrics, only its refusal. A judge step whose answer
+   A refused question gets no answer metrics, only its refusal and, with a reference
+   answer, the two context metrics (they judge the sources, not the answer; no sources at
+   all gives context recall 0 without a call). A failed turn gets none. A judge step whose answer
    does not fit what was asked loses only that metric (its reason is stored); any other
    failure (an API error, a wrong model name) stops the run, so a broken judge never
    pays for a whole run of empty scores.
@@ -214,7 +216,16 @@ def citation_items(answer: str, sources: Sequence[Source]) -> tuple[list[Citatio
 
 
 def score_sample(sample: AnswerSample, judge: Judge, embed: DenseEncoder) -> SampleScores:
-    """The answer metrics of one answered question (nothing for a refusal or an error).
+    """The metrics of one question: nothing for a failed turn; for a refusal only the two
+    context metrics; for an answer all of them.
+
+    Context precision and context recall judge the sources against the reference answer,
+    not the answer (as in RAGAS), so they are computed whenever the turn retrieved
+    something, also when the generator then refused (insufficient sources). A refusal
+    because nothing was retrieved (no sources) has context recall 0 (nothing can state the
+    reference) without a judge call, and no context precision (no source to rank). So a
+    configuration that makes the generator refuse more often cannot hide those questions
+    from the context metrics (docs/adr/0012, decision 12).
 
     Each metric is computed on its own: if the judge's answer for one does not fit (a
     wrong verdict list, a refusal, output cut off), that metric is recorded as missing
@@ -222,10 +233,10 @@ def score_sample(sample: AnswerSample, judge: Judge, embed: DenseEncoder) -> Sam
     error, a wrong model name) is raised: the run stops instead of paying on for nothing.
     """
     scores = SampleScores()
-    if sample.answer is None:
+    if sample.error is not None:
         return scores
     item = sample.question.item
-    answer, sources = sample.answer, sample.sources
+    sources = sample.sources
 
     def attempt(metric: str, compute: Callable[[], float | None]) -> None:
         try:
@@ -282,6 +293,14 @@ def score_sample(sample: AnswerSample, judge: Judge, embed: DenseEncoder) -> Sam
         }
         return share([v.ok for v in verdicts] + [False] * invalid)
 
+    if sample.answer is None:  # refused: the context metrics only
+        if item.reference_answer:
+            reference = item.reference_answer
+            if sources:
+                attempt("context_precision", lambda: precision(reference))
+            attempt("context_recall", lambda: recall(reference))
+        return scores
+    answer = sample.answer
     attempt("faithfulness", faithfulness)
     attempt("response_relevancy", relevancy)
     if item.reference_answer:
@@ -303,17 +322,21 @@ def score_sample(sample: AnswerSample, judge: Judge, embed: DenseEncoder) -> Sam
 Row = tuple[AnswerSample, SampleScores]
 
 
-def aggregate(rows: Sequence[Row]) -> dict[str, dict[str, Any]]:
+def aggregate(
+    rows: Sequence[Row], metrics: Sequence[str] = ANSWER_METRICS
+) -> dict[str, dict[str, Any]]:
     """Run metrics for "all", "heldout" and "generated" (a split without questions is
     left out). Means are over the questions where a metric is defined; `n_<metric>` says
-    how many those were, so a mean over 3 questions is never mistaken for one over 60."""
+    how many those were, so a mean over 3 questions is never mistaken for one over 60.
+    `metrics` names the per-question values to average (the ablation runner adds its
+    source metrics)."""
     out: dict[str, dict[str, Any]] = {}
     for split in SPLITS:
         chosen = [r for r in rows if split == "all" or r[0].question.split == split]
         if not chosen:
             continue
         m: dict[str, Any] = {"n_questions": len(chosen)}
-        for key in ANSWER_METRICS:
+        for key in metrics:
             values = [v for _, s in chosen if (v := s.metrics.get(key)) is not None]
             m[key] = mean(values)
             m[f"n_{key}"] = len(values)
@@ -380,6 +403,19 @@ def _last_usage_id(session: Session) -> int:
     return int(session.scalar(select(func.coalesce(func.max(LLMUsage.id), 0))) or 0)
 
 
+def last_usage_id(session: Session) -> int:
+    """The newest llm_usage id (0 when empty): a run's spend is every row after it."""
+    return _last_usage_id(session)
+
+
+def spend_since(session: Session, after_id: int) -> Decimal:
+    """USD of every llm_usage row written after `after_id`."""
+    value = session.scalar(
+        select(func.coalesce(func.sum(LLMUsage.cost_usd), 0)).where(LLMUsage.id > after_id)
+    )
+    return Decimal(str(value))
+
+
 def start_run(
     session: Session, name: str, *, config: dict[str, Any], git_sha: str | None
 ) -> EvalRun:
@@ -396,30 +432,54 @@ def start_run(
     return run
 
 
-def store_result(session: Session, run_id: int, item_id: int, row: Row) -> None:
-    """One question's eval_results row."""
+def hit_record(hit: SearchHit, n: int | None = None) -> dict[str, Any]:
+    """A retrieved chunk as stored with a result: what the per-question view shows. The
+    text is kept because the judge's verdicts are about it, and because a chunk id of
+    another chunking (an ablation index) means another text than in the chunks table."""
+    return {
+        **({"n": n} if n is not None else {}),
+        "chunk_id": str(hit.chunk_id),
+        "arxiv_id": hit.arxiv_id,
+        "title": hit.title,
+        "section_path": hit.section_path,
+        "chunk_type": hit.chunk_type,
+        "score": hit.score,
+        "text": hit.text,
+    }
+
+
+def result_metrics(row: Row) -> dict[str, Any]:
+    """One question's eval_results.metrics: its scores, how the turn went, the judge's
+    verdicts and the sources the answer was given (with their texts)."""
     sample, scores = row
     item = sample.question.item
+    return {
+        **scores.metrics,
+        "golden_id": item.id,
+        "split": sample.question.split,
+        "type": item.type,
+        "refusal": sample.refusal,
+        "error": sample.error,
+        "intent": sample.intent,
+        "latency_ms": sample.latency_ms,
+        "first_token_ms": sample.first_token_ms,
+        "cost_usd": str(sample.cost_usd),
+        "judge_errors": scores.errors,
+        "details": scores.details,
+        "sources": [hit_record(s.hit, s.n) for s in sample.sources],
+    }
+
+
+def store_result(session: Session, run_id: int, item_id: int, row: Row) -> None:
+    """One question's eval_results row."""
+    sample, _ = row
     session.add(
         EvalResult(
             run_id=run_id,
             item_id=item_id,
             retrieved_chunk_ids=[s.hit.chunk_id for s in sample.sources],
             answer=sample.answer,
-            metrics={
-                **scores.metrics,
-                "golden_id": item.id,
-                "split": sample.question.split,
-                "type": item.type,
-                "refusal": sample.refusal,
-                "error": sample.error,
-                "intent": sample.intent,
-                "latency_ms": sample.latency_ms,
-                "first_token_ms": sample.first_token_ms,
-                "cost_usd": str(sample.cost_usd),
-                "judge_errors": scores.errors,
-                "details": scores.details,
-            },
+            metrics=result_metrics(row),
         )
     )
     session.flush()

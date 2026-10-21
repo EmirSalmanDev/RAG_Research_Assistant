@@ -25,9 +25,9 @@ import sys
 import threading
 from collections import Counter
 from collections.abc import Iterable, Sequence
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Protocol
+from typing import Any, Protocol
 
 from app.config import get_settings
 from app.ingest.chunk import embedding_text
@@ -108,16 +108,32 @@ def model_cache_dir() -> Path:
     return Path(get_settings().fastembed_cache_dir).expanduser()
 
 
-def load_cross_encoder(model_name: str, cache_dir: Path) -> CrossEncoder:
+def load_cross_encoder(
+    model_name: str, cache_dir: Path, *, threads: int | None = None, cpu_arena: bool = True
+) -> CrossEncoder:
     """Load the model from the local cache only; never downloads.
+
+    `threads` limits ONNX Runtime's threads (None: its default, one per core) and
+    `cpu_arena=False` switches its CPU memory arena off. Both are passed to FastEmbed only
+    when they differ from its defaults, so the default load is exactly the one measured
+    in docs/adr/0005.
 
     A missing or incomplete cache raises RerankerUnavailable at once (FastEmbed raises
     ValueError; with local_files_only=True it does not try the network first).
     """
     from fastembed.rerank.cross_encoder import TextCrossEncoder  # loads onnxruntime
 
+    if threads is not None and threads < 1:
+        raise ValueError(f"rerank threads must be at least 1, got {threads}")
+    options: dict[str, Any] = {}
+    if threads is not None:
+        options["threads"] = threads
+    if not cpu_arena:
+        options["enable_cpu_mem_arena"] = False  # an ONNX session option FastEmbed exposes
     try:
-        return TextCrossEncoder(model_name, cache_dir=str(cache_dir), local_files_only=True)
+        return TextCrossEncoder(
+            model_name, cache_dir=str(cache_dir), local_files_only=True, **options
+        )
     except ValueError as err:
         raise RerankerUnavailable(
             f"reranker {model_name!r} is not in {cache_dir}. Download it once with "
@@ -125,8 +141,26 @@ def load_cross_encoder(model_name: str, cache_dir: Path) -> CrossEncoder:
         ) from err
 
 
+@dataclass(frozen=True)
+class RerankerKey:
+    """What a loaded cross-encoder was built from: the model and its runtime settings."""
+
+    model: str
+    cache_dir: str
+    threads: int | None
+    cpu_arena: bool
+
+
+def reranker_key() -> RerankerKey:
+    """The cross-encoder the current settings ask for."""
+    s = get_settings()
+    return RerankerKey(
+        s.reranker_model, str(model_cache_dir()), s.rerank_threads, s.rerank_cpu_arena
+    )
+
+
 _lock = threading.Lock()
-_encoder: CrossEncoder | None = None
+_loaded: tuple[RerankerKey, CrossEncoder] | None = None
 
 
 def get_cross_encoder() -> CrossEncoder:
@@ -134,12 +168,29 @@ def get_cross_encoder() -> CrossEncoder:
 
     The lock matters in the API: requests run in a thread pool, and without it two
     first requests at the same moment would each load a copy (about 1 GB of RAM each).
+
+    The model is kept together with the settings it was loaded with. The API never
+    changes them, but an evaluation runs several configurations in one process: when the
+    settings ask for another model (or other runtime settings), the old one is released
+    before the new one is loaded, so a configuration never reranks with the model of the
+    one before, and two models never sit in memory together.
     """
-    global _encoder
+    global _loaded
+    key = reranker_key()
     with _lock:
-        if _encoder is None:
-            _encoder = load_cross_encoder(get_settings().reranker_model, model_cache_dir())
-        return _encoder
+        if _loaded is None or _loaded[0] != key:
+            _loaded = None  # drop the reference first, so the old model can be freed
+            encoder = load_cross_encoder(
+                key.model, Path(key.cache_dir), threads=key.threads, cpu_arena=key.cpu_arena
+            )
+            _loaded = (key, encoder)
+        return _loaded[1]
+
+
+def loaded_reranker() -> RerankerKey | None:
+    """The key of the cross-encoder this process holds, if any (the evaluation records it)."""
+    with _lock:
+        return None if _loaded is None else _loaded[0]
 
 
 # --- the one download -------------------------------------------------------------------------
