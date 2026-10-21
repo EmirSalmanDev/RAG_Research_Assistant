@@ -2,6 +2,7 @@ from fastapi import FastAPI
 
 from app.api.chat import router as chat_router
 from app.api.digest import router as digest_router
+from app.api.evals import router as evals_router
 from app.api.explore import router as explore_router
 from app.api.health import router as health_router
 from app.api.interests import router as interests_router
@@ -27,3 +28,4 @@ app.include_router(explore_router)
 app.include_router(library_router)
 app.include_router(review_router)
 app.include_router(upload_router)
+app.include_router(evals_router)

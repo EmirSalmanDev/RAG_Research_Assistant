@@ -126,6 +126,77 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/evals/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Runs
+         * @description Every run, newest first, with its headline metrics (Postgres only).
+         */
+        get: operations["list_runs_evals_runs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/evals/runs/{run_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Run */
+        get: operations["get_run_evals_runs__run_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/evals/runs/{run_id}/results": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Run Results */
+        get: operations["run_results_evals_runs__run_id__results_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/evals/runs/{run_id}/results/{item_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Run Result */
+        get: operations["run_result_evals_runs__run_id__results__item_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health": {
         parameters: {
             query?: never;
@@ -729,6 +800,181 @@ export interface components {
              */
             requested_date: string;
         };
+        /** EvalResultDetailOut */
+        EvalResultDetailOut: {
+            /** Answer */
+            answer: string | null;
+            /** Cost Usd */
+            cost_usd: number | null;
+            /** Error */
+            error: string | null;
+            /** Item Id */
+            item_id: number;
+            /** Judge */
+            judge: {
+                [key: string]: unknown;
+            };
+            /** Judge Errors */
+            judge_errors: {
+                [key: string]: string;
+            };
+            /** Latency Ms */
+            latency_ms: number | null;
+            /**
+             * Outcome
+             * @enum {string}
+             */
+            outcome: "answered" | "refused" | "error" | "retrieved";
+            /** Question */
+            question: string;
+            /** Question Id */
+            question_id: string | null;
+            /** Reference Answer */
+            reference_answer: string | null;
+            /** Reference Chunk Ids */
+            reference_chunk_ids: string[];
+            /** Refusal */
+            refusal: string | null;
+            /** Retrieved */
+            retrieved: components["schemas"]["RetrievedChunkOut"][];
+            /** Run Id */
+            run_id: number;
+            /** Scores */
+            scores: {
+                [key: string]: number | null;
+            };
+            /** Split */
+            split: string | null;
+            /** Type */
+            type: string | null;
+        };
+        /** EvalResultRowOut */
+        EvalResultRowOut: {
+            /** Item Id */
+            item_id: number;
+            /**
+             * Outcome
+             * @enum {string}
+             */
+            outcome: "answered" | "refused" | "error" | "retrieved";
+            /** Question */
+            question: string;
+            /** Question Id */
+            question_id: string | null;
+            /** Refusal */
+            refusal: string | null;
+            /** Scores */
+            scores: {
+                [key: string]: number | null;
+            };
+            /** Split */
+            split: string | null;
+            /** Type */
+            type: string | null;
+        };
+        /** EvalResultsOut */
+        EvalResultsOut: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "retrieval" | "answers" | "selection" | "other";
+            /** Results */
+            results: components["schemas"]["EvalResultRowOut"][];
+            /** Run Id */
+            run_id: number;
+        };
+        /** EvalRunOut */
+        EvalRunOut: {
+            /** All Metrics */
+            all_metrics: {
+                [key: string]: unknown;
+            };
+            /** Config */
+            config: {
+                [key: string]: unknown;
+            };
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Git Sha */
+            git_sha: string | null;
+            /** Id */
+            id: number;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "retrieval" | "answers" | "selection" | "other";
+            /** Label */
+            label: string | null;
+            /** Metrics */
+            metrics: {
+                [key: string]: number | null;
+            };
+            /** N Questions */
+            n_questions: number | null;
+            /** Name */
+            name: string | null;
+            /** Splits */
+            splits: string[];
+            /** Status */
+            status: string | null;
+            /** Step */
+            step: string | null;
+            /** Suite */
+            suite: string | null;
+            /** Suite Id */
+            suite_id: string | null;
+            /** Variant */
+            variant: string | null;
+        };
+        /** EvalRunSummaryOut */
+        EvalRunSummaryOut: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Git Sha */
+            git_sha: string | null;
+            /** Id */
+            id: number;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "retrieval" | "answers" | "selection" | "other";
+            /** Label */
+            label: string | null;
+            /** Metrics */
+            metrics: {
+                [key: string]: number | null;
+            };
+            /** N Questions */
+            n_questions: number | null;
+            /** Name */
+            name: string | null;
+            /** Splits */
+            splits: string[];
+            /** Status */
+            status: string | null;
+            /** Step */
+            step: string | null;
+            /** Suite */
+            suite: string | null;
+            /** Suite Id */
+            suite_id: string | null;
+            /** Variant */
+            variant: string | null;
+        };
+        /** EvalRunsOut */
+        EvalRunsOut: {
+            /** Runs */
+            runs: components["schemas"]["EvalRunSummaryOut"][];
+        };
         /** HFArtifactOut */
         HFArtifactOut: {
             /** Downloads */
@@ -1046,6 +1292,34 @@ export interface components {
             stars: number | null;
             /** Url */
             url: string;
+        };
+        /** RetrievedChunkOut */
+        RetrievedChunkOut: {
+            /** Abs Url */
+            abs_url: string | null;
+            /** Arxiv Id */
+            arxiv_id: string | null;
+            /**
+             * Chunk Id
+             * Format: uuid
+             */
+            chunk_id: string;
+            /** Chunk Type */
+            chunk_type: string | null;
+            /** Is Reference */
+            is_reference: boolean;
+            /** N */
+            n: number | null;
+            /** Rank */
+            rank: number;
+            /** Score */
+            score: number | null;
+            /** Section Path */
+            section_path: string | null;
+            /** Text */
+            text: string | null;
+            /** Title */
+            title: string | null;
         };
         /** ReviewCounts */
         ReviewCounts: {
@@ -1596,6 +1870,131 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DigestEntryOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_runs_evals_runs_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvalRunsOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_run_evals_runs__run_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvalRunOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    run_results_evals_runs__run_id__results_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvalResultsOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    run_result_evals_runs__run_id__results__item_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+                item_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvalResultDetailOut"];
                 };
             };
             /** @description Validation Error */
