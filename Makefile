@@ -1,4 +1,4 @@
-.PHONY: up down logs test lint e2e openapi digest compare timeline review ingest-pdf migrate ingest-one enrich-one analyze-submit analyze-collect backfill fetch-reranker eval-retrieval eval-smoke eval eval-ablations eval-select
+.PHONY: up down logs test lint e2e openapi digest compare timeline review ingest-pdf migrate ingest-one enrich-one analyze-submit analyze-collect backfill fetch-reranker eval-retrieval eval-smoke eval eval-ablations eval-select eval-index
 
 # Start the stack and wait until every service's healthcheck passes.
 up:
@@ -205,3 +205,17 @@ eval-ablations:
 eval-select:
 	@test -n "$(STEP)" || (echo "usage: make eval-select STEP=retrieval|rewriting|chunking|embedding|reranker"; exit 2)
 	cd backend && uv run python -m eval.ablations select --step "$(STEP)"
+
+# The Qdrant collection of a chunking or embedding variant (backend/eval/indexes.py), built
+# from Postgres; the app's collection and Postgres are only read. Abstract and analysis points
+# (and, for the same model, every vector) are copied; only what the variant changes is embedded
+# (PAID for that: ask first; MAX_USD is the hard cap). ESTIMATE=1 prints points, tokens and
+# cost without any request. A build is resumable. BASE=a7-... names the chunking an embedding
+# variant builds on (default: the stored chunking winner). DROP=1 deletes that eval collection.
+#   make eval-index VARIANT=a7-c256 ESTIMATE=1
+#   make eval-index VARIANT=a8-large BASE=a7-c512 MAX_USD=0.40
+eval-index:
+	@test -n "$(VARIANT)" || (echo "usage: make eval-index VARIANT=a7-c256|a7-c1024|a8-large-short|a8-large [BASE=a7-...] [ESTIMATE=1|MAX_USD=x|DROP=1]"; exit 2)
+	cd backend && uv run python -m eval.indexes $(if $(ESTIMATE),estimate,$(if $(DROP),drop,build)) \
+		--variant "$(VARIANT)" $(if $(BASE),--base "$(BASE)") \
+		$(if $(ESTIMATE)$(DROP),,$(if $(MAX_USD),--max-usd "$(MAX_USD)"))

@@ -527,6 +527,32 @@ questions outside the golden 20, for the settings 0, 1 and -1.
   change was not cleared to do, so the replay stands in for it. The 20 reranked
   questions took 99.8 s on this machine (about 5 s per question, 50 candidates).
 
+### 18. A collection per index variant, built from Postgres (`eval/indexes.py`)
+- **Decision.** A chunking or embedding variant searches its own Qdrant collection, named
+  after what it holds (`<collection>__eval__c<tokens>o<overlap>__<model>-<dim>[-short]`),
+  with the app's layout (`ensure_collection`). It is built from Postgres, which is only
+  read, like the app's collection: abstract and analysis chunks are the same under any
+  chunking and come from the chunks table; section chunks under another chunking are made
+  again from the paper's cleaned text (`paper_texts.markdown`) with the variant's sizes,
+  with the ids the app would give them. With the configured model and size, dense
+  vectors are copied from the app's collection (no request); otherwise everything the
+  variant holds is embedded with its model (with `dimensions` when shortened), logged as
+  `eval-embed-index` at that model's price. BM25 vectors are computed locally. The build
+  is resumable (points already there with the same text are skipped), checks the final
+  point count against its plan, refuses to write to any collection without the
+  `__eval__` mark, and stops when a paper with section chunks has no stored text. An
+  embedding variant builds on the chunking winner (stored) or `--base a7-...`.
+- **Alternative.** Re-index into the app's collection with other settings and restore it
+  afterwards. Not taken: the app would search a half-built index meanwhile, and the
+  owner's corpus would be at risk.
+- **Tested by.** On a scratch database and scratch collections
+  (`test_eval_indexes`): 256-token chunks re-made from the stored text (more chunks than
+  at 512, only those embedded, abstract and analysis vectors copied unchanged), a second
+  build embeds nothing, the shortened large model embeds every point with `dimensions`
+  and logs it, a paper without text stops the build, the app's collection is never
+  written, the command line estimates for free and needs a cap to embed; the real
+  collection is checked untouched.
+
 ### Review before merge
 An independent review of this change (a fresh reviewer with only the plan's evaluation text
 and the diff) found, among others: filter seeds that ignored the golden exclusion, a review
