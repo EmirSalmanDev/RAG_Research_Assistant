@@ -841,7 +841,12 @@ eval_runs ids of the retrieval and the answers part.
   +0.18 [0.02, 0.38], faithfulness -0.011 [-0.148, 0.122] (not worse). The MiniLM reranker
   (5) was also better (+0.167 [2.2e-18, 0.373]: its lower bound is 0 up to rounding, so
   "better" rests on float noise) but by a smaller mean; dense (1) and BM25 (2) were not better.
-- Ablation 6: query rewriting stays: without it the paired difference was 0.0 [0, 0].
+- Ablation 6: query rewriting stays: without it the paired difference was 0.0 [0, 0]. Two
+  limits: the free retrieval part embeds the question alone (the rephrasings come from the
+  paid planner), so its columns equal ablation 4's by design; and context recall was at its
+  ceiling on the generated questions (0.987, the same in ablations 4, 6, 7 at 512 and 8 at
+  1536), so on this set no challenger of steps 6-8 could show a gain on the primary metric.
+  Rewriting does change the answers part (source tokens, latency, cost).
 - Ablation 7: 512 tokens stays: 256 gave 0.0 [0, 0], 1024 gave -0.027 [-0.133, 0.040].
   (Context recall favours larger chunks by construction; it did not here.)
 - Ablation 8: `text-embedding-3-small` at 1536 stays: the large model gave -0.040
@@ -867,6 +872,9 @@ time per question at most 5 s, peak memory at most 2,048 MiB, quality kept):
 | 20 candidates | 61/62 | 0.820 | 0.834 | 0.867 | 0.891 | 1.92 | 2822.0 | no (memory) |
 | 10 candidates | 63/64 | 0.780 | 0.800 | 0.907 | 0.892 | 0.93 | 2724.2 | no (10 < 20, memory) |
 | MiniLM-L-12 (`Xenova/ms-marco-MiniLM-L-12-v2`) | 65/66 | 0.880 | 0.889 | 0.933 | 0.889 | 2.33 | 1500.5 | **yes** |
+
+The reference's verdict is worked out from the bar here (5.24 s > 5.0 s, 2129.6 MiB > 2,048 MiB);
+the selection row stores verdicts for the challengers only.
 
 Only the small model meets the owner's bar; it is the recommendation. Thread and arena
 settings change speed and memory only (identical retrieval lists), and on this machine none
