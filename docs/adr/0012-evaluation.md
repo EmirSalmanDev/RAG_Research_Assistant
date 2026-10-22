@@ -741,6 +741,51 @@ questions outside the golden 20, for the settings 0, 1 and -1.
   shape), and on a scratch database
   `test_the_estimate_reads_the_local_stores_and_counts_only_new_seeds`.
 
+### 25. The candidates are reviewed by an AI reviewer, not by the owner (a deviation from the plan)
+- **Decision.** The plan has the owner review every generated question; the owner decided
+  not to, and that the review is done by an AI reviewer instead. Written down before the
+  first accept or reject, without any retrieval or evaluation result:
+  1. One fresh subagent (a general-purpose Claude Code agent; reviewer name
+     `claude-subagent`) reviews every pending candidate. It did not configure the
+     generator, so the agent that wrote the seed rules and prompts does not grade their
+     output itself. It gets only these rules and, per candidate, its id, type, question,
+     reference answer and the seed text exactly as `make_testset review` shows it (an
+     unanswerable candidate with the paper's abstract and the three closest passages of
+     the same paper, decision 8). It never gets retrieval or evaluation results or golden
+     questions, and it is told to treat the paper text as data.
+  2. Rules: **fact**: the reference answer is stated in the seed text, and the question is
+     understandable alone (no "this paper", "the above"); **filter**: the filter is real
+     (a date or a category of the paper) and the question needs it; **compare**: both
+     papers are needed, and the question cannot be answered from one of them; **unanswerable**:
+     the answer is absent from the paper's text, including the same-paper passages shown
+     (a passage that contains the answer means reject). In every type: the reference
+     answer must not contradict the seed text; a near-duplicate of a candidate accepted
+     earlier in the list is rejected; if unsure, reject. The aim is about 30 accepted with
+     a mix of types and at least 15 (the smoke set), but no question is accepted to reach a
+     count.
+  3. A candidate the review tool warns about for word overlap of 0.6 or more with a
+     golden question is rejected by rule, without showing the golden question to the
+     reviewer. No generated question may sit on a golden paper (the pool excludes them,
+     decision 7; checked again after the review).
+  4. The decisions are recorded through the review tool's own code (`review` with
+     scripted answers in the reviewer's order), so ids are numbered and every decision is
+     saved as for a person, and no id is deleted or reused. A rejection keeps the
+     reviewer's reason, prefixed `claude-subagent:`. The candidates file and
+     `generated.jsonl` have no reviewer field, so the reviewer of every accepted
+     question is recorded here and in the README.
+  5. These questions are **AI-generated and AI-reviewed**; they must never be described as
+     reviewed by a person.
+- **Alternatives.** (a) Accept every candidate the generator marked usable: no review at
+  all. (b) The agent that wrote the seed rules and prompts reviews: it would grade the
+  output of its own configuration. (c) Wait for the owner: the owner decided against it.
+- **Consequences.** The generated split, which decides every "best of the above" choice,
+  rests on two models (the generator `gpt-4o-mini` and the reviewer); a wrong question that
+  both let through can move a selection. The held-out golden numbers are reported next to
+  every choice and never used to make it.
+- **Tested by.** The review tool's tests (decision 8: numbering, saving after every
+  decision, no deleted or reused ids, a hand-edited file refused). The decisions and the
+  reasons are in the candidates file; the counts per type are in the part 3 report.
+
 ### Review before merge (part 2)
 A fresh reviewer, given only the plan's evaluation text and the diff, found: a variant
 index that was only partly built (a capped build) or older than the corpus would still be

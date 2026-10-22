@@ -273,7 +273,10 @@ papers on one topic (the same primary category, then the closest stored abstract
 and their two most similar sections, read from the local index (no request); an
 unanswerable one is written from a paper's abstract and section headings
 (docs/adr/0012, decisions 21-24). A second run sends only the seeds the candidates file
-does not hold yet, and `--estimate` counts only those. Review shows each candidate
+does not hold yet, and `--estimate` counts only those. The questions in
+`backend/eval/generated.jsonl` were reviewed by an AI reviewer (a Claude Code subagent,
+`claude-subagent`), not by a person: they are AI-generated and AI-reviewed
+(docs/adr/0012, decision 25). Review shows each candidate
 with the full text it was made from (an unanswerable one also with the closest passages of
 the same paper, found by a free local search), warns about near-duplicates of golden,
 generated or accepted questions, and adds the accepted ones to
