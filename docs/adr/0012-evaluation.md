@@ -786,6 +786,115 @@ questions outside the golden 20, for the settings 0, 1 and -1.
   decision, no deleted or reused ids, a hand-edited file refused). The decisions and the
   reasons are in the candidates file; the counts per type are in the part 3 report.
 
+### Measured: the ablations on real data (part 3)
+Run at commit 39cd4c5 (the code of decisions 1-25) on the corpus of that day: 8,912 points in
+the app's collection, 33 full-text papers (30 of them added for the test set; the 3 golden
+papers before). Questions: the 20 held-out golden questions (17 scored, 3 unanswerable) and the
+27 generated ones (21 fact, 2 filter, 2 compare, 2 unanswerable; AI-generated and AI-reviewed,
+decision 25). Judge and generator `gpt-4o-mini`, temperature 0; every run is stored in
+eval_runs with its configuration, commit and per-question rows. Steps in order, each on the
+stored winner of the step before (suites 8956c062dd89, 4a883a841610, 9bd752f18578,
+97e7370ca00c, ee2fcb8199e8). Retrieval metrics on 10 results; R@8, MRR and nDCG@10 count
+reference chunk ids and are left out for another chunking (decision 14); `runs` = the
+eval_runs ids of the retrieval and the answers part.
+
+**Generated questions (27; the rule chose on these, 25 paired per comparison):**
+
+| Configuration | runs | R@8 | MRR | nDCG@10 | cov@8 | ctx recall | faithfulness | relevancy | ctx precision | citation acc | refusal acc | false refusal | p50 ms | $/answer |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 dense only | 23/24 | 0.540 | 0.513 | 0.510 | 0.550 | 0.667 | 0.835 | 0.673 | 0.683 | 0.822 | 0.500 | 0.160 | 5317 | 0.000793 |
+| 2 BM25 only | 25/26 | 0.620 | 0.613 | 0.612 | 0.640 | 0.767 | 0.872 | 0.745 | 0.779 | 0.862 | 0.500 | 0.120 | 4694 | 0.000804 |
+| 3 hybrid (RRF) | 27/28 | 0.660 | 0.627 | 0.625 | 0.682 | 0.807 | 0.846 | 0.694 | 0.767 | 0.912 | 1.000 | 0.040 | 5527 | 0.000843 |
+| 4 hybrid + bge-reranker-base | 29/30 | 0.900 | 0.793 | 0.816 | 0.914 | 0.987 | 0.848 | 0.718 | 0.922 | 0.821 | 0.500 | 0.040 | 9719 | 0.000842 |
+| 5 hybrid + MiniLM-L-12 reranker | 31/32 | 0.880 | 0.760 | 0.790 | 0.889 | 0.973 | 0.859 | 0.763 | 0.863 | 0.868 | 1.000 | 0.080 | 7469 | 0.000815 |
+| 6 on 4, with query rewriting | 34/35 | 0.900 | 0.793 | 0.816 | 0.914 | 0.987 | 0.882 | 0.724 | 0.919 | 0.829 | 0.500 | 0.040 | 10442 | 0.000851 |
+| 6 on 4, without query rewriting | 36/37 | 0.900 | 0.793 | 0.816 | 0.914 | 0.987 | 0.865 | 0.740 | 0.919 | 0.900 | 0.500 | 0.040 | 9724 | 0.000792 |
+| 7 on 6, chunks of 256 | 39/40 | n/a | n/a | n/a | 0.682 | 0.987 | 0.893 | 0.731 | 0.865 | 0.808 | 0.500 | 0.040 | 9818 | 0.000673 |
+| 7 on 6, chunks of 512 | 41/42 | 0.900 | 0.793 | 0.816 | 0.914 | 0.987 | 0.846 | 0.721 | 0.922 | 0.801 | 0.500 | 0.040 | 10594 | 0.000848 |
+| 7 on 6, chunks of 1024 | 43/44 | n/a | n/a | n/a | 0.893 | 0.960 | 0.923 | 0.729 | 0.870 | 0.809 | 0.500 | 0.040 | 10846 | 0.000979 |
+| 8 on 7, 3-small at 1536 | 46/47 | 0.900 | 0.793 | 0.816 | 0.914 | 0.987 | 0.863 | 0.726 | 0.919 | 0.811 | 0.500 | 0.040 | 10647 | 0.000838 |
+| 8 on 7, 3-large shortened to 1536 | 48/49 | 0.860 | 0.773 | 0.791 | 0.883 | 0.947 | 0.825 | 0.731 | 0.878 | 0.874 | 0.500 | 0.080 | 11305 | 0.000835 |
+| 8 on 7, 3-large at 3072 | 50/51 | 0.860 | 0.773 | 0.791 | 0.883 | 0.947 | 0.884 | 0.722 | 0.879 | 0.844 | 0.500 | 0.080 | 10745 | 0.000845 |
+
+**Held-out golden questions (20; reported, never used to choose):**
+
+| Configuration | R@8 | MRR | nDCG@10 | cov@8 | ctx recall | faithfulness | citation acc |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 dense only | 0.824 | 0.667 | 0.703 | 0.824 | 0.882 | 0.911 | 0.846 |
+| 2 BM25 only | 0.912 | 0.779 | 0.796 | 0.919 | 0.882 | 0.833 | 0.784 |
+| 3 hybrid (RRF) | 0.912 | 0.775 | 0.794 | 0.919 | 0.882 | 0.844 | 0.784 |
+| 4 hybrid + bge-reranker-base | 0.794 | 0.667 | 0.685 | 0.801 | 0.882 | 0.832 | 0.748 |
+| 5 hybrid + MiniLM-L-12 reranker | 0.912 | 0.716 | 0.759 | 0.919 | 0.941 | 0.849 | 0.632 |
+| 6 on 4, with query rewriting | 0.794 | 0.667 | 0.685 | 0.801 | 0.882 | 0.819 | 0.711 |
+| 6 on 4, without query rewriting | 0.794 | 0.667 | 0.685 | 0.801 | 0.882 | 0.785 | 0.727 |
+| 7 on 6, chunks of 256 | n/a | n/a | n/a | 0.788 | 0.882 | 0.761 | 0.690 |
+| 7 on 6, chunks of 512 | 0.794 | 0.667 | 0.685 | 0.801 | 0.882 | 0.831 | 0.725 |
+| 7 on 6, chunks of 1024 | n/a | n/a | n/a | 0.801 | 0.882 | 0.856 | 0.739 |
+| 8 on 7, 3-small at 1536 | 0.794 | 0.667 | 0.685 | 0.801 | 0.824 | 0.879 | 0.762 |
+| 8 on 7, 3-large shortened to 1536 | 0.794 | 0.667 | 0.685 | 0.801 | 0.882 | 0.827 | 0.731 |
+| 8 on 7, 3-large at 3072 | 0.794 | 0.667 | 0.685 | 0.801 | 0.882 | 0.826 | 0.725 |
+
+**What the rule chose** (decision 13: context recall, paired bootstrap at 1 - 0.05/m for m challengers:
+98.75 % for four, 97.5 % for two, 95 % for one; faithfulness as the guard; selection rows
+33, 38, 45, 52):
+- Ablations 1-5: **hybrid + `bge-reranker-base` (4)** replaces hybrid (3): context recall
+  +0.18 [0.02, 0.38], faithfulness -0.011 [-0.148, 0.122] (not worse). The MiniLM reranker
+  (5) was also better (+0.167 [2.2e-18, 0.373]: its lower bound is 0 up to rounding, so
+  "better" rests on float noise) but by a smaller mean; dense (1) and BM25 (2) were not better.
+- Ablation 6: query rewriting stays: without it the paired difference was 0.0 [0, 0].
+- Ablation 7: 512 tokens stays: 256 gave 0.0 [0, 0], 1024 gave -0.027 [-0.133, 0.040].
+  (Context recall favours larger chunks by construction; it did not here.)
+- Ablation 8: `text-embedding-3-small` at 1536 stays: the large model gave -0.040
+  [-0.160, 0.000] shortened to 1536 and at 3072 alike.
+So the configuration chosen on generated questions is hybrid + `bge-reranker-base`, query
+rewriting on, 512-token chunks, `text-embedding-3-small` at 1536: the app's defaults plus the
+reranker, which the app has off (`rerank_enabled`). Turning it on is the owner's decision:
+on this machine its median rerank time was 5.2 s per question and its process peaked at
+about 2.1 GB (below).
+
+**The reranker comparison moved from M4** (27 generated questions, each variant in its own
+process, on configuration 4; selection row 67; bar: at least 20 candidates, median rerank
+time per question at most 5 s, peak memory at most 2,048 MiB, quality kept):
+
+| Variant | runs | R@8 | cov@8 | ctx recall | faithfulness | median rerank s | peak MiB | meets the bar |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| reference (bge, default threads, arena on, 50 candidates) | 53/54 | 0.900 | 0.914 | 0.987 | 0.835 | 5.24 | 2129.6 | no (time, memory) |
+| 4 threads | 55 | 0.900 | 0.914 | - | - | 5.30 | 2439.2 | no (time, memory) |
+| 2 threads | 56 | 0.900 | 0.914 | - | - | 7.35 | 2576.0 | no (time, memory) |
+| 1 thread | 57 | 0.900 | 0.914 | - | - | 7.60 | 2465.7 | no (time, memory) |
+| arena off | 58 | 0.900 | 0.914 | - | - | 6.41 | 2861.7 | no (time, memory) |
+| 30 candidates | 59/60 | 0.860 | 0.874 | 0.947 | 0.868 | 3.90 | 2822.0 | no (memory) |
+| 20 candidates | 61/62 | 0.820 | 0.834 | 0.867 | 0.891 | 1.92 | 2822.0 | no (memory) |
+| 10 candidates | 63/64 | 0.780 | 0.800 | 0.907 | 0.892 | 0.93 | 2724.2 | no (10 < 20, memory) |
+| MiniLM-L-12 (`Xenova/ms-marco-MiniLM-L-12-v2`) | 65/66 | 0.880 | 0.889 | 0.933 | 0.889 | 2.33 | 1500.5 | **yes** |
+
+Only the small model meets the owner's bar; it is the recommendation. Thread and arena
+settings change speed and memory only (identical retrieval lists), and on this machine none
+made `bge-reranker-base` fit. Changing the app's reranker or `rerank_enabled` stays the
+owner's decision.
+
+**How far to trust these numbers.**
+- The same configuration ran three times in three suites (eval_runs 35, 42 and 47: 4 with
+  rewriting, 512 tokens, the small model): context recall 0.987 / 0.987 / 0.987 on generated
+  questions, faithfulness 0.882 / 0.846 / 0.863. Retrieval parts are identical run to run
+  (cached question vectors); answer metrics move by about 0.02-0.04 between identical runs
+  (the model, the live query embeddings). Differences of that size in the tables are noise.
+- 27 generated questions, 25 paired per comparison: one question moves a mean by 0.04. Only
+  the reranker's gain cleared the corrected interval.
+- The held-out split disagrees on the reranker: on the golden questions configuration 4 has
+  R@8 0.794 against hybrid's 0.912 (as in the first measurement, M3), while on generated
+  questions it has 0.900 against 0.660. A possible reason (not tested): the golden questions
+  come from three papers whose reference passages the hybrid search already ranks high, the
+  generated ones from 30 other, longer papers. Nothing was chosen on the held-out numbers.
+- The generated questions were written and reviewed by models (decision 25); refusal
+  accuracy on them rests on 2 unanswerable questions.
+
+**Spend.** The smoke run and all of D cost $2.682941 (llm_usage), against $3.16 estimated and
+a $5.00 ceiling: smoke $0.035, ablations 1-5 $0.611, 6 $0.247, 7 $0.373 (+ indexes $0.032),
+8 $0.375 (+ indexes $0.701), reranker comparison $0.308. The first `text-embedding-3-large`
+index build stopped at its own guard cap after 8,512 of 8,912 points (the guard counted 143
+attempts for 133 billed requests, likely rate-limit retries) and was resumed (decision 18).
+
 ### Review before merge (part 2)
 A fresh reviewer, given only the plan's evaluation text and the diff, found: a variant
 index that was only partly built (a capped build) or older than the corpus would still be
