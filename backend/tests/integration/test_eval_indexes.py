@@ -202,6 +202,9 @@ def test_the_command_line_estimates_for_free_and_needs_a_cap_to_embed(
     from eval.indexes import main
 
     session, client, collection = base
+    # The server may hold real variant collections (built by an evaluation run): what this
+    # test checks is that these commands create none.
+    before = {c.name for c in client.get_collections().collections}
     assert main(["estimate", "--variant", "a7-c256"]) == 0
     out = capsys.readouterr().out
     assert "to embed with text-embedding-3-small" in out and "nothing was sent or written" in out
@@ -210,5 +213,8 @@ def test_the_command_line_estimates_for_free_and_needs_a_cap_to_embed(
     assert main(["build", "--variant", "a8-large", "--base", "a6-rewrite"]) == 2  # not a7-...
     assert main(["estimate", "--variant", "a8-large"]) == 2  # no stored chunking winner
     assert "--base" in capsys.readouterr().err
-    assert not [c for c in client.get_collections().collections if "__eval__" in c.name]
+    after = {c.name for c in client.get_collections().collections}
+    assert not [name for name in after - before if "__eval__" in name]
+    assert not [name for name in after if name.startswith(f"{collection}__eval__")]
     assert main(["drop", "--variant", "a7-c256"]) == 0  # nothing to drop: still fine
+    assert {c.name for c in client.get_collections().collections} == after
