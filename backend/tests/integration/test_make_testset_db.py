@@ -117,15 +117,29 @@ def test_generate_refuses_with_too_few_papers_and_lists_suggestions(
     assert "2601.00005" in suggested and "2601.00004" not in suggested
 
 
-def test_the_estimate_reads_postgres_only(
-    corpus: Session, capsys: pytest.CaptureFixture[str]
-) -> None:
-    assert main(["generate", "--estimate", "--min-papers", "2", "--fact", "2", "--compare", "1",
-                 "--filter", "3", "--unanswerable", "1"]) == 0  # fmt: skip
+def test_the_estimate_reads_the_local_stores_and_counts_only_new_seeds(
+    corpus: Session, capsys: pytest.CaptureFixture[str], tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:  # fmt: skip
+    asked: list[str] = []
+
+    def vectors(chunks: list[make_testset.SeedChunk]) -> dict[object, list[float]]:
+        asked.extend(c.arxiv_id for c in chunks)  # the local index, faked: no Qdrant points
+        return {c.chunk_id: [1.0, float(c.chunk_id.int % 7)] for c in chunks}
+
+    monkeypatch.setattr(make_testset, "pool_vectors", vectors)
+    candidates = tmp_path / "candidates.jsonl"
+    args = ["generate", "--estimate", "--min-papers", "2", "--fact", "2", "--compare", "1",
+            "--filter", "3", "--unanswerable", "1", "--candidates", str(candidates)]  # fmt: skip
+    assert main(args) == 0
     out = capsys.readouterr().out
     # Two seedable papers: only their two abstracts can seed filter questions (3 asked).
     assert "6 seeds from 2 papers" in out and "fewer than asked: {'filter': '2/3'}" in out
-    assert "Nothing was sent" in out
+    assert "0 already in candidates.jsonl" in out and "6 requests" in out
+    assert "Nothing was sent" in out and not candidates.exists()
+    assert set(asked) == {"2601.00001", "2601.00002"}  # never the golden paper's vectors
+    # Pool rows carry the paper's primary category (the pairing rule's first key).
+    assert {c.primary_category for c in load_pool(corpus)} == {"cs.CL"}
 
 
 def test_a_golden_set_that_disagrees_with_the_database_stops_the_tool(

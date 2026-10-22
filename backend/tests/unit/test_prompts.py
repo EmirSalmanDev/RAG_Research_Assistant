@@ -12,7 +12,7 @@ SYSTEM_PROMPTS = [
     "review_map_v1", "review_write_v1", "judge_statements_v1", "judge_faithfulness_v1",
     "judge_relevancy_v1", "judge_context_precision_v1", "judge_context_recall_v1",
     "judge_citation_v1", "testset_fact_v1", "testset_compare_v1", "testset_filter_v1",
-    "testset_unanswerable_v1",
+    "testset_unanswerable_v1", "testset_compare_v2", "testset_unanswerable_v2",
 ]  # fmt: skip
 NOTES = ["generate_abstract_note_v1"]  # request-side text, not a system prompt
 PROMPT_IDS = SYSTEM_PROMPTS + NOTES

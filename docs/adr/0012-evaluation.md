@@ -247,7 +247,8 @@ questions outside the golden 20, for the settings 0, 1 and -1.
   random seed, one paper at a time in turns, from section chunks of at least 120 tokens,
   never from reference lists or acknowledgements. The pool is every full-text paper that
   no golden question refers to; generation refuses to start with fewer than 30 (the
-  plan's number) and lists papers to add.
+  plan's number) and lists papers to add. (Compare and unanswerable seeds changed after
+  the first real round: decisions 21-24.)
 - **Golden papers are left out whole.** Every paper a golden question refers to (found
   through the golden reference chunks; one missing from the database stops the tool) is
   left out of the pool: its abstract, all its sections, not only the reference chunks.
@@ -645,6 +646,100 @@ questions outside the golden 20, for the settings 0, 1 and -1.
   (`e2e/evals-flow.spec.ts`: trends with a stopped run, two runs compared, a question
   opened with its chunk text, reference badge, answer, verdicts and arXiv link; the
   empty, error and selection states), run by `make e2e`.
+
+### 21. What the first generation round showed (the reason for decisions 22-24)
+- **Facts.** The first real round (60 calls, the evaluation model at temperature 0, on 30
+  full-text papers) gave 33 candidates to review (26 fact, 7 filter) and none for compare
+  (0 of 12) or unanswerable (0 of 10): each of those 22 calls returned `usable: false` with
+  an empty question, 12 output tokens each. The output shape has no field for a reason,
+  so the model's reasons are not known.
+- **Evidence about the seeds** (stored metadata and stored vectors only): 10 of the 12
+  compare pairs joined papers of two primary categories (for example a financial
+  time-series model and a music generator), and in all 12 the two excerpts were different
+  kinds of passage (an introduction and an appendix, related work and a qualitative
+  example), with a cosine similarity of 0.19-0.49 between their vectors. The v1 compare
+  prompt allows `usable = false` exactly when the excerpts share no aspect. The 10
+  unanswerable seeds were ordinary sections of 120-511 tokens.
+- **Guesses (not tested).** The v1 unanswerable prompt asks for a detail "the paper is
+  unlikely to report at all" while the model sees one excerpt, so it cannot judge the
+  paper and takes the way out it is offered. The v1 shape asks for the verdict before the
+  question, so the model decides before it has tried to write one (fact still gave 26 of
+  30, so this alone does not explain the result).
+- Decisions 22-24 were written after that round and before the next one, without any
+  retrieval or evaluation result and without the golden set. Fact and filter seeds and
+  prompts are unchanged.
+
+### 22. Compare seeds: two papers on one topic and their two most similar sections (`topic_pairs`, `closest_excerpts`)
+- **Decision.** Papers are paired by topic, from what is stored. Every pair of pool papers
+  is ranked by (1) the same `primary_category` first, (2) the cosine similarity of their
+  abstract vectors (the app's stored vectors, read from the local index; no request),
+  highest first, (3) the two arXiv ids. Pairs are taken in that order unless a paper is
+  already in an earlier pair, so each paper is in one comparison at most (30 papers: up to
+  15 pairs; 12 are asked). The two excerpts are the eligible sections (the rules of every
+  seed), one of each paper, whose stored vectors are the most similar (ties: the smaller
+  chunk ids), never a chunk that already seeds a fact question. Nothing is random. The
+  first rule's random draws are still made and not used, so the filter seeds drawn after
+  them, already generated, stay exactly the same, and so do their candidate ids. The
+  prompt `testset_compare_v2` says the excerpts are the two most similar passages of the
+  papers, lists the aspects a comparison may be about (also how each paper evaluates, or
+  what each names as a limitation, when the papers solve different problems), and allows
+  `usable = false` only when the excerpts share no aspect at all.
+- **Alternatives.** (a) Same category, random pairs and excerpts: the excerpts would still
+  be unrelated passages. (b) The nearest abstracts without the category: categories are
+  coarse, but stored and independent of the embedding model, so a near neighbour from
+  another field does not win. (c) Pairs chosen by hand: the owner decides in review; the
+  rule only proposes. **Known bias:** the most similar sections of two papers are often
+  their introductions or related-work sections, so comparisons lean towards motivation
+  and positioning rather than results; the review decides whether they are useful.
+- **Tested by.** `test_compare_pairs_papers_of_one_category_first_then_the_closest_abstracts`
+  (a closer pair across categories loses to pairs within one; without the category the
+  closest abstracts pair first; each paper once; no more pairs than the papers allow),
+  `test_equal_similarities_pair_the_smaller_ids_first`,
+  `test_the_excerpts_are_the_two_most_similar_sections`,
+  `test_a_compare_excerpt_is_never_a_fact_seed` (two papers; the fact seed made the closest
+  section is skipped), `test_compare_seeds_need_the_vectors_of_the_local_index`,
+  `test_pool_vectors_reads_the_dense_vector_in_batches`, and
+  `test_fact_and_filter_seeds_are_still_those_of_the_first_rule` (seeds pinned from the
+  first rule's code). With the kept draws, the category key or the fact exclusion removed,
+  its test fails. On the real pool (read-only, no request), the 30 fact and 8 filter seeds
+  have exactly the ids of the stored first-round candidates, so the next round sends 22.
+
+### 23. Unanswerable seeds: the paper's abstract and outline (`testset_unanswerable_v2`)
+- **Decision.** The papers stay the ones the first rule chose (the next papers in the turns
+  after the fact seeds). Instead of one section, the model sees the paper's title, its
+  abstract and its outline (the distinct headings of its sections in reading order,
+  without the reference list and acknowledgements), and is asked for a question that a
+  researcher interested in the topic would ask about this paper, about one specific detail
+  that neither the abstract nor any heading suggests the paper reports (its cost in money
+  or energy, a benchmark, a language or domain, a method it does not name, how it was
+  deployed), not answerable from general knowledge, not yes/no. Whether the paper's text
+  really leaves it unanswered is checked in review, which shows the three closest passages
+  of the same paper (a local BM25 search, decision 8). The seed chunk is the abstract
+  (shown in review); the question has no reference chunks. The headings are paper text:
+  escaped, inside the paper's source block.
+- **Alternatives.** One section with looser wording: the model still sees a fraction of
+  the paper. The whole paper: 10-90k tokens a call, and a model reading all of it can still
+  miss a passage, so the review check is needed anyway.
+- **Tested by.** `test_unanswerable_seeds_are_the_next_papers_abstracts_with_their_outlines`
+  (the first rule's papers, now with their abstracts),
+  `test_the_outline_is_every_heading_once_in_reading_order`,
+  `test_an_unanswerable_seed_shows_the_abstract_and_the_escaped_outline`.
+
+### 24. The v2 prompts write before they judge; a second round sends only new seeds
+- **Decision.** The v2 prompts return the question and the reference answer first and
+  `usable` last (`DraftedQuestion`); the v1 prompts keep their shape
+  (`GeneratedQuestion`), so a prompt version also fixes its shape (`OUTPUTS`). A candidate
+  id includes its prompt version, so v2 seeds get new ids: the first round's candidates,
+  its 22 unusable ones included, stay in the candidates file unchanged, and `generate`
+  sends only the seeds the file does not hold. `generate --estimate` now counts only those
+  seeds (it counted every seed, so a second round's estimate was the whole set's).
+- **Alternative.** Delete the unusable candidates and generate again under the old ids:
+  that loses the record of what was paid for and lets two prompts share one id.
+- **Tested by.** `test_the_v2_prompts_ask_for_the_question_before_the_verdict`,
+  `test_a_second_round_sends_only_the_new_seeds_with_their_own_shape` (the first round's
+  lines unchanged byte for byte; only unanswerable and compare seeds sent, with the v2
+  shape), and on a scratch database
+  `test_the_estimate_reads_the_local_stores_and_counts_only_new_seeds`.
 
 ### Review before merge (part 2)
 A fresh reviewer, given only the plan's evaluation text and the diff, found: a variant
