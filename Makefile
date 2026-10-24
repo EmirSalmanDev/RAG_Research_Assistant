@@ -1,4 +1,4 @@
-.PHONY: up down logs test lint e2e openapi digest compare timeline review ingest-pdf migrate ingest-one enrich-one analyze-submit analyze-collect backfill fetch-reranker eval-retrieval
+.PHONY: up down logs test lint e2e openapi digest compare timeline review ingest-pdf migrate ingest-one enrich-one analyze-submit analyze-collect backfill fetch-reranker eval-retrieval eval-smoke eval eval-ablations eval-select eval-index
 
 # Start the stack and wait until every service's healthcheck passes.
 up:
@@ -167,3 +167,55 @@ fetch-reranker:
 # (paid OpenAI requests: ask first).
 eval-retrieval:
 	cd backend && uv run python -m eval.run $(if $(EMBED),--embed)
+
+# The configured pipeline end to end (backend/eval/suite.py, docs/adr/0012): retrieval metrics
+# (free with cached question vectors) and the answer metrics by the judge (PAID: a chat turn
+# and up to six judge calls per question, about $0.004 each; ask first). Runs natively against
+# the stores on localhost; stored in eval_runs. ESTIMATE=1 prints requests, cost and the cap a
+# run needs, without any request. A paid run needs MAX_USD: a hard cap, enforced before every
+# request by the egress guard. EMBED=1 embeds questions missing from the vector cache (paid).
+# REPORT=dir writes report.md (the tables CI posts) and runs.json (without chunk texts).
+#   make eval-smoke ESTIMATE=1          # 15 generated questions, never held-out ones
+#   make eval-smoke MAX_USD=1.00     # the cap is the worst case: real spend is about 1/10
+#   make eval ESTIMATE=1                # every question, held-out and generated reported apart
+#   make eval MAX_USD=3.50 REPORT=../eval-report
+EVAL_SUITE_ARGS = $(if $(ESTIMATE),--estimate,$(if $(MAX_USD),--max-usd "$(MAX_USD)")) \
+	$(if $(EMBED),--embed) $(if $(REPORT),--report-dir "$(abspath $(REPORT))")
+
+eval-smoke:
+	cd backend && uv run python -m eval.suite smoke $(EVAL_SUITE_ARGS)
+
+eval:
+	cd backend && uv run python -m eval.suite full $(EVAL_SUITE_ARGS)
+
+# The ablations, one step at a time (backend/eval/ablations.py): STEP is retrieval (ablations
+# 1-5), rewriting (6), chunking (7), embedding (8) or reranker (the M4 comparisons). A later
+# step runs on the winner `make eval-select` stored for the step before (BASE=<variant> names
+# one by hand). The chunking and embedding variants need their own index first. PAID unless
+# ESTIMATE=1 (the answers part of each variant): ask first; MAX_USD is the hard cap.
+#   make eval-ablations STEP=retrieval ESTIMATE=1
+#   make eval-ablations STEP=retrieval MAX_USD=5.00 [VARIANTS=a1-dense,a3-hybrid]
+#   make eval-select STEP=retrieval     # the rule, on generated questions only (free)
+eval-ablations:
+	@test -n "$(STEP)" || (echo "usage: make eval-ablations STEP=retrieval|rewriting|chunking|embedding|reranker [ESTIMATE=1|MAX_USD=x] [VARIANTS=..] [BASE=..] [EMBED=1]"; exit 2)
+	cd backend && uv run python -m eval.ablations $(if $(ESTIMATE),estimate,run) --step "$(STEP)" \
+		$(if $(VARIANTS),--variants "$(VARIANTS)") $(if $(BASE),--base "$(BASE)") \
+		$(if $(EMBED),--embed) $(if $(ESTIMATE),,$(if $(MAX_USD),--max-usd "$(MAX_USD)"))
+
+eval-select:
+	@test -n "$(STEP)" || (echo "usage: make eval-select STEP=retrieval|rewriting|chunking|embedding|reranker"; exit 2)
+	cd backend && uv run python -m eval.ablations select --step "$(STEP)"
+
+# The Qdrant collection of a chunking or embedding variant (backend/eval/indexes.py), built
+# from Postgres; the app's collection and Postgres are only read. Abstract and analysis points
+# (and, for the same model, every vector) are copied; only what the variant changes is embedded
+# (PAID for that: ask first; MAX_USD is the hard cap). ESTIMATE=1 prints points, tokens and
+# cost without any request. A build is resumable. BASE=a7-... names the chunking an embedding
+# variant builds on (default: the stored chunking winner). DROP=1 deletes that eval collection.
+#   make eval-index VARIANT=a7-c256 ESTIMATE=1
+#   make eval-index VARIANT=a8-large BASE=a7-c512 MAX_USD=1.50   # covers the guard's bound (ESTIMATE=1 prints it)
+eval-index:
+	@test -n "$(VARIANT)" || (echo "usage: make eval-index VARIANT=a7-c256|a7-c1024|a8-large-short|a8-large [BASE=a7-...] [ESTIMATE=1|MAX_USD=x|DROP=1]"; exit 2)
+	cd backend && uv run python -m eval.indexes $(if $(ESTIMATE),estimate,$(if $(DROP),drop,build)) \
+		--variant "$(VARIANT)" $(if $(BASE),--base "$(BASE)") \
+		$(if $(ESTIMATE)$(DROP),,$(if $(MAX_USD),--max-usd "$(MAX_USD)"))

@@ -1,5 +1,9 @@
 // The endpoint functions bound to the real client (same-origin /api, proxied to FastAPI).
 // Components call these from TanStack Query; tests call lib/api/endpoints.ts directly.
+// The /evals page's reads also come as hooks (bottom of the file), since several of its
+// components share them.
+
+import { useQuery } from "@tanstack/react-query";
 
 import { api } from "./client";
 import * as endpoints from "./endpoints";
@@ -15,6 +19,11 @@ export type {
   DigestEntryOut,
   DigestOut,
   EntryAction,
+  EvalResultDetailOut,
+  EvalResultRowOut,
+  EvalResultsOut,
+  EvalRunOut,
+  EvalRunSummaryOut,
   InterestIn,
   InterestOut,
   ItemCreate,
@@ -33,6 +42,7 @@ export type {
   PaperOut,
   RelatedOut,
   RelatedPaperOut,
+  RetrievedChunkOut,
   SearchHit,
   SearchResponse,
   TimelineBody,
@@ -123,3 +133,50 @@ export const uploadPdf = (
     file,
     signal,
   );
+
+// The evaluation runs (the /evals page). Read-only and free: Postgres only, nothing is
+// run or paid when the page opens. A run's stored numbers do not change once it is
+// complete, so the default five minutes of freshness (app/providers.tsx) is plenty.
+export const fetchEvalRuns = () => endpoints.fetchEvalRuns(api);
+export const fetchEvalRun = (runId: number) =>
+  endpoints.fetchEvalRun(api, runId);
+export const fetchEvalResults = (runId: number) =>
+  endpoints.fetchEvalResults(api, runId);
+export const fetchEvalResult = (runId: number, itemId: number) =>
+  endpoints.fetchEvalResult(api, runId, itemId);
+
+export const EVALS_KEY = ["evals"] as const;
+
+/** Every run, newest first. */
+export function useEvalRuns() {
+  return useQuery({ queryKey: [...EVALS_KEY, "runs"], queryFn: fetchEvalRuns });
+}
+
+/** One run with every stored metric; `null` (no run picked) or `enabled: false` asks nothing. */
+export function useEvalRun(runId: number | null, enabled = true) {
+  return useQuery({
+    queryKey: [...EVALS_KEY, "run", runId],
+    queryFn: () => fetchEvalRun(runId ?? 0),
+    enabled: runId !== null && enabled,
+  });
+}
+
+/** A run's questions, one row of scores each. */
+export function useEvalResults(runId: number | null, enabled = true) {
+  return useQuery({
+    queryKey: [...EVALS_KEY, "results", runId],
+    queryFn: () => fetchEvalResults(runId ?? 0),
+    enabled: runId !== null && enabled,
+  });
+}
+
+/** One question of a run: its chunks, the answer, every score and the verdicts. */
+export function useEvalResult(
+  target: { runId: number; itemId: number } | null,
+) {
+  return useQuery({
+    queryKey: [...EVALS_KEY, "result", target?.runId, target?.itemId],
+    queryFn: () => fetchEvalResult(target?.runId ?? 0, target?.itemId ?? 0),
+    enabled: target !== null,
+  });
+}

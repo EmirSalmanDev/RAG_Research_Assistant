@@ -17,6 +17,7 @@ per question; the runner averages them over the questions that have references.
 """
 
 import math
+import re
 from collections.abc import Collection, Hashable, Sequence
 
 
@@ -64,6 +65,50 @@ def ndcg_at_k[T: Hashable](retrieved: Sequence[T], relevant: Collection[T], k: i
 def mean(values: Sequence[float]) -> float | None:
     """Plain average; None for an empty list (e.g. no question had references)."""
     return sum(values) / len(values) if values else None
+
+
+# Reference coverage (docs/adr/0012). Chunk ids only mean the same text under one chunking:
+# with chunks of 256 tokens a reference passage of the 512-token index is two or three other
+# chunks, with 1024 part of a bigger one. So ablation 7 needs a retrieval metric that looks at
+# text: which share of the reference passages' words reached the top k.
+SHINGLE_WORDS = 8  # long enough that a match is the same passage, short enough to survive a cut
+_WORD = re.compile(r"\w+")
+
+
+def _words(text: str) -> list[str]:
+    return _WORD.findall(text.lower())
+
+
+def _shingles(words: Sequence[str], n: int) -> set[tuple[str, ...]]:
+    return {tuple(words[i : i + n]) for i in range(len(words) - n + 1)}
+
+
+def reference_coverage(
+    retrieved: Sequence[str], references: Sequence[str], k: int, *, n: int = SHINGLE_WORDS
+) -> float | None:
+    """Share of the reference texts' word n-grams (8 words, lower case) that appear in the
+    first k retrieved texts; None without reference text.
+
+    1.0 when every reference passage is in the top k, whole or in pieces (any chunking);
+    0.5 when half of it is. A reference shorter than n words counts as one n-gram of its
+    own length. Only a few n-grams that straddle a cut between two retrieved chunks are
+    lost, so the value is close to, not exactly, 1.0 for a passage found in pieces.
+    Larger chunks carry more text into the top k, so compare chunk sizes with this
+    together with the number of source tokens they cost.
+    """
+    found: dict[int, set[tuple[str, ...]]] = {}  # n-gram length -> n-grams of the top k
+    total = matched = 0
+    for reference in references:
+        words = _words(reference)
+        if not words:
+            continue
+        size = min(n, len(words))
+        wanted = _shingles(words, size)
+        if size not in found:
+            found[size] = set().union(*(_shingles(_words(t), size) for t in retrieved[:k]))
+        total += len(wanted)
+        matched += len(wanted & found[size])
+    return matched / total if total else None
 
 
 # --- answer metrics (docs/adr/0012) -------------------------------------------------------------

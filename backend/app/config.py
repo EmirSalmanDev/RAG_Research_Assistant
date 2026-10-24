@@ -71,6 +71,12 @@ class Settings(BaseSettings):
     rerank_enabled: bool = False
     reranker_model: str = "BAAI/bge-reranker-base"  # a FastEmbed TextCrossEncoder model
     rerank_batch_size: int = 16  # (question, chunk) pairs per model run; bounds memory
+    # ONNX Runtime settings of the reranker (docs/adr/0012). They change speed and memory,
+    # not what is ranked first; the reranker comparison of the evaluation measures them.
+    # None = ONNX Runtime's own thread count (one per core); False switches its CPU memory
+    # arena off. The defaults keep the behaviour measured in docs/adr/0005.
+    rerank_threads: int | None = None
+    rerank_cpu_arena: bool = True
     # diversity cap after reranking, on a paper's own text; 0 switches this cap off (the
     # analysis limit below still applies)
     max_chunks_per_paper: int = 3
@@ -218,6 +224,15 @@ class Settings(BaseSettings):
     eval_embedding_model: str = "text-embedding-3-small"
     eval_embedding_price_per_1m: float = 0.02
     eval_testset_max_output_tokens: int = 400  # one question and its reference answer
+    # Ablations (backend/eval/variants.py). The models the variants try are named here, like
+    # every model. The second reranker (ablation 5) is also the small model of the reranker
+    # comparison: the one candidate docs/adr/0005 left that FastEmbed loads and that has a
+    # licence allowing any use. The large embedding model is ablation 8 (at its own size and
+    # shortened to embedding_dim); its price feeds llm_usage when a variant embeds with it.
+    eval_second_reranker_model: str = "Xenova/ms-marco-MiniLM-L-12-v2"
+    eval_large_embedding_model: str = "text-embedding-3-large"
+    eval_large_embedding_dim: int = 3072
+    eval_large_embedding_price_per_1m: float = 0.13
 
     @field_validator(
         "openai_api_key", "langfuse_public_key", "langfuse_secret_key", "github_token",

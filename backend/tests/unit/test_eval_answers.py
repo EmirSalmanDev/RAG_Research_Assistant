@@ -302,11 +302,37 @@ def test_a_failing_judge_step_loses_only_its_own_metric() -> None:
     assert scores.metrics["citation_accuracy"] == pytest.approx(2 / 3)
 
 
-def test_a_refused_or_failed_question_gets_no_answer_metrics_and_no_judge_call() -> None:
+def test_a_failed_turn_gets_no_metric_and_no_judge_call() -> None:
     judge, rows = _judge([])
-    for kw in ({"refusal": "no_sources", "answer": None}, {"error": "x failed", "answer": None}):
-        sample = AnswerSample(**{**_sample().__dict__, **kw})
-        assert score_sample(sample, judge, FakeEmbed()).metrics == {}
+    sample = AnswerSample(**{**_sample().__dict__, "error": "search failed: X", "answer": None})
+    assert score_sample(sample, judge, FakeEmbed()).metrics == {}
+    assert rows == []
+
+
+def test_a_refusal_with_sources_gets_the_two_context_metrics_only() -> None:
+    """The generator refused (insufficient sources), but the sources were retrieved: the
+    context metrics judge them against the reference, as for an answer."""
+    replies = _judge_replies()[3:5]  # context precision, context recall
+    judge, rows = _judge(replies)
+    sample = AnswerSample(
+        **{**_sample().__dict__, "refusal": "insufficient_sources", "answer": None}
+    )
+    scores = score_sample(sample, judge, FakeEmbed())
+    assert scores.metrics == pytest.approx({"context_precision": 1.0, "context_recall": 0.5})
+    assert [r[0] for r in rows] == ["eval-judge-context_precision", "eval-judge-context_recall"]
+
+
+def test_a_refusal_without_sources_has_context_recall_zero_without_a_call() -> None:
+    """Nothing was retrieved: nothing can state the reference answer (recall 0), and
+    there is no source to rank (no precision). A configuration that retrieves nothing
+    cannot drop out of the comparison on context recall."""
+    judge, rows = _judge([])
+    sample = AnswerSample(
+        **{**_sample().__dict__, "refusal": "no_sources", "answer": None, "sources": []}
+    )
+    assert score_sample(sample, judge, FakeEmbed()).metrics == {"context_recall": 0.0}
+    no_reference = AnswerSample(**{**sample.__dict__, "question": _question()})
+    assert score_sample(no_reference, judge, FakeEmbed()).metrics == {}
     assert rows == []
 
 
@@ -457,3 +483,13 @@ def test_no_measured_turns_means_no_estimate() -> None:
         estimate(
             [_question()], {k: v for k, v in STATS.items() if k != "chat-verify"}, get_settings()
         )
+
+
+def test_a_real_run_needs_a_hard_cap(capsys: pytest.CaptureFixture[str]) -> None:
+    """Without --max-usd nothing is sent or stored (eval/budget.py is the cap)."""
+    from eval.answers import main
+
+    with pytest.raises(SystemExit) as stop:
+        main(["--split", "heldout", "--limit", "1"])
+    assert stop.value.code == 2
+    assert "needs --max-usd" in capsys.readouterr().err

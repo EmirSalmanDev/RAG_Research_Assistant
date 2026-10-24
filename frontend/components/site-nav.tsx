@@ -12,6 +12,7 @@ const LINKS = [
   { href: "/compare", label: "Compare" },
   { href: "/timeline", label: "Timeline" },
   { href: "/library", label: "Library" },
+  { href: "/evals", label: "Evals" },
   { href: "/settings", label: "Settings" },
 ];
 

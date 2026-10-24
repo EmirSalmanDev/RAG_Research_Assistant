@@ -908,8 +908,362 @@ async function libraryRoute(
   return false;
 }
 
+// --- evaluation runs (e2e/evals-flow.spec.ts): invented runs, questions and texts ------------
+// Four older retrieval runs (two series, "dense" and "hybrid"), two older answer runs, two
+// ablation answer runs (run 8 STOPPED by its spend cap after two questions) and a
+// selection. Runs 7 and 8 have per-question results; the rest have none stored here.
+const EVAL_DAY = (d: number) =>
+  `2026-10-${String(d).padStart(2, "0")}T09:30:00+00:00`;
+type MockRun = {
+  id: number;
+  name: string;
+  kind: "retrieval" | "answers" | "selection" | "other";
+  suite?: string;
+  variant?: string;
+  label?: string;
+  step?: string;
+  status: string | null;
+  splits?: Record<string, Record<string, number | string>>;
+  flat?: Record<string, number>;
+};
+const answerSplits = (
+  all: Record<string, number | string>,
+  heldout: Record<string, number | string>,
+  generated: Record<string, number | string>,
+) => ({ all, heldout, generated });
+const EVAL_RUNS: MockRun[] = [
+  {
+    id: 1,
+    name: "dense",
+    kind: "retrieval",
+    status: "complete",
+    flat: {
+      "recall@8": 0.8,
+      mrr: 0.68,
+      "ndcg@10": 0.7,
+      n_scored: 17,
+      n_unscored: 3,
+    },
+  },
+  {
+    id: 2,
+    name: "hybrid",
+    kind: "retrieval",
+    status: "complete",
+    flat: {
+      "recall@8": 0.88,
+      mrr: 0.75,
+      "ndcg@10": 0.77,
+      n_scored: 17,
+      n_unscored: 3,
+    },
+  },
+  {
+    id: 3,
+    name: "dense",
+    kind: "retrieval",
+    status: "complete",
+    flat: {
+      "recall@8": 0.82,
+      mrr: 0.7,
+      "ndcg@10": 0.72,
+      n_scored: 17,
+      n_unscored: 3,
+    },
+  },
+  {
+    id: 4,
+    name: "hybrid",
+    kind: "retrieval",
+    status: "complete",
+    flat: {
+      "recall@8": 0.91,
+      mrr: 0.78,
+      "ndcg@10": 0.8,
+      n_scored: 17,
+      n_unscored: 3,
+    },
+  },
+  {
+    id: 5,
+    name: "answers:default",
+    kind: "answers",
+    status: "complete",
+    splits: answerSplits(
+      {
+        n_questions: 3,
+        faithfulness: 0.65,
+        context_recall: 0.55,
+        latency_ms_p50: 2400,
+        cost_per_answer_usd: "0.003900",
+      },
+      { n_questions: 1, faithfulness: 0.6 },
+      { n_questions: 2, faithfulness: 0.675 },
+    ),
+  },
+  {
+    id: 6,
+    name: "answers:default",
+    kind: "answers",
+    status: "complete",
+    splits: answerSplits(
+      {
+        n_questions: 3,
+        faithfulness: 0.75,
+        context_recall: 0.6,
+        latency_ms_p50: 2300,
+        cost_per_answer_usd: "0.004000",
+      },
+      { n_questions: 1, faithfulness: 0.7 },
+      { n_questions: 2, faithfulness: 0.775 },
+    ),
+  },
+  {
+    id: 7,
+    name: "ablation:a1-dense:answers",
+    kind: "answers",
+    suite: "ablation",
+    variant: "a1-dense",
+    label: "dense only",
+    step: "retrieval",
+    status: "complete",
+    splits: answerSplits(
+      {
+        n_questions: 3,
+        faithfulness: 0.8,
+        context_recall: 0.5,
+        citation_accuracy: 0.9,
+        latency_ms_p50: 2200,
+        cost_per_answer_usd: "0.004100",
+      },
+      { n_questions: 1, faithfulness: 0.5, context_recall: 0.5 },
+      { n_questions: 2, faithfulness: 0.95, context_recall: 0.5 },
+    ),
+  },
+  {
+    id: 8,
+    name: "ablation:a3-hybrid:answers",
+    kind: "answers",
+    suite: "ablation",
+    variant: "a3-hybrid",
+    label: "hybrid (RRF)",
+    step: "retrieval",
+    status: "stopped: budget: the invented spend cap of $0.01 was reached",
+    splits: answerSplits(
+      {
+        n_questions: 2,
+        faithfulness: 0.7,
+        context_recall: 0.75,
+        citation_accuracy: 1,
+        latency_ms_p50: 2600,
+        cost_per_answer_usd: "0.004200",
+      },
+      { n_questions: 1, faithfulness: 0.75, context_recall: 1 },
+      { n_questions: 1, faithfulness: 0.65, context_recall: 0.5 },
+    ),
+  },
+  {
+    id: 9,
+    name: "selection:retrieval",
+    kind: "selection",
+    step: "retrieval",
+    status: "complete",
+    flat: { paired_share: 1 },
+  },
+];
+function evalRunSummary(run: MockRun) {
+  const source = run.splits?.all ?? run.flat ?? {};
+  const metrics: Record<string, number> = {};
+  for (const [key, value] of Object.entries(source))
+    metrics[key] = Number(value);
+  return {
+    id: run.id,
+    name: run.name,
+    kind: run.kind,
+    suite: run.suite ?? null,
+    suite_id: run.suite ? "invented-suite-1" : null,
+    step: run.step ?? null,
+    variant: run.variant ?? null,
+    label: run.label ?? null,
+    created_at: EVAL_DAY(run.id + 10),
+    git_sha: `abc12${run.id}0`,
+    status: run.status,
+    n_questions: run.splits
+      ? Number(run.splits.all.n_questions)
+      : run.flat?.n_scored !== undefined
+        ? run.flat.n_scored + (run.flat.n_unscored ?? 0)
+        : null,
+    splits: run.splits ? Object.keys(run.splits) : [],
+    metrics,
+  };
+}
+const EVAL_QUESTIONS = {
+  101: {
+    id: "q01",
+    split: "heldout",
+    text: "Which invented module do adapters train?",
+    reference: "An invented small module beside the frozen model.",
+  },
+  102: {
+    id: "gen-001",
+    split: "generated",
+    text: "Does the invented adapter freeze the base model?",
+    reference: "Yes: the invented base model stays frozen.",
+  },
+  103: {
+    id: "gen-002",
+    split: "generated",
+    text: "How large is the invented adapter?",
+    reference: "About one percent of the invented model.",
+  },
+} as const;
+type ItemId = keyof typeof EVAL_QUESTIONS;
+// Per question and run: [faithfulness, context_recall]; run 8 stopped before question 103.
+const EVAL_SCORES: Record<number, Partial<Record<ItemId, [number, number]>>> = {
+  7: { 101: [0.5, 0.5], 102: [1, 0.5], 103: [0.9, 0.5] },
+  8: { 101: [0.75, 1], 102: [0.65, 0.5] },
+};
+function evalRow(runId: number, itemId: ItemId) {
+  const q = EVAL_QUESTIONS[itemId];
+  const [faithfulness, context_recall] = EVAL_SCORES[runId]![itemId]!;
+  return {
+    item_id: itemId,
+    question_id: q.id,
+    question: q.text,
+    split: q.split,
+    type: "fact",
+    outcome: "answered",
+    refusal: null,
+    scores: {
+      faithfulness,
+      context_recall,
+      latency_ms: 2000 + runId * 50,
+      cost_usd: 0.0041,
+    },
+  };
+}
+// Readable chunk ids: the last group is <run><item><rank>, e.g. ...000000081021.
+const evalChunkId = (runId: number, itemId: number, rank: number) =>
+  `00000000-0000-4000-8000-${String(runId * 10000 + itemId * 10 + rank).padStart(12, "0")}`;
+function evalDetail(runId: number, itemId: ItemId) {
+  const q = EVAL_QUESTIONS[itemId];
+  const row = evalRow(runId, itemId);
+  const variant = runId === 7 ? "dense" : "hybrid";
+  return {
+    ...row,
+    run_id: runId,
+    reference_answer: q.reference,
+    reference_chunk_ids: [evalChunkId(runId, itemId, 1)],
+    answer: `Invented ${variant} answer: the invented base model stays frozen [1].`,
+    error: null,
+    latency_ms: row.scores.latency_ms,
+    cost_usd: row.scores.cost_usd,
+    retrieved: [
+      {
+        rank: 1,
+        n: 1,
+        chunk_id: evalChunkId(runId, itemId, 1),
+        arxiv_id: "2612.00001",
+        title: "An Invented Paper About Frozen Models",
+        section_path: "3 Method",
+        chunk_type: "section",
+        score: 0.0328,
+        is_reference: true,
+        text: `Invented ${variant} chunk text: the adapter is trained while the base model stays frozen.`,
+        abs_url: abs("2612.00001"),
+      },
+      {
+        rank: 2,
+        n: 2,
+        chunk_id: evalChunkId(runId, itemId, 2),
+        arxiv_id: "local-0123456789ab",
+        title: "An Invented Uploaded Note",
+        section_path: null,
+        chunk_type: "abstract",
+        score: 0.0161,
+        is_reference: false,
+        text: "Invented text of an uploaded document, which has no arXiv page.",
+        abs_url: null,
+      },
+    ],
+    judge: {
+      faithfulness: [
+        {
+          statement: "The invented base model stays frozen.",
+          supported: true,
+          reason: "Invented: source 1 says so.",
+        },
+        {
+          statement: "The invented adapter is large.",
+          supported: false,
+          reason: "Invented: no source says so.",
+        },
+      ],
+      citation_accuracy: {
+        items: [
+          {
+            sentence: 0,
+            n: 1,
+            supported: true,
+            reason: "Invented: the source states it.",
+          },
+        ],
+        invalid_citations: 0,
+      },
+      response_relevancy: {
+        questions: ["Is the invented base model frozen?"],
+        noncommittal: false,
+      },
+      uncited_sentences: 0,
+      sentences: 1,
+    },
+    judge_errors: {
+      context_precision:
+        "JudgeError: an invented reason the verdict list did not fit",
+    },
+  };
+}
+
+function evalsRoute(res: ServerResponse, url: string): boolean {
+  const path = url.split("?")[0];
+  if (path === "/evals/runs") {
+    json(res, 200, { runs: [...EVAL_RUNS].reverse().map(evalRunSummary) }); // newest first
+    return true;
+  }
+  const m = /^\/evals\/runs\/(\d+)(?:\/results(?:\/(\d+))?)?$/.exec(path);
+  if (!m) return false;
+  const run = EVAL_RUNS.find((r) => r.id === Number(m[1]));
+  if (!run) return (json(res, 404, { detail: "unknown evaluation run" }), true);
+  const scored = EVAL_SCORES[run.id] ?? {};
+  if (m[2] !== undefined) {
+    const itemId = Number(m[2]) as ItemId;
+    if (!(itemId in scored))
+      return (
+        json(res, 404, { detail: "no result for this question in the run" }),
+        true
+      );
+    return (json(res, 200, evalDetail(run.id, itemId)), true);
+  }
+  if (path.endsWith("/results")) {
+    const results = (Object.keys(scored).map(Number) as ItemId[]).map((id) =>
+      evalRow(run.id, id),
+    );
+    return (json(res, 200, { run_id: run.id, kind: run.kind, results }), true);
+  }
+  json(res, 200, {
+    ...evalRunSummary(run),
+    config: {
+      invented: true,
+      variant: run.variant ? { variant: run.variant, label: run.label } : null,
+    },
+    all_metrics: { status: run.status, ...(run.splits ?? run.flat ?? {}) },
+  });
+  return true;
+}
+
 createServer(async (req, res) => {
   const url = req.url ?? "";
+  if (req.method === "GET" && evalsRoute(res, url)) return;
   if (req.method === "GET" && url === "/health")
     return json(res, 200, { ok: true });
   if (req.method === "POST" && url === "/chat") {

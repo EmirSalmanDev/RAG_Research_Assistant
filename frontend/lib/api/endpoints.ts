@@ -577,3 +577,73 @@ export async function deleteUpload(
     apiErrorMessage(response.status, detailOf(error), "upload"),
   );
 }
+
+// --- evaluation runs (the /evals page) ---------------------------------------------------------
+// Read-only and free: the API reads Postgres only (no Qdrant, no model call, nothing written).
+
+export type EvalRunSummaryOut = components["schemas"]["EvalRunSummaryOut"];
+export type EvalRunOut = components["schemas"]["EvalRunOut"];
+export type EvalResultsOut = components["schemas"]["EvalResultsOut"];
+export type EvalResultRowOut = components["schemas"]["EvalResultRowOut"];
+export type EvalResultDetailOut = components["schemas"]["EvalResultDetailOut"];
+export type RetrievedChunkOut = components["schemas"]["RetrievedChunkOut"];
+
+/** GET /evals/runs: every run, newest first, with the headline numbers of its "all" split. */
+export async function fetchEvalRuns(
+  client: ApiClient,
+): Promise<EvalRunSummaryOut[]> {
+  const { data, error, response } = await client.GET("/evals/runs");
+  if (data) return data.runs;
+  throw new ApiError(
+    response.status,
+    apiErrorMessage(response.status, detailOf(error), "evaluation run list"),
+  );
+}
+
+/** GET /evals/runs/{id}: one run with its configuration and every stored metric (splits too). */
+export async function fetchEvalRun(
+  client: ApiClient,
+  runId: number,
+): Promise<EvalRunOut> {
+  const { data, error, response } = await client.GET("/evals/runs/{run_id}", {
+    params: { path: { run_id: runId } },
+  });
+  if (data) return data;
+  throw new ApiError(
+    response.status,
+    apiErrorMessage(response.status, detailOf(error), "evaluation run"),
+  );
+}
+
+/** GET /evals/runs/{id}/results: one row of scores per question (none for a selection). */
+export async function fetchEvalResults(
+  client: ApiClient,
+  runId: number,
+): Promise<EvalResultsOut> {
+  const { data, error, response } = await client.GET(
+    "/evals/runs/{run_id}/results",
+    { params: { path: { run_id: runId } } },
+  );
+  if (data) return data;
+  throw new ApiError(
+    response.status,
+    apiErrorMessage(response.status, detailOf(error), "evaluation run"),
+  );
+}
+
+/** GET /evals/runs/{id}/results/{item}: one question with its chunks, answer and verdicts. */
+export async function fetchEvalResult(
+  client: ApiClient,
+  runId: number,
+  itemId: number,
+): Promise<EvalResultDetailOut> {
+  const { data, error, response } = await client.GET(
+    "/evals/runs/{run_id}/results/{item_id}",
+    { params: { path: { run_id: runId, item_id: itemId } } },
+  );
+  if (data) return data;
+  throw new ApiError(
+    response.status,
+    apiErrorMessage(response.status, detailOf(error), "question result"),
+  );
+}

@@ -212,12 +212,12 @@ def test_model_is_loaded_once_even_under_concurrent_first_use(
 ) -> None:
     loads: list[str] = []
 
-    def slow_load(model_name: str, cache_dir: Path) -> FakeCrossEncoder:
+    def slow_load(model_name: str, cache_dir: Path, **runtime: Any) -> FakeCrossEncoder:
         loads.append(model_name)
         time.sleep(0.05)  # long enough for the other threads to arrive meanwhile
         return FakeCrossEncoder({})
 
-    monkeypatch.setattr(rerank_module, "_encoder", None)
+    monkeypatch.setattr(rerank_module, "_loaded", None)
     monkeypatch.setattr(rerank_module, "load_cross_encoder", slow_load)
     results: list[object] = []
     threads = [
@@ -229,6 +229,72 @@ def test_model_is_loaded_once_even_under_concurrent_first_use(
         t.join()
     assert loads == [MODEL]
     assert len({id(r) for r in results}) == 1
+
+
+def _recording_text_cross_encoder(
+    monkeypatch: pytest.MonkeyPatch, created: list[dict[str, Any]]
+) -> None:
+    class FakeTextCrossEncoder:
+        def __init__(self, model_name: str, **kwargs: Any) -> None:
+            created.append({"model": model_name, **kwargs})
+
+    import fastembed.rerank.cross_encoder as fastembed_cross_encoder
+
+    monkeypatch.setattr(fastembed_cross_encoder, "TextCrossEncoder", FakeTextCrossEncoder)
+
+
+def test_the_default_load_passes_no_runtime_option(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Exactly the call measured in docs/adr/0005: no threads, no arena option."""
+    created: list[dict[str, Any]] = []
+    _recording_text_cross_encoder(monkeypatch, created)
+    load_cross_encoder(MODEL, tmp_path)
+    assert created == [{"model": MODEL, "cache_dir": str(tmp_path), "local_files_only": True}]
+
+
+def test_a_thread_limit_and_the_arena_switch_reach_onnx_runtime(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    created: list[dict[str, Any]] = []
+    _recording_text_cross_encoder(monkeypatch, created)
+    load_cross_encoder(MODEL, tmp_path, threads=2, cpu_arena=False)
+    assert created == [
+        {"model": MODEL, "cache_dir": str(tmp_path), "local_files_only": True, "threads": 2,
+         "enable_cpu_mem_arena": False}
+    ]  # fmt: skip
+    with pytest.raises(ValueError, match="at least 1"):
+        load_cross_encoder(MODEL, tmp_path, threads=0)
+
+
+def test_other_reranker_settings_release_the_old_model_and_load_the_new_one(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An evaluation runs several configurations in one process: each must get the model
+    its settings name, never the one loaded for the configuration before."""
+    from app.config import get_settings
+
+    loads: list[tuple[str, int | None, bool]] = []
+    holding_at_load: list[object] = []
+
+    def load(model_name: str, cache_dir: Path, *, threads: int | None, cpu_arena: bool) -> Any:
+        holding_at_load.append(rerank_module._loaded)  # what was still held at that moment
+        loads.append((model_name, threads, cpu_arena))
+        return FakeCrossEncoder({})
+
+    monkeypatch.setattr(rerank_module, "_loaded", None)
+    monkeypatch.setattr(rerank_module, "load_cross_encoder", load)
+    first = get_cross_encoder()
+    assert get_cross_encoder() is first  # same settings: the same model
+    monkeypatch.setenv("RERANKER_MODEL", "Xenova/ms-marco-MiniLM-L-12-v2")
+    monkeypatch.setenv("RERANK_THREADS", "2")
+    get_settings.cache_clear()
+    second = get_cross_encoder()
+    assert second is not first
+    assert loads == [(MODEL, None, True), ("Xenova/ms-marco-MiniLM-L-12-v2", 2, True)]
+    assert holding_at_load == [None, None]  # the old model was let go before the new load
+    key = rerank_module.loaded_reranker()
+    assert key is not None and (key.model, key.threads) == ("Xenova/ms-marco-MiniLM-L-12-v2", 2)
 
 
 # --- fetch (the only download) ----------------------------------------------------------------

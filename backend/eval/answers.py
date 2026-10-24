@@ -1,7 +1,7 @@
 """Answer evaluation: each question through the chat pipeline, then the answer metrics.
 
     python -m eval.answers --estimate [--split heldout|generated|all] [--limit N]
-    python -m eval.answers [--split ...] [--limit N] [--name NAME]     # PAID: ask first
+    python -m eval.answers --max-usd X [--split ...] [--limit N] [--name NAME]  # PAID: ask first
 
 `--limit N` takes the first N questions of ONE split, so it needs `--split heldout` or
 `--split generated`: a quick run never silently consists of held-out questions only.
@@ -20,7 +20,9 @@ For every question, in order:
      (a [n] pointing at no source counts as unsupported);
    - uncited sentence share: sentences without any [n] / sentences. Citation accuracy
      cannot see an answer that cites nothing, so this is reported next to it.
-   A refused question gets no answer metrics, only its refusal. A judge step whose answer
+   A refused question gets no answer metrics, only its refusal and, with a reference
+   answer, the two context metrics (they judge the sources, not the answer; no sources at
+   all gives context recall 0 without a call). A failed turn gets none. A judge step whose answer
    does not fit what was asked loses only that metric (its reason is stored); any other
    failure (an API error, a wrong model name) stops the run, so a broken judge never
    pays for a whole run of empty scores.
@@ -98,12 +100,18 @@ def is_unanswerable(question: SetQuestion) -> bool:
 
 
 class NullChatStore:
-    """A ChatStore that keeps nothing: an evaluation turn leaves no conversation behind."""
+    """A ChatStore that keeps nothing: an evaluation turn leaves no conversation behind.
+    It remembers the last turn's record in memory only, so the evaluation can read which
+    stages fell back (`collect_sample`)."""
+
+    def __init__(self) -> None:
+        self.last: TurnRecord | None = None
 
     def load_history(self, conversation_id: uuid.UUID, limit: int) -> list[HistoryMessage]:
         return []
 
     def save_turn(self, turn: TurnRecord) -> int:
+        self.last = turn
         return 0
 
 
@@ -118,6 +126,10 @@ class AnswerSample:
     cost_usd: Decimal  # the turn's own cost (chat calls + question embeddings)
     latency_ms: float  # from the question to the turn's last event
     first_token_ms: float | None
+    # Stages that failed and fell back (plan to the default plan, verify to "unavailable",
+    # condense to the raw message): the turn did not run the configuration as set, so the
+    # selection rule leaves such a question out (eval/selection.py).
+    stage_errors: dict[str, str] = field(default_factory=dict)
 
 
 def collect_sample(
@@ -141,7 +153,8 @@ def collect_sample(
             seen.setdefault(hit.chunk_id, hit)
         return hits
 
-    turn_deps = replace(deps, search_fn=recording_search)
+    store = NullChatStore()  # this turn's own: its record tells which stages fell back
+    turn_deps = replace(deps, search_fn=recording_search, store=store)
     start = clock()
     first_token: float | None = None
     pieces: list[str] = []
@@ -183,6 +196,7 @@ def collect_sample(
         cost_usd=cost,
         latency_ms=round(elapsed, 1),
         first_token_ms=None if first_token is None else round((first_token - start) * 1000, 1),
+        stage_errors={str(k): v for k, v in store.last.meta.errors.items()} if store.last else {},
     )
 
 
@@ -214,7 +228,16 @@ def citation_items(answer: str, sources: Sequence[Source]) -> tuple[list[Citatio
 
 
 def score_sample(sample: AnswerSample, judge: Judge, embed: DenseEncoder) -> SampleScores:
-    """The answer metrics of one answered question (nothing for a refusal or an error).
+    """The metrics of one question: nothing for a failed turn; for a refusal only the two
+    context metrics; for an answer all of them.
+
+    Context precision and context recall judge the sources against the reference answer,
+    not the answer (as in RAGAS), so they are computed whenever the turn retrieved
+    something, also when the generator then refused (insufficient sources). A refusal
+    because nothing was retrieved (no sources) has context recall 0 (nothing can state the
+    reference) without a judge call, and no context precision (no source to rank). So a
+    configuration that makes the generator refuse more often cannot hide those questions
+    from the context metrics (docs/adr/0012, decision 12).
 
     Each metric is computed on its own: if the judge's answer for one does not fit (a
     wrong verdict list, a refusal, output cut off), that metric is recorded as missing
@@ -222,10 +245,10 @@ def score_sample(sample: AnswerSample, judge: Judge, embed: DenseEncoder) -> Sam
     error, a wrong model name) is raised: the run stops instead of paying on for nothing.
     """
     scores = SampleScores()
-    if sample.answer is None:
+    if sample.error is not None:
         return scores
     item = sample.question.item
-    answer, sources = sample.answer, sample.sources
+    sources = sample.sources
 
     def attempt(metric: str, compute: Callable[[], float | None]) -> None:
         try:
@@ -282,6 +305,14 @@ def score_sample(sample: AnswerSample, judge: Judge, embed: DenseEncoder) -> Sam
         }
         return share([v.ok for v in verdicts] + [False] * invalid)
 
+    if sample.answer is None:  # refused: the context metrics only
+        if item.reference_answer:
+            reference = item.reference_answer
+            if sources:
+                attempt("context_precision", lambda: precision(reference))
+            attempt("context_recall", lambda: recall(reference))
+        return scores
+    answer = sample.answer
     attempt("faithfulness", faithfulness)
     attempt("response_relevancy", relevancy)
     if item.reference_answer:
@@ -303,17 +334,21 @@ def score_sample(sample: AnswerSample, judge: Judge, embed: DenseEncoder) -> Sam
 Row = tuple[AnswerSample, SampleScores]
 
 
-def aggregate(rows: Sequence[Row]) -> dict[str, dict[str, Any]]:
+def aggregate(
+    rows: Sequence[Row], metrics: Sequence[str] = ANSWER_METRICS
+) -> dict[str, dict[str, Any]]:
     """Run metrics for "all", "heldout" and "generated" (a split without questions is
     left out). Means are over the questions where a metric is defined; `n_<metric>` says
-    how many those were, so a mean over 3 questions is never mistaken for one over 60."""
+    how many those were, so a mean over 3 questions is never mistaken for one over 60.
+    `metrics` names the per-question values to average (the ablation runner adds its
+    source metrics)."""
     out: dict[str, dict[str, Any]] = {}
     for split in SPLITS:
         chosen = [r for r in rows if split == "all" or r[0].question.split == split]
         if not chosen:
             continue
         m: dict[str, Any] = {"n_questions": len(chosen)}
-        for key in ANSWER_METRICS:
+        for key in metrics:
             values = [v for _, s in chosen if (v := s.metrics.get(key)) is not None]
             m[key] = mean(values)
             m[f"n_{key}"] = len(values)
@@ -325,6 +360,7 @@ def aggregate(rows: Sequence[Row]) -> dict[str, dict[str, Any]]:
         m["false_refusal_rate"] = share([a.refusal is not None for a in answerable])
         m["n_answerable"] = len(answerable)
         m["errors"] = len(chosen) - len(ok)
+        m["stage_fallbacks"] = sum(1 for a in ok if a.stage_errors)
         latencies = [a.latency_ms for a in ok]
         m["latency_ms_p50"] = percentile(latencies, 50) if latencies else None
         m["latency_ms_p95"] = percentile(latencies, 95) if latencies else None
@@ -380,6 +416,19 @@ def _last_usage_id(session: Session) -> int:
     return int(session.scalar(select(func.coalesce(func.max(LLMUsage.id), 0))) or 0)
 
 
+def last_usage_id(session: Session) -> int:
+    """The newest llm_usage id (0 when empty): a run's spend is every row after it."""
+    return _last_usage_id(session)
+
+
+def spend_since(session: Session, after_id: int) -> Decimal:
+    """USD of every llm_usage row written after `after_id`."""
+    value = session.scalar(
+        select(func.coalesce(func.sum(LLMUsage.cost_usd), 0)).where(LLMUsage.id > after_id)
+    )
+    return Decimal(str(value))
+
+
 def start_run(
     session: Session, name: str, *, config: dict[str, Any], git_sha: str | None
 ) -> EvalRun:
@@ -396,30 +445,55 @@ def start_run(
     return run
 
 
-def store_result(session: Session, run_id: int, item_id: int, row: Row) -> None:
-    """One question's eval_results row."""
+def hit_record(hit: SearchHit, n: int | None = None) -> dict[str, Any]:
+    """A retrieved chunk as stored with a result: what the per-question view shows. The
+    text is kept because the judge's verdicts are about it, and because a chunk id of
+    another chunking (an ablation index) means another text than in the chunks table."""
+    return {
+        **({"n": n} if n is not None else {}),
+        "chunk_id": str(hit.chunk_id),
+        "arxiv_id": hit.arxiv_id,
+        "title": hit.title,
+        "section_path": hit.section_path,
+        "chunk_type": hit.chunk_type,
+        "score": hit.score,
+        "text": hit.text,
+    }
+
+
+def result_metrics(row: Row) -> dict[str, Any]:
+    """One question's eval_results.metrics: its scores, how the turn went, the judge's
+    verdicts and the sources the answer was given (with their texts)."""
     sample, scores = row
     item = sample.question.item
+    return {
+        **scores.metrics,
+        "golden_id": item.id,
+        "split": sample.question.split,
+        "type": item.type,
+        "refusal": sample.refusal,
+        "error": sample.error,
+        "intent": sample.intent,
+        "latency_ms": sample.latency_ms,
+        "first_token_ms": sample.first_token_ms,
+        "cost_usd": str(sample.cost_usd),
+        "judge_errors": scores.errors,
+        "stage_errors": sample.stage_errors,
+        "details": scores.details,
+        "sources": [hit_record(s.hit, s.n) for s in sample.sources],
+    }
+
+
+def store_result(session: Session, run_id: int, item_id: int, row: Row) -> None:
+    """One question's eval_results row."""
+    sample, _ = row
     session.add(
         EvalResult(
             run_id=run_id,
             item_id=item_id,
             retrieved_chunk_ids=[s.hit.chunk_id for s in sample.sources],
             answer=sample.answer,
-            metrics={
-                **scores.metrics,
-                "golden_id": item.id,
-                "split": sample.question.split,
-                "type": item.type,
-                "refusal": sample.refusal,
-                "error": sample.error,
-                "intent": sample.intent,
-                "latency_ms": sample.latency_ms,
-                "first_token_ms": sample.first_token_ms,
-                "cost_usd": str(sample.cost_usd),
-                "judge_errors": scores.errors,
-                "details": scores.details,
-            },
+            metrics=result_metrics(row),
         )
     )
     session.flush()
@@ -635,6 +709,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--split", choices=SPLITS, default="all")
     parser.add_argument("--limit", type=int, default=None, help="only the first N questions")
     parser.add_argument("--name", default="default", help="stored as eval_runs.name 'answers:NAME'")
+    parser.add_argument("--max-usd", default=None, help="hard spend cap (needed for a real run)")
     args = parser.parse_args(argv)
 
     from app.db.session import session_scope
@@ -655,7 +730,14 @@ def main(argv: list[str] | None = None) -> int:
             f"requests; about ${est.typical_usd} (bound ${est.bound_usd}). Nothing was sent."
         )
         return 0
+    if not args.max_usd:
+        parser.error("a real run needs --max-usd, the hard spend cap (see --estimate)")
 
+    from eval.budget import BudgetExhausted, install_budget
+
+    # The egress guard refuses any request that could take the worst case past the cap
+    # (eval/budget.py); a question during which it refused one is not stored.
+    budget = install_budget(Decimal(args.max_usd), settings)
     judge = default_judge()
     deps = ChatDeps(chat=ChatClient(), store=NullChatStore(), tracer=NoopTracer())
     with session_scope() as session:
@@ -668,6 +750,7 @@ def main(argv: list[str] | None = None) -> int:
     rows: list[Row] = []
 
     def keep(row: Row) -> None:
+        budget.check()
         rows.append(row)
         with session_scope() as session:  # committed per question
             store_result(session, run_id, item_ids[row[0].question.item.id], row)
@@ -679,6 +762,9 @@ def main(argv: list[str] | None = None) -> int:
             progress=lambda line: print(line, file=sys.stderr, flush=True), on_row=keep,
         )  # fmt: skip
     except BaseException as err:  # also Ctrl-C: record what was done, then stop
+        if budget.guard.tripped is not None and not isinstance(err, BudgetExhausted):
+            status = f"stopped: budget: the egress guard stopped the run: {budget.guard.tripped}"
+            raise BudgetExhausted(status) from err
         status = f"stopped: {describe(err)}"
         raise
     finally:
