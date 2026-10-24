@@ -71,7 +71,13 @@ class Settings(BaseSettings):
     rerank_enabled: bool = False
     reranker_model: str = "BAAI/bge-reranker-base"  # a FastEmbed TextCrossEncoder model
     rerank_batch_size: int = 16  # (question, chunk) pairs per model run; bounds memory
-    max_chunks_per_paper: int = 3  # diversity cap after reranking; 0 switches it off
+    # diversity cap after reranking, on a paper's own text; 0 switches this cap off (the
+    # analysis limit below still applies)
+    max_chunks_per_paper: int = 3
+    # Generated analysis chunks (a model's summary, not the paper's words) are capped on
+    # their own and never take one of the paper's slots above (docs/adr/0012): at most
+    # this many per paper. 0 leaves them out; -1 counts them like any chunk (as before).
+    max_analysis_chunks_per_paper: int = 1
     # Where the reranker's files are. They are never downloaded at runtime: only
     # `make fetch-reranker` downloads them (a deliberate step, see app/rag/rerank.py).
     fastembed_cache_dir: str = "~/.cache/fastembed"
@@ -194,6 +200,24 @@ class Settings(BaseSettings):
     upload_max_bytes: int = 25 * 1024 * 1024
     upload_abstract_chars: int = 1500  # no abstract given: the abstract chunk is the body's start
     upload_min_text_chars: int = 500  # less parsed text than this: no text layer (scanned PDF)
+
+    # --- Evaluation (docs/adr/0012) --------------------------------------------------
+    # One model writes the test-set questions and judges the answers (faithfulness,
+    # response relevancy, context precision and recall, citation accuracy). It is fixed
+    # here and recorded on every run, always at temperature 0. The prices only feed
+    # `llm_usage.cost_usd`. Nothing here runs unless an evaluation command is started.
+    eval_model: str = "gpt-4o-mini"
+    eval_temperature: float = 0.0
+    eval_price_in_per_1m: float = 0.15
+    eval_price_out_per_1m: float = 0.60
+    eval_judge_max_output_tokens: int = 2000  # one structured verdict list per call
+    eval_relevancy_questions: int = 3  # questions written back from an answer (RAGAS: strictness)
+    # Response relevancy compares embeddings. Its model is fixed here, apart from the
+    # retrieval's embedding_model, so an ablation of the retrieval embeddings does not change
+    # the yardstick it is measured with.
+    eval_embedding_model: str = "text-embedding-3-small"
+    eval_embedding_price_per_1m: float = 0.02
+    eval_testset_max_output_tokens: int = 400  # one question and its reference answer
 
     @field_validator(
         "openai_api_key", "langfuse_public_key", "langfuse_secret_key", "github_token",

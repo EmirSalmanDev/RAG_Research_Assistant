@@ -18,9 +18,16 @@ in only one list; Qdrant's default k = 2 rewards the very top of each list much 
 Filters run inside Qdrant on indexed payload fields, before candidates are counted. In
 hybrid mode the same filter is put on each prefetch: the BM25 list can never bring back
 a chunk the filter removed from the dense list.
+
+Ties (docs/adr/0012): Qdrant returns equal scores in no fixed order. In hybrid mode exact
+ties are common (dense #1 + BM25 #2 scores exactly what dense #2 + BM25 #1 scores), and
+identical runs swapped such chunks. So every result list is put in a fixed order here:
+best score first and, among equal scores, the smaller chunk id first. A tie at the cut
+is settled by the same rule (see `complete_ties`).
 """
 
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Literal
@@ -93,15 +100,19 @@ def search(
     client: QdrantClient | None = None,
     collection: str | None = None,
 ) -> list[SearchHit]:
-    """The best `limit` chunks for `query`, best first.
+    """The best `limit` chunks for `query`, best first (equal scores: smaller chunk id
+    first).
 
     `dense` is needed in the dense and hybrid modes (it embeds the question, a paid
-    request logged as 'embed-query'); `sparse` in the bm25 and hybrid modes.
+    request logged as 'embed-query'); `sparse` in the bm25 and hybrid modes. The question
+    is embedded once, even when a tie at the cut makes Qdrant be asked a second time.
     """
     if mode not in SEARCH_MODES:
         raise ValueError(f"unknown search mode {mode!r}; expected one of {SEARCH_MODES}")
     if not query.strip():
         raise ValueError("cannot search for an empty question")
+    if limit < 1:
+        raise ValueError(f"limit must be at least 1, got {limit}")
     client = client or get_qdrant()
     collection = collection or get_settings().qdrant_collection
     flt = build_filter(filters or SearchFilters())
@@ -114,19 +125,24 @@ def search(
             return []
         sparse_vector = None  # hybrid falls back to the dense list alone
 
+    fetch: Callable[[int], list[m.ScoredPoint]]
     if dense_vector is not None and sparse_vector is not None:
         # Hybrid: Qdrant runs both prefetches, then fuses the two ranked lists with RRF.
         n = prefetch_limit
-        response = client.query_points(
-            collection,
-            prefetch=[
-                m.Prefetch(query=dense_vector, using=DENSE_VECTOR, filter=flt, limit=n),
-                m.Prefetch(query=sparse_vector, using=SPARSE_VECTOR, filter=flt, limit=n),
-            ],
-            query=m.RrfQuery(rrf=m.Rrf(k=rrf_k)),
-            limit=limit,
-            with_payload=True,
-        )
+        prefetch = [
+            m.Prefetch(query=dense_vector, using=DENSE_VECTOR, filter=flt, limit=n),
+            m.Prefetch(query=sparse_vector, using=SPARSE_VECTOR, filter=flt, limit=n),
+        ]
+
+        def fetch(size: int) -> list[m.ScoredPoint]:
+            return client.query_points(
+                collection,
+                prefetch=prefetch,
+                query=m.RrfQuery(rrf=m.Rrf(k=rrf_k)),
+                limit=size,
+                with_payload=True,
+            ).points
+
     else:
         # One list only: plain nearest-neighbour search on one named vector.
         vector, using = (
@@ -134,10 +150,38 @@ def search(
             if dense_vector is not None
             else (sparse_vector, SPARSE_VECTOR)
         )
-        response = client.query_points(
-            collection, query=vector, using=using, query_filter=flt, limit=limit, with_payload=True
-        )
-    return [_hit(point) for point in response.points]
+
+        def fetch(size: int) -> list[m.ScoredPoint]:
+            return client.query_points(
+                collection, query=vector, using=using, query_filter=flt, limit=size,
+                with_payload=True,
+            ).points  # fmt: skip
+
+    return [_hit(point) for point in complete_ties(fetch, limit)]
+
+
+def complete_ties(fetch: Callable[[int], list[m.ScoredPoint]], limit: int) -> list[m.ScoredPoint]:
+    """The best `limit` points in a fixed order: score (best first), then point id.
+
+    `fetch(n)` returns Qdrant's best n points, sorted by score but with ties in any
+    order. Sorting them by (score, id) fixes the order inside the list; the cut needs
+    more care: if the point just past the cut has the same score as the last one kept,
+    Qdrant alone chose which of them made the list. So one point more than needed is
+    fetched, and while the last point fetched still has the score of the last one kept
+    (the tied group may go on beyond it) the fetch is repeated with twice the size.
+    Then every point with that score is in hand, and the rule picks among them.
+
+    Exact ties are rare outside hybrid mode, so this almost always costs one request
+    for `limit + 1` points.
+    """
+    size = limit + 1
+    while True:
+        points = list(fetch(size))
+        if len(points) < size or points[-1].score != points[limit - 1].score:
+            break  # the result set is exhausted, or the tied group ends inside it
+        size *= 2
+    ordered = sorted(points, key=lambda p: (-p.score, uuid.UUID(str(p.id))))
+    return ordered[:limit]
 
 
 def _embed_dense(query: str, dense: DenseEncoder | None) -> list[float]:

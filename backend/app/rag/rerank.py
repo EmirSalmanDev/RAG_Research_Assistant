@@ -7,7 +7,9 @@ much better at telling which of 50 candidates actually answers the question. So 
 finds ~50 candidates fast, and the cross-encoder orders them carefully.
 
 The diversity cap then keeps at most N chunks per paper, so one long paper cannot fill
-every slot of the answer's context.
+every slot of the answer's context. Generated `analysis` chunks are capped on their own
+(docs/adr/0012): they are a model's summary of a paper, not the paper's words, so they
+never use up the paper's slots for its own text, and one is enough.
 
 The model (`reranker_model`, ~1 GB for bge-reranker-base) is NEVER downloaded at
 runtime: it is always loaded with `local_files_only=True` from `fastembed_cache_dir`.
@@ -64,19 +66,36 @@ def rerank(
     return sorted(rescored, key=lambda h: h.score, reverse=True)
 
 
-def cap_per_paper(hits: Sequence[SearchHit], max_per_paper: int) -> list[SearchHit]:
-    """Keep at most `max_per_paper` chunks of each paper, in the given order (0 = no cap).
+ANALYSIS = "analysis"  # the chunk_type of a generated paper analysis (docs/adr/0008)
 
-    Walks the list best first and skips a chunk once its paper already has
-    `max_per_paper` chunks above it, so the best chunks of every paper survive.
+
+def cap_per_paper(
+    hits: Sequence[SearchHit], max_per_paper: int, *, max_analysis_per_paper: int
+) -> list[SearchHit]:
+    """Keep at most `max_per_paper` evidence chunks and at most `max_analysis_per_paper`
+    analysis chunks of each paper, in the given order.
+
+    Evidence chunks are the paper's own text (`abstract`, `section`); `max_per_paper` 0
+    means no cap on them. Analysis chunks are counted apart, so they never take a slot
+    of the paper's own text: 0 drops them all, 1 keeps the best one, and a negative
+    value turns the separate count off, so that they count toward `max_per_paper` like
+    any chunk (the behaviour before docs/adr/0012).
+
+    Walks the list best first and skips a chunk once its paper already has that many
+    chunks of its kind above it, so the best chunks of every paper survive. Nothing is
+    reordered.
     """
-    if max_per_paper <= 0:
-        return list(hits)
-    seen: Counter[str] = Counter()
+    separate = max_analysis_per_paper >= 0
+    evidence: Counter[str] = Counter()
+    analysis: Counter[str] = Counter()
     kept: list[SearchHit] = []
     for hit in hits:
-        if seen[hit.arxiv_id] < max_per_paper:
-            seen[hit.arxiv_id] += 1
+        if separate and hit.chunk_type == ANALYSIS:
+            if analysis[hit.arxiv_id] < max_analysis_per_paper:
+                analysis[hit.arxiv_id] += 1
+                kept.append(hit)
+        elif max_per_paper <= 0 or evidence[hit.arxiv_id] < max_per_paper:
+            evidence[hit.arxiv_id] += 1
             kept.append(hit)
     return kept
 

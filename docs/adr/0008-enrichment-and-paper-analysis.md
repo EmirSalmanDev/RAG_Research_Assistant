@@ -134,7 +134,9 @@ selected papers and the cost bound without any API call.
   chunks and pushes a reference section out. The golden references are full-text
   passages, so a generated summary of the same paper counts as a miss. Nothing was tuned
   against the golden set; whether analysis chunks should be searched, down-weighted or
-  kept out of the per-paper cap is a separate decision with its own evaluation.
+  kept out of the per-paper cap is a separate decision with its own evaluation. (Decided
+  in docs/adr/0012: they no longer count toward the cap, and at most one per paper is
+  kept.)
 - **Checked with real data** (egress guard on every run): enrichment of the three
   full-text papers, one Batch job of three analyses (real cost $0.002462, under the
   $0.003187 bound computed before submitting), and the paper pages of all three papers

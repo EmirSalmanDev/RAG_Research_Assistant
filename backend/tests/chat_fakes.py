@@ -136,8 +136,11 @@ class FakeOpenAI:
 UsageRows = list[tuple[str, str, int, int]]  # (feature, model, tokens_in, tokens_out)
 
 
-def fake_chat(replies: list[Any]) -> tuple[ChatClient, FakeCompletions, UsageRows]:
-    """A ChatClient on scripted replies; usage rows are collected in a list."""
+def fake_chat(
+    replies: list[Any], *, model: str | None = None, temperature: float | None = None
+) -> tuple[ChatClient, FakeCompletions, UsageRows]:
+    """A ChatClient on scripted replies; usage rows are collected in a list. `model` and
+    `temperature` override the chat settings, as the evaluation's client does."""
     completions = FakeCompletions(list(replies))
     rows: UsageRows = []
 
@@ -145,5 +148,11 @@ def fake_chat(replies: list[Any]) -> tuple[ChatClient, FakeCompletions, UsageRow
         rows.append((feature, model, tokens_in, tokens_out))
         return chat_cost(tokens_in, tokens_out)
 
-    client = ChatClient(FakeOpenAI(_Chat(completions)), record, sleep=lambda s: None)
+    client = ChatClient(
+        FakeOpenAI(_Chat(completions)),
+        record,
+        sleep=lambda s: None,
+        model=model,
+        temperature=temperature,
+    )
     return client, completions, rows

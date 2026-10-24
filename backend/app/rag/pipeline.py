@@ -362,7 +362,12 @@ def run_chat_turn(
                 yield _error_event("rerank", err)
                 return
             span.end(output=_ids(pool))
-        sources = number_sources(cap_per_paper(pool, config.max_chunks_per_paper)[: s.chat_sources])
+        capped = cap_per_paper(
+            pool,
+            config.max_chunks_per_paper,
+            max_analysis_per_paper=config.max_analysis_chunks_per_paper,
+        )
+        sources = number_sources(capped[: s.chat_sources])
 
         if not sources:  # the fallback: nothing to answer from, so no generate call
             stages.skip("generate", "refusal: no sources")

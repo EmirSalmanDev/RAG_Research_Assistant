@@ -485,6 +485,25 @@ def test_sources_are_capped_per_paper_then_at_chat_sources(
     assert [s["arxiv_id"] for s in sources] == (["2601.00009"] * 3 + ["2601.00010"])[:expected]
 
 
+@pytest.mark.parametrize(("max_analysis", "expected"), [
+    ("1", ["analysis", "section", "section", "section"]),  # one, outside the cap of 3
+    ("0", ["section", "section", "section"]),
+    ("-1", ["analysis", "analysis", "section"]),  # counted like any chunk (before ADR 0012)
+])  # fmt: skip
+def test_the_analysis_limit_reaches_the_chat_sources(
+    monkeypatch: pytest.MonkeyPatch, max_analysis: str, expected: list[str]
+) -> None:
+    _settings(monkeypatch, MAX_ANALYSIS_CHUNKS_PER_PAPER=max_analysis)
+    paper = "2601.00009"
+    hits = [_hit("x1", paper, "analysis"), _hit("x2", paper, "analysis")] + [
+        _hit(f"s{i}", paper) for i in range(4)
+    ]
+    replies = [parsed_reply(_plan(rephrasings=[])), stream_reply(["x [1]."]),
+               parsed_reply(_verdicts(True))]  # fmt: skip
+    sources = harness(replies, hits=hits).run("q", history=[])[1].data["sources"]
+    assert [s["chunk_type"] for s in sources] == expected
+
+
 def test_disabling_every_optional_stage_skips_their_calls(monkeypatch: pytest.MonkeyPatch) -> None:
     s = _settings(
         monkeypatch, CONDENSE_ENABLED="false", PLAN_ENABLED="false", VERIFY_ENABLED="false"

@@ -1,4 +1,6 @@
-"""Retrieval metrics: how well a ranked list of chunk ids matches the reference chunks.
+"""Evaluation metrics. Retrieval metrics first, answer metrics below.
+
+Retrieval metrics: how well a ranked list of chunk ids matches the reference chunks.
 
 All three use binary relevance: a retrieved chunk is relevant if its id is one of the
 question's `reference_chunk_ids`, else it is not (no partial credit). Each is computed
@@ -62,3 +64,69 @@ def ndcg_at_k[T: Hashable](retrieved: Sequence[T], relevant: Collection[T], k: i
 def mean(values: Sequence[float]) -> float | None:
     """Plain average; None for an empty list (e.g. no question had references)."""
     return sum(values) / len(values) if values else None
+
+
+# --- answer metrics (docs/adr/0012) -------------------------------------------------------------
+#
+# The judge model gives one yes/no verdict per item (a statement, a source, a citation);
+# these functions turn verdicts into scores. They follow the definitions of the RAGAS
+# metrics with the same names (docs.ragas.io, "available metrics"), so the numbers mean
+# what those names mean elsewhere. Each is per question; runs average them over the
+# questions where the metric is defined.
+
+
+def share(verdicts: Sequence[bool]) -> float | None:
+    """Share of True verdicts; None for no verdicts (undefined, which is not the same as 0).
+
+    Faithfulness: supported statements / statements of the answer.
+    Context recall: reference sentences found in the sources / reference sentences.
+    Citation accuracy: citations whose source supports the sentence / citations.
+    """
+    return sum(verdicts) / len(verdicts) if verdicts else None
+
+
+def average_precision(useful: Sequence[bool]) -> float:
+    """Context precision: are the useful sources ranked at the top?
+
+    `useful[i]` is the judge's verdict for the source at rank i + 1. At every rank k that
+    holds a useful source, precision@k = (useful sources in the top k) / k; the score is
+    the mean of these precisions over the useful ranks, so it is 1.0 when all useful
+    sources come first and lower the further down they are. No useful source gives 0.0.
+
+    Example: [True, False, True] -> (1/1 + 2/3) / 2 = 0.833.
+    """
+    hits = 0
+    total = 0.0
+    for k, ok in enumerate(useful, start=1):
+        if ok:
+            hits += 1
+            total += hits / k
+    return total / hits if hits else 0.0
+
+
+def cosine(a: Sequence[float], b: Sequence[float]) -> float:
+    """Cosine similarity of two vectors (1 = same direction). A zero vector gives 0.0."""
+    if len(a) != len(b):
+        raise ValueError(f"vectors of different length: {len(a)} and {len(b)}")
+    dot = sum(x * y for x, y in zip(a, b, strict=True))
+    norm = math.sqrt(sum(x * x for x in a)) * math.sqrt(sum(y * y for y in b))
+    return dot / norm if norm else 0.0
+
+
+def response_relevancy(
+    question: Sequence[float], generated: Sequence[Sequence[float]], *, noncommittal: bool
+) -> float | None:
+    """Response relevancy: does the answer address the question that was asked?
+
+    The judge writes a few questions that the answer would answer; the score is the mean
+    cosine similarity between the embedding of the real question and the embeddings of
+    those questions. An answer that drifts off topic produces questions unlike the real
+    one. A noncommittal answer ("the sources do not say") scores 0 whatever its words,
+    also when the judge wrote no question for it. Otherwise None when the judge wrote no
+    question.
+    """
+    if noncommittal:
+        return 0.0
+    if not generated:
+        return None
+    return sum(cosine(question, g) for g in generated) / len(generated)
