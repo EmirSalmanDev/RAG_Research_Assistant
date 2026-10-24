@@ -16,13 +16,16 @@ How a candidate is made (docs/adr/0012):
    reference lists and acknowledgements.
 2. Seeds are drawn with a fixed random seed, spread over the papers in turns:
    - fact: one section chunk -> a question that chunk alone answers;
-   - compare: two section chunks of two different papers -> a comparison;
+   - compare: two papers on the same topic (same primary category first, then the most
+     similar abstract vectors) and, of their sections, the two most similar ones -> a
+     comparison (no random draw; the stored vectors of the local index, no request);
    - filter: one paper's abstract chunk with its date and categories -> "which paper in
      <period> did X";
-   - unanswerable: one section chunk -> a question about that paper it does not answer.
-3. One Structured Outputs call per seed (`testset_<type>_v1`, the evaluation model at
-   temperature 0) returns the question and a reference answer from the seed text, or
-   "not usable". The seed chunks become the reference chunk ids (none for unanswerable).
+   - unanswerable: one paper's abstract and the headings of its sections -> a natural
+     question about that paper that nothing in it suggests the paper answers.
+3. One Structured Outputs call per seed (`PROMPTS`, the evaluation model at temperature 0)
+   returns the question and a reference answer from the seed text, or "not usable". The
+   seed chunks become the reference chunk ids (none for unanswerable).
 4. Every candidate is appended to the candidates file at once, so an interrupted run
    keeps what it paid for and a re-run skips seeds already done.
 
@@ -42,17 +45,19 @@ chunk text (review reads the text from Postgres), so it can be committed.
 
 import argparse
 import hashlib
+import math
+import operator
 import random
 import re
 import sys
 import uuid
 from collections import Counter, defaultdict
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
@@ -70,7 +75,14 @@ from eval.llm import eval_cost
 CANDIDATES_PATH = Path(__file__).parent / "testset_candidates.jsonl"
 CandidateType = Literal["fact", "compare", "filter", "unanswerable"]
 TYPES: tuple[CandidateType, ...] = ("fact", "compare", "filter", "unanswerable")
-PROMPTS: dict[CandidateType, str] = {t: f"testset_{t}_v1" for t in TYPES}
+# The prompt of each type. v1 of compare and unanswerable gave no usable candidate on the
+# first real round (docs/adr/0012, decisions 21-23); their v1 files stay for the record.
+PROMPTS: dict[CandidateType, str] = {
+    "fact": "testset_fact_v1",
+    "compare": "testset_compare_v2",
+    "filter": "testset_filter_v1",
+    "unanswerable": "testset_unanswerable_v2",
+}
 # 60 candidates for the 40 the plan keeps after review; 8 unanswerable questions in all are
 # planned and the golden set has 3, so 10 unanswerable candidates leave room to reject some.
 DEFAULT_COUNTS: dict[CandidateType, int] = {
@@ -107,15 +119,16 @@ class SeedChunk:
     token_count: int
     published_at: datetime
     categories: tuple[str, ...]
+    primary_category: str | None = None
 
 
 def load_pool(session: Session) -> list[SeedChunk]:
     """Section and abstract chunks of every full-text paper (read-only), ordered by
-    paper and position. Uploaded documents (local- ids) have no arXiv date or category
-    and are left out."""
+    paper and position (so a paper's sections are in reading order). Uploaded documents
+    (local- ids) have no arXiv date or category and are left out."""
     fulltext = select(Chunk.arxiv_id).where(Chunk.chunk_type == "section").distinct()
     rows = session.execute(
-        select(Chunk, Paper.title, Paper.published_at, Paper.categories)
+        select(Chunk, Paper.title, Paper.published_at, Paper.categories, Paper.primary_category)
         .join(Paper, Paper.arxiv_id == Chunk.arxiv_id)
         .where(Chunk.arxiv_id.in_(fulltext), Chunk.chunk_type.in_(("section", "abstract")))
         .order_by(Chunk.arxiv_id, Chunk.ord)
@@ -131,8 +144,9 @@ def load_pool(session: Session) -> list[SeedChunk]:
             chunk.token_count,
             published_at,
             tuple(categories or ()),
+            primary,
         )  # fmt: skip
-        for chunk, title, published_at, categories in rows
+        for chunk, title, published_at, categories, primary in rows
         if not is_local_id(chunk.arxiv_id)
     ]
 
@@ -199,12 +213,108 @@ def ingest_suggestions(
 class Seed:
     type: CandidateType
     chunks: tuple[SeedChunk, ...]
+    # unanswerable: the headings of the paper's sections, shown with its abstract (they
+    # follow from the paper, so they are not part of the id)
+    outline: tuple[str, ...] = ()
 
     @property
     def id(self) -> str:
         """Stable: the same chunks and prompt always give the same candidate id."""
         key = "|".join([self.type, PROMPTS[self.type], *(str(c.chunk_id) for c in self.chunks)])
         return "cand-" + hashlib.sha256(key.encode()).hexdigest()[:10]
+
+
+Vectors = Mapping[uuid.UUID, Sequence[float]]  # a chunk's dense vector from the local index
+
+
+def _unit(vector: Sequence[float]) -> list[float]:
+    norm = math.sqrt(sum(x * x for x in vector))
+    return [x / norm for x in vector] if norm else list(vector)
+
+
+def _dot(a: Sequence[float], b: Sequence[float]) -> float:
+    return float(sum(map(operator.mul, a, b)))
+
+
+def _vector(vectors: Vectors, chunk: SeedChunk) -> Sequence[float]:
+    if chunk.chunk_id not in vectors:
+        raise MakeTestsetError(
+            f"no vector for chunk {chunk.chunk_id} of {chunk.arxiv_id} in the local index: "
+            "compare seeds need the stored vectors of every abstract and eligible section"
+        )
+    return vectors[chunk.chunk_id]
+
+
+def topic_pairs(
+    abstracts: Mapping[str, SeedChunk], vectors: Vectors, n: int
+) -> list[tuple[str, str]]:
+    """Up to `n` pairs of papers on the same topic, each paper in one pair at most.
+
+    Every pair of papers is ranked: the same primary category first, then the cosine
+    similarity of their abstract vectors (highest first), then the two ids. Pairs are taken
+    in that order unless a paper is already in a pair taken before. Nothing is random."""
+    unit = {p: _unit(_vector(vectors, c)) for p, c in abstracts.items()}
+    papers = sorted(abstracts)
+
+    def rank(pair: tuple[str, str]) -> tuple[bool, float, tuple[str, str]]:
+        a, b = (abstracts[p].primary_category for p in pair)
+        return (a is None or a != b, -_dot(unit[pair[0]], unit[pair[1]]), pair)
+
+    ranked = sorted(((a, b) for i, a in enumerate(papers) for b in papers[i + 1 :]), key=rank)
+    taken: list[tuple[str, str]] = []
+    used: set[str] = set()
+    for a, b in ranked:
+        if len(taken) == n:
+            break
+        if a not in used and b not in used:
+            taken.append((a, b))
+            used |= {a, b}
+    return taken
+
+
+def closest_excerpts(
+    a: Sequence[SeedChunk], b: Sequence[SeedChunk], vectors: Vectors
+) -> tuple[SeedChunk, SeedChunk] | None:
+    """The section of `a` and the section of `b` whose vectors are the most similar (ties:
+    the smaller chunk ids), so that both excerpts are likely to be about the same thing."""
+    best: tuple[tuple[float, str, str], SeedChunk, SeedChunk] | None = None
+    unit_b = [(cb, _unit(_vector(vectors, cb))) for cb in b]
+    for ca in a:
+        ua = _unit(_vector(vectors, ca))
+        for cb, ub in unit_b:
+            key = (-_dot(ua, ub), str(ca.chunk_id), str(cb.chunk_id))
+            if best is None or key < best[0]:
+                best = (key, ca, cb)
+    return None if best is None else (best[1], best[2])
+
+
+def outline_of(pool: Iterable[SeedChunk], arxiv_id: str) -> tuple[str, ...]:
+    """The distinct section headings of a paper in reading order (pool order), without
+    the reference list and acknowledgements."""
+    seen: dict[str, None] = {}
+    for c in pool:
+        path = c.section_path
+        if c.arxiv_id == arxiv_id and c.chunk_type == "section" and path:
+            if not SKIP_SECTIONS.search(path):
+                seen.setdefault(path, None)
+    return tuple(seen)
+
+
+def _first_rule_compare_draws(
+    rng: random.Random, by_paper: Mapping[str, Sequence[SeedChunk]], n: int
+) -> None:
+    """The random draws the first compare rule (testset_compare_v1) made at this point. They
+    are still made, and not used, so that the filter seeds drawn after them stay exactly the
+    ones already generated with that rule."""
+    papers = sorted(by_paper)
+    pairs = [(a, b) for i, a in enumerate(papers) for b in papers[i + 1 :]]
+    rng.shuffle(pairs)
+    for k in range(n):
+        if not pairs:
+            break
+        a, b = pairs[k % len(pairs)]
+        rng.choice(by_paper[a])
+        rng.choice(by_paper[b])
 
 
 def _in_turns(groups: dict[str, list[SeedChunk]], rng: random.Random) -> list[SeedChunk]:
@@ -229,36 +339,57 @@ def pick_seeds(
     *,
     seed: int,
     exclude_papers: set[str],
+    vectors: Vectors | None = None,
 ) -> list[Seed]:
-    """Seeds for every type, the same for the same pool, counts and seed. No chunk of an
-    excluded paper is used, section or abstract. A chunk seeds at most one fact or
-    unanswerable question; a type gets fewer seeds than asked when the pool runs out
-    (the caller reports it)."""
+    """Seeds for every type, the same for the same pool, counts, seed and vectors. No chunk
+    of an excluded paper is used, section or abstract. A chunk seeds at most one fact
+    question, and a fact seed is never a compare excerpt; a type gets fewer seeds than
+    asked when the pool runs out (the caller reports it).
+
+    - fact: the papers' eligible sections in turns (random order from `seed`);
+    - unanswerable: the papers the turns give next, each with its abstract and outline;
+    - compare: `topic_pairs`, each with its `closest_excerpts` (needs `vectors`);
+    - filter: abstracts in a random order from `seed`."""
     rng = random.Random(seed)
     sections = eligible_sections(pool, exclude_papers)
     by_paper: dict[str, list[SeedChunk]] = defaultdict(list)
     for chunk in sections:
         by_paper[chunk.arxiv_id].append(chunk)
+    abstract_of = {
+        c.arxiv_id: c for c in seedable(pool, exclude_papers) if c.chunk_type == "abstract"
+    }
     turns = _in_turns(by_paper, rng)
     seeds: list[Seed] = []
 
     singles = iter(turns)
-    single_types: tuple[CandidateType, ...] = ("fact", "unanswerable")
-    for kind in single_types:
-        for _ in range(counts.get(kind, 0)):
-            single = next(singles, None)
-            if single is None:
-                break
-            seeds.append(Seed(kind, (single,)))
-
-    papers = sorted(by_paper)
-    pairs = [(a, b) for i, a in enumerate(papers) for b in papers[i + 1 :]]
-    rng.shuffle(pairs)
-    for k in range(counts.get("compare", 0)):
-        if not pairs:
+    for _ in range(counts.get("fact", 0)):
+        single = next(singles, None)
+        if single is None:
             break
-        a, b = pairs[k % len(pairs)]
-        seeds.append(Seed("compare", (rng.choice(by_paper[a]), rng.choice(by_paper[b]))))
+        seeds.append(Seed("fact", (single,)))
+    # The next papers in the turns get the unanswerable questions (the papers the first
+    # rule chose too); the question is written from the abstract and the outline.
+    for _ in range(counts.get("unanswerable", 0)):
+        single = next(singles, None)
+        if single is None:
+            break
+        abstract = abstract_of.get(single.arxiv_id)
+        if abstract is not None:
+            outline = outline_of(pool, single.arxiv_id)
+            seeds.append(Seed("unanswerable", (abstract,), outline))
+
+    _first_rule_compare_draws(rng, by_paper, counts.get("compare", 0))
+    facts = {s.chunks[0].chunk_id for s in seeds if s.type == "fact"}
+    pairable = {p: c for p, c in abstract_of.items() if p in by_paper}
+    if counts.get("compare", 0) and len(pairable) > 1:
+        if vectors is None:
+            raise MakeTestsetError("compare seeds need the chunk vectors of the local index")
+        for a, b in topic_pairs(pairable, vectors, counts["compare"]):
+            free_a = [c for c in by_paper[a] if c.chunk_id not in facts]
+            free_b = [c for c in by_paper[b] if c.chunk_id not in facts]
+            excerpts = closest_excerpts(free_a, free_b, vectors)
+            if excerpts is not None:
+                seeds.append(Seed("compare", excerpts))
 
     abstracts = sorted(
         (c for c in seedable(pool, exclude_papers) if c.chunk_type == "abstract"),
@@ -267,18 +398,42 @@ def pick_seeds(
     rng.shuffle(abstracts)
     for chunk in abstracts[: counts.get("filter", 0)]:
         seeds.append(Seed("filter", (chunk,)))
-    return list({s.id: s for s in seeds}.values())  # a repeated compare pair counts once
+    return list({s.id: s for s in seeds}.values())
+
+
+def pending_seeds(seeds: Sequence[Seed], candidates_path: Path) -> list[Seed]:
+    """The seeds the candidates file does not hold yet: what `generate` will send."""
+    done = {c.id for c in load_candidates(candidates_path)}
+    return [s for s in seeds if s.id not in done]
 
 
 # --- one model call per seed ------------------------------------------------------------------
 
 
 class GeneratedQuestion(BaseModel):
-    """The JSON shape the model fills."""
+    """The JSON shape the v1 prompts ask for: the verdict first."""
 
     usable: bool
     question: str
     reference_answer: str
+
+
+class DraftedQuestion(BaseModel):
+    """The JSON shape the v2 prompts ask for: the question and the answer first, the verdict
+    last, so the model writes before it judges (docs/adr/0012, decision 23)."""
+
+    question: str
+    reference_answer: str
+    usable: bool
+
+
+Output = GeneratedQuestion | DraftedQuestion
+OUTPUTS: dict[str, type[GeneratedQuestion] | type[DraftedQuestion]] = {
+    "testset_fact_v1": GeneratedQuestion,
+    "testset_filter_v1": GeneratedQuestion,
+    "testset_compare_v2": DraftedQuestion,
+    "testset_unanswerable_v2": DraftedQuestion,
+}
 
 
 Status = Literal["pending", "accepted", "rejected", "unusable"]
@@ -310,7 +465,9 @@ def _escape(text: str) -> str:
     return escape_block(text, EVAL_TAGS)
 
 
-def _source_block(n: int, chunk: SeedChunk, *, with_dates: bool) -> str:
+def _source_block(
+    n: int, chunk: SeedChunk, *, with_dates: bool, outline: Sequence[str] = ()
+) -> str:
     """One seed as a data block; everything taken from the paper is escaped (rule 8)."""
     lines = [f'<source n="{n}">', f"Title: {_escape(chunk.title)}", f"arXiv: {chunk.arxiv_id}"]
     if with_dates:
@@ -321,14 +478,16 @@ def _source_block(n: int, chunk: SeedChunk, *, with_dates: bool) -> str:
     lines += [
         f"Section: {_escape(chunk.section_path or 'Abstract')}",
         f"Text:\n{_escape(chunk.text)}",
-        "</source>",
     ]
+    if outline:
+        lines += ["Sections of the paper:", *(f"- {_escape(h)}" for h in outline)]
+    lines.append("</source>")
     return "\n".join(lines)
 
 
 def build_messages(seed: Seed) -> list[ChatMessage]:
     blocks = "\n\n".join(
-        _source_block(n, c, with_dates=seed.type == "filter")
+        _source_block(n, c, with_dates=seed.type == "filter", outline=seed.outline)
         for n, c in enumerate(seed.chunks, start=1)
     )
     return [
@@ -337,7 +496,7 @@ def build_messages(seed: Seed) -> list[ChatMessage]:
     ]
 
 
-def candidate_from(seed: Seed, out: GeneratedQuestion, model: str) -> Candidate:
+def candidate_from(seed: Seed, out: Output, model: str) -> Candidate:
     unanswerable = seed.type == "unanswerable"
     usable = out.usable and bool(out.question.strip())
     if not unanswerable:
@@ -390,12 +549,12 @@ def generate(
     progress: Callable[[str], None] = lambda line: None,
 ) -> list[Candidate]:
     """One call per seed not yet in the file; each candidate is appended at once."""
-    done = {c.id for c in load_candidates(path)}
     made: list[Candidate] = []
-    todo = [s for s in seeds if s.id not in done]
+    todo = pending_seeds(seeds, path)
     for k, seed in enumerate(todo, start=1):
+        out: Output
         out, _ = client.parse(
-            build_messages(seed), GeneratedQuestion, feature=f"{FEATURE}-{seed.type}",
+            build_messages(seed), OUTPUTS[PROMPTS[seed.type]], feature=f"{FEATURE}-{seed.type}",
             max_tokens=max_tokens,
         )  # fmt: skip
         candidate = candidate_from(seed, out, client.model)
@@ -596,6 +755,31 @@ def _chunk_texts(ids: Sequence[uuid.UUID]) -> dict[uuid.UUID, ChunkText]:
     return {cid: (title, section, text) for cid, title, section, text in rows}
 
 
+def pool_vectors(
+    chunks: Sequence[SeedChunk], *, client: Any = None, collection: str | None = None
+) -> dict[uuid.UUID, list[float]]:
+    """The stored dense vectors of `chunks`, read from the local index (Qdrant only, no
+    embedding request): what compare seeds are paired by. A chunk the index lacks is left
+    out here and reported when a seed needs it."""
+    from app.ingest.index import DENSE_VECTOR, get_qdrant
+
+    qdrant = client if client is not None else get_qdrant()
+    name = collection or get_settings().qdrant_collection
+    ids = [str(c.chunk_id) for c in chunks]
+    out: dict[uuid.UUID, list[float]] = {}
+    for start in range(0, len(ids), 256):
+        points = qdrant.retrieve(
+            name, ids=ids[start : start + 256], with_vectors=[DENSE_VECTOR], with_payload=False
+        )
+        for point in points:
+            vector: Any = (
+                point.vector.get(DENSE_VECTOR) if isinstance(point.vector, dict) else point.vector
+            )
+            if isinstance(vector, list):  # a named dense vector is a list of floats
+                out[uuid.UUID(str(point.id))] = [float(x) for x in vector]
+    return out
+
+
 def _same_paper_passages(candidate: Candidate) -> list[ChunkText]:
     """The candidate's question as a BM25 search inside its own paper: local and free
     (the sparse encoder and Qdrant on this machine; no embedding request)."""
@@ -675,16 +859,27 @@ def _run(args: argparse.Namespace) -> int:
         return 0
 
     counts: dict[CandidateType, int] = {t: getattr(args, t) for t in TYPES}
-    seeds = pick_seeds(pool, counts, seed=args.seed, exclude_papers=excluded)
+    vectors: dict[uuid.UUID, list[float]] | None = None
+    if counts["compare"]:
+        from app.ingest.index import close_qdrant
+
+        try:  # only abstracts and eligible sections can be paired
+            wanted = [c for c in pool if c.chunk_type == "abstract"]
+            vectors = pool_vectors(wanted + eligible_sections(pool, excluded))
+        finally:
+            close_qdrant()
+    seeds = pick_seeds(pool, counts, seed=args.seed, exclude_papers=excluded, vectors=vectors)
     got = Counter(s.type for s in seeds)
     short = {t: f"{got[t]}/{n}" for t, n in counts.items() if got[t] < n}
     settings = get_settings()
-    est = estimate_generation(seeds, max_tokens=settings.eval_testset_max_output_tokens)
+    todo = pending_seeds(seeds, args.candidates)
+    est = estimate_generation(todo, max_tokens=settings.eval_testset_max_output_tokens)
     print(
         f"{len(seeds)} seeds from {len(papers)} papers ({dict(got)}"
         + (f"; fewer than asked: {short}" if short else "")
-        + f"): {est.requests} requests to {settings.eval_model}, {est.tokens_in} input tokens, "
-        f"cost bound ${est.bound_usd}."
+        + f"); {len(seeds) - len(todo)} already in {args.candidates.name}, to send: "
+        f"{dict(Counter(s.type for s in todo))}: {est.requests} requests to "
+        f"{settings.eval_model}, {est.tokens_in} input tokens, cost bound ${est.bound_usd}."
     )
     if args.estimate:
         print("Nothing was sent (--estimate).")

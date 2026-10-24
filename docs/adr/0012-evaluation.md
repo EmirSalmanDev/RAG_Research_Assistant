@@ -247,7 +247,8 @@ questions outside the golden 20, for the settings 0, 1 and -1.
   random seed, one paper at a time in turns, from section chunks of at least 120 tokens,
   never from reference lists or acknowledgements. The pool is every full-text paper that
   no golden question refers to; generation refuses to start with fewer than 30 (the
-  plan's number) and lists papers to add.
+  plan's number) and lists papers to add. (Compare and unanswerable seeds changed after
+  the first real round: decisions 21-24.)
 - **Golden papers are left out whole.** Every paper a golden question refers to (found
   through the golden reference chunks; one missing from the database stops the tool) is
   left out of the pool: its abstract, all its sections, not only the reference chunks.
@@ -645,6 +646,262 @@ questions outside the golden 20, for the settings 0, 1 and -1.
   (`e2e/evals-flow.spec.ts`: trends with a stopped run, two runs compared, a question
   opened with its chunk text, reference badge, answer, verdicts and arXiv link; the
   empty, error and selection states), run by `make e2e`.
+
+### 21. What the first generation round showed (the reason for decisions 22-24)
+- **Facts.** The first real round (60 calls, the evaluation model at temperature 0, on 30
+  full-text papers) gave 33 candidates to review (26 fact, 7 filter) and none for compare
+  (0 of 12) or unanswerable (0 of 10): each of those 22 calls returned `usable: false` with
+  an empty question, 12 output tokens each. The output shape has no field for a reason,
+  so the model's reasons are not known.
+- **Evidence about the seeds** (stored metadata and stored vectors only): 10 of the 12
+  compare pairs joined papers of two primary categories (for example a financial
+  time-series model and a music generator), and in all 12 the two excerpts were different
+  kinds of passage (an introduction and an appendix, related work and a qualitative
+  example), with a cosine similarity of 0.19-0.49 between their vectors. The v1 compare
+  prompt allows `usable = false` exactly when the excerpts share no aspect. The 10
+  unanswerable seeds were ordinary sections of 120-511 tokens.
+- **Guesses (not tested).** The v1 unanswerable prompt asks for a detail "the paper is
+  unlikely to report at all" while the model sees one excerpt, so it cannot judge the
+  paper and takes the way out it is offered. The v1 shape asks for the verdict before the
+  question, so the model decides before it has tried to write one (fact still gave 26 of
+  30, so this alone does not explain the result).
+- Decisions 22-24 were written after that round and before the next one, without any
+  retrieval or evaluation result and without the golden set. Fact and filter seeds and
+  prompts are unchanged.
+
+### 22. Compare seeds: two papers on one topic and their two most similar sections (`topic_pairs`, `closest_excerpts`)
+- **Decision.** Papers are paired by topic, from what is stored. Every pair of pool papers
+  is ranked by (1) the same `primary_category` first, (2) the cosine similarity of their
+  abstract vectors (the app's stored vectors, read from the local index; no request),
+  highest first, (3) the two arXiv ids. Pairs are taken in that order unless a paper is
+  already in an earlier pair, so each paper is in one comparison at most (30 papers: up to
+  15 pairs; 12 are asked). The two excerpts are the eligible sections (the rules of every
+  seed), one of each paper, whose stored vectors are the most similar (ties: the smaller
+  chunk ids), never a chunk that already seeds a fact question. Nothing is random. The
+  first rule's random draws are still made and not used, so the filter seeds drawn after
+  them, already generated, stay exactly the same, and so do their candidate ids. The
+  prompt `testset_compare_v2` says the excerpts are the two most similar passages of the
+  papers, lists the aspects a comparison may be about (also how each paper evaluates, or
+  what each names as a limitation, when the papers solve different problems), and allows
+  `usable = false` only when the excerpts share no aspect at all.
+- **Alternatives.** (a) Same category, random pairs and excerpts: the excerpts would still
+  be unrelated passages. (b) The nearest abstracts without the category: categories are
+  coarse, but stored and independent of the embedding model, so a near neighbour from
+  another field does not win. (c) Pairs chosen by hand: the owner decides in review; the
+  rule only proposes. **Known bias:** the most similar sections of two papers are often
+  their introductions or related-work sections, so comparisons lean towards motivation
+  and positioning rather than results; the review decides whether they are useful.
+- **Tested by.** `test_compare_pairs_papers_of_one_category_first_then_the_closest_abstracts`
+  (a closer pair across categories loses to pairs within one; without the category the
+  closest abstracts pair first; each paper once; no more pairs than the papers allow),
+  `test_equal_similarities_pair_the_smaller_ids_first`,
+  `test_the_excerpts_are_the_two_most_similar_sections`,
+  `test_a_compare_excerpt_is_never_a_fact_seed` (two papers; the fact seed made the closest
+  section is skipped), `test_compare_seeds_need_the_vectors_of_the_local_index`,
+  `test_pool_vectors_reads_the_dense_vector_in_batches`, and
+  `test_fact_and_filter_seeds_are_still_those_of_the_first_rule` (seeds pinned from the
+  first rule's code). With the kept draws, the category key or the fact exclusion removed,
+  its test fails. On the real pool (read-only, no request), the 30 fact and 8 filter seeds
+  have exactly the ids of the stored first-round candidates, so the next round sends 22.
+
+### 23. Unanswerable seeds: the paper's abstract and outline (`testset_unanswerable_v2`)
+- **Decision.** The papers stay the ones the first rule chose (the next papers in the turns
+  after the fact seeds). Instead of one section, the model sees the paper's title, its
+  abstract and its outline (the distinct headings of its sections in reading order,
+  without the reference list and acknowledgements), and is asked for a question that a
+  researcher interested in the topic would ask about this paper, about one specific detail
+  that neither the abstract nor any heading suggests the paper reports (its cost in money
+  or energy, a benchmark, a language or domain, a method it does not name, how it was
+  deployed), not answerable from general knowledge, not yes/no. Whether the paper's text
+  really leaves it unanswered is checked in review, which shows the three closest passages
+  of the same paper (a local BM25 search, decision 8). The seed chunk is the abstract
+  (shown in review); the question has no reference chunks. The headings are paper text:
+  escaped, inside the paper's source block.
+- **Alternatives.** One section with looser wording: the model still sees a fraction of
+  the paper. The whole paper: 10-90k tokens a call, and a model reading all of it can still
+  miss a passage, so the review check is needed anyway.
+- **Tested by.** `test_unanswerable_seeds_are_the_next_papers_abstracts_with_their_outlines`
+  (the first rule's papers, now with their abstracts),
+  `test_the_outline_is_every_heading_once_in_reading_order`,
+  `test_an_unanswerable_seed_shows_the_abstract_and_the_escaped_outline`.
+
+### 24. The v2 prompts write before they judge; a second round sends only new seeds
+- **Decision.** The v2 prompts return the question and the reference answer first and
+  `usable` last (`DraftedQuestion`); the v1 prompts keep their shape
+  (`GeneratedQuestion`), so a prompt version also fixes its shape (`OUTPUTS`). A candidate
+  id includes its prompt version, so v2 seeds get new ids: the first round's candidates,
+  its 22 unusable ones included, stay in the candidates file unchanged, and `generate`
+  sends only the seeds the file does not hold. `generate --estimate` now counts only those
+  seeds (it counted every seed, so a second round's estimate was the whole set's).
+- **Alternative.** Delete the unusable candidates and generate again under the old ids:
+  that loses the record of what was paid for and lets two prompts share one id.
+- **Tested by.** `test_the_v2_prompts_ask_for_the_question_before_the_verdict`,
+  `test_a_second_round_sends_only_the_new_seeds_with_their_own_shape` (the first round's
+  lines unchanged byte for byte; only unanswerable and compare seeds sent, with the v2
+  shape), and on a scratch database
+  `test_the_estimate_reads_the_local_stores_and_counts_only_new_seeds`.
+
+### 25. The candidates are reviewed by an AI reviewer, not by the owner (a deviation from the plan)
+- **Decision.** The plan has the owner review every generated question; the owner decided
+  not to, and that the review is done by an AI reviewer instead. Written down before the
+  first accept or reject, without any retrieval or evaluation result:
+  1. One fresh subagent (a general-purpose Claude Code agent; reviewer name
+     `claude-subagent`) reviews every pending candidate. It did not configure the
+     generator, so the agent that wrote the seed rules and prompts does not grade their
+     output itself. It gets only these rules and, per candidate, its id, type, question,
+     reference answer and the seed text exactly as `make_testset review` shows it (an
+     unanswerable candidate with the paper's abstract and the three closest passages of
+     the same paper, decision 8). It never gets retrieval or evaluation results or golden
+     questions, and it is told to treat the paper text as data.
+  2. Rules: **fact**: the reference answer is stated in the seed text, and the question is
+     understandable alone (no "this paper", "the above"); **filter**: the filter is real
+     (a date or a category of the paper) and the question needs it; **compare**: both
+     papers are needed, and the question cannot be answered from one of them; **unanswerable**:
+     the answer is absent from the paper's text, including the same-paper passages shown
+     (a passage that contains the answer means reject). In every type: the reference
+     answer must not contradict the seed text; a near-duplicate of a candidate accepted
+     earlier in the list is rejected; if unsure, reject. The aim is about 30 accepted with
+     a mix of types and at least 15 (the smoke set), but no question is accepted to reach a
+     count.
+  3. A candidate the review tool warns about for word overlap of 0.6 or more with a
+     golden question is rejected by rule, without showing the golden question to the
+     reviewer. No generated question may sit on a golden paper (the pool excludes them,
+     decision 7; checked again after the review).
+  4. The decisions are recorded through the review tool's own code (`review` with
+     scripted answers in the reviewer's order), so ids are numbered and every decision is
+     saved as for a person, and no id is deleted or reused. A rejection keeps the
+     reviewer's reason, prefixed `claude-subagent:`. The candidates file and
+     `generated.jsonl` have no reviewer field, so the reviewer of every accepted
+     question is recorded here and in the README.
+  5. These questions are **AI-generated and AI-reviewed**; they must never be described as
+     reviewed by a person.
+- **Alternatives.** (a) Accept every candidate the generator marked usable: no review at
+  all. (b) The agent that wrote the seed rules and prompts reviews: it would grade the
+  output of its own configuration. (c) Wait for the owner: the owner decided against it.
+- **Consequences.** The generated split, which decides every "best of the above" choice,
+  rests on two models (the generator `gpt-4o-mini` and the reviewer); a wrong question that
+  both let through can move a selection. The held-out golden numbers are reported next to
+  every choice and never used to make it.
+- **Tested by.** The review tool's tests (decision 8: numbering, saving after every
+  decision, no deleted or reused ids, a hand-edited file refused). The decisions and the
+  reasons are in the candidates file; the counts per type are in the part 3 report.
+
+### Measured: the ablations on real data (part 3)
+Run at commit 39cd4c5 (the code of decisions 1-25) on the corpus of that day: 8,912 points in
+the app's collection, 33 full-text papers (30 of them added for the test set; the 3 golden
+papers before). Questions: the 20 held-out golden questions (17 scored, 3 unanswerable) and the
+27 generated ones (21 fact, 2 filter, 2 compare, 2 unanswerable; AI-generated and AI-reviewed,
+decision 25). Judge and generator `gpt-4o-mini`, temperature 0; every run is stored in
+eval_runs with its configuration, commit and per-question rows. Steps in order, each on the
+stored winner of the step before (suites 8956c062dd89, 4a883a841610, 9bd752f18578,
+97e7370ca00c, ee2fcb8199e8). Retrieval metrics on 10 results; R@8, MRR and nDCG@10 count
+reference chunk ids and are left out for another chunking (decision 14); `runs` = the
+eval_runs ids of the retrieval and the answers part.
+
+**Generated questions (27; the rule chose on these, 25 paired per comparison):**
+
+| Configuration | runs | R@8 | MRR | nDCG@10 | cov@8 | ctx recall | faithfulness | relevancy | ctx precision | citation acc | refusal acc | false refusal | p50 ms | $/answer |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 dense only | 23/24 | 0.540 | 0.513 | 0.510 | 0.550 | 0.667 | 0.835 | 0.673 | 0.683 | 0.822 | 0.500 | 0.160 | 5317 | 0.000793 |
+| 2 BM25 only | 25/26 | 0.620 | 0.613 | 0.612 | 0.640 | 0.767 | 0.872 | 0.745 | 0.779 | 0.862 | 0.500 | 0.120 | 4694 | 0.000804 |
+| 3 hybrid (RRF) | 27/28 | 0.660 | 0.627 | 0.625 | 0.682 | 0.807 | 0.846 | 0.694 | 0.767 | 0.912 | 1.000 | 0.040 | 5527 | 0.000843 |
+| 4 hybrid + bge-reranker-base | 29/30 | 0.900 | 0.793 | 0.816 | 0.914 | 0.987 | 0.848 | 0.718 | 0.922 | 0.821 | 0.500 | 0.040 | 9719 | 0.000842 |
+| 5 hybrid + MiniLM-L-12 reranker | 31/32 | 0.880 | 0.760 | 0.790 | 0.889 | 0.973 | 0.859 | 0.763 | 0.863 | 0.868 | 1.000 | 0.080 | 7469 | 0.000815 |
+| 6 on 4, with query rewriting | 34/35 | 0.900 | 0.793 | 0.816 | 0.914 | 0.987 | 0.882 | 0.724 | 0.919 | 0.829 | 0.500 | 0.040 | 10442 | 0.000851 |
+| 6 on 4, without query rewriting | 36/37 | 0.900 | 0.793 | 0.816 | 0.914 | 0.987 | 0.865 | 0.740 | 0.919 | 0.900 | 0.500 | 0.040 | 9724 | 0.000792 |
+| 7 on 6, chunks of 256 | 39/40 | n/a | n/a | n/a | 0.682 | 0.987 | 0.893 | 0.731 | 0.865 | 0.808 | 0.500 | 0.040 | 9818 | 0.000673 |
+| 7 on 6, chunks of 512 | 41/42 | 0.900 | 0.793 | 0.816 | 0.914 | 0.987 | 0.846 | 0.721 | 0.922 | 0.801 | 0.500 | 0.040 | 10594 | 0.000848 |
+| 7 on 6, chunks of 1024 | 43/44 | n/a | n/a | n/a | 0.893 | 0.960 | 0.923 | 0.729 | 0.870 | 0.809 | 0.500 | 0.040 | 10846 | 0.000979 |
+| 8 on 7, 3-small at 1536 | 46/47 | 0.900 | 0.793 | 0.816 | 0.914 | 0.987 | 0.863 | 0.726 | 0.919 | 0.811 | 0.500 | 0.040 | 10647 | 0.000838 |
+| 8 on 7, 3-large shortened to 1536 | 48/49 | 0.860 | 0.773 | 0.791 | 0.883 | 0.947 | 0.825 | 0.731 | 0.878 | 0.874 | 0.500 | 0.080 | 11305 | 0.000835 |
+| 8 on 7, 3-large at 3072 | 50/51 | 0.860 | 0.773 | 0.791 | 0.883 | 0.947 | 0.884 | 0.722 | 0.879 | 0.844 | 0.500 | 0.080 | 10745 | 0.000845 |
+
+**Held-out golden questions (20; reported, never used to choose):**
+
+| Configuration | R@8 | MRR | nDCG@10 | cov@8 | ctx recall | faithfulness | citation acc |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 dense only | 0.824 | 0.667 | 0.703 | 0.824 | 0.882 | 0.911 | 0.846 |
+| 2 BM25 only | 0.912 | 0.779 | 0.796 | 0.919 | 0.882 | 0.833 | 0.784 |
+| 3 hybrid (RRF) | 0.912 | 0.775 | 0.794 | 0.919 | 0.882 | 0.844 | 0.784 |
+| 4 hybrid + bge-reranker-base | 0.794 | 0.667 | 0.685 | 0.801 | 0.882 | 0.832 | 0.748 |
+| 5 hybrid + MiniLM-L-12 reranker | 0.912 | 0.716 | 0.759 | 0.919 | 0.941 | 0.849 | 0.632 |
+| 6 on 4, with query rewriting | 0.794 | 0.667 | 0.685 | 0.801 | 0.882 | 0.819 | 0.711 |
+| 6 on 4, without query rewriting | 0.794 | 0.667 | 0.685 | 0.801 | 0.882 | 0.785 | 0.727 |
+| 7 on 6, chunks of 256 | n/a | n/a | n/a | 0.788 | 0.882 | 0.761 | 0.690 |
+| 7 on 6, chunks of 512 | 0.794 | 0.667 | 0.685 | 0.801 | 0.882 | 0.831 | 0.725 |
+| 7 on 6, chunks of 1024 | n/a | n/a | n/a | 0.801 | 0.882 | 0.856 | 0.739 |
+| 8 on 7, 3-small at 1536 | 0.794 | 0.667 | 0.685 | 0.801 | 0.824 | 0.879 | 0.762 |
+| 8 on 7, 3-large shortened to 1536 | 0.794 | 0.667 | 0.685 | 0.801 | 0.882 | 0.827 | 0.731 |
+| 8 on 7, 3-large at 3072 | 0.794 | 0.667 | 0.685 | 0.801 | 0.882 | 0.826 | 0.725 |
+
+**What the rule chose** (decision 13: context recall, paired bootstrap at 1 - 0.05/m for m challengers:
+98.75 % for four, 97.5 % for two, 95 % for one; faithfulness as the guard; selection rows
+33, 38, 45, 52):
+- Ablations 1-5: **hybrid + `bge-reranker-base` (4)** replaces hybrid (3): context recall
+  +0.18 [0.02, 0.38], faithfulness -0.011 [-0.148, 0.122] (not worse). The MiniLM reranker
+  (5) was also better (+0.167 [2.2e-18, 0.373]: its lower bound is 0 up to rounding, so
+  "better" rests on float noise) but by a smaller mean; dense (1) and BM25 (2) were not better.
+- Ablation 6: query rewriting stays: without it the paired difference was 0.0 [0, 0]. Two
+  limits: the free retrieval part embeds the question alone (the rephrasings come from the
+  paid planner), so its columns equal ablation 4's by design; and context recall was at its
+  ceiling on the generated questions (0.987, the same in ablations 4, 6, 7 at 512 and 8 at
+  1536), so on this set no challenger of steps 6-8 could show a gain on the primary metric.
+  Rewriting does change the answers part (source tokens, latency, cost).
+- Ablation 7: 512 tokens stays: 256 gave 0.0 [0, 0], 1024 gave -0.027 [-0.133, 0.040].
+  (Context recall favours larger chunks by construction; it did not here.)
+- Ablation 8: `text-embedding-3-small` at 1536 stays: the large model gave -0.040
+  [-0.160, 0.000] shortened to 1536 and at 3072 alike.
+So the configuration chosen on generated questions is hybrid + `bge-reranker-base`, query
+rewriting on, 512-token chunks, `text-embedding-3-small` at 1536: the app's defaults plus the
+reranker, which the app has off (`rerank_enabled`). Turning it on is the owner's decision:
+on this machine its median rerank time was 5.2 s per question and its process peaked at
+about 2.1 GB (below).
+
+**The reranker comparison moved from M4** (27 generated questions, each variant in its own
+process, on configuration 4; selection row 67; bar: at least 20 candidates, median rerank
+time per question at most 5 s, peak memory at most 2,048 MiB, quality kept):
+
+| Variant | runs | R@8 | cov@8 | ctx recall | faithfulness | median rerank s | peak MiB | meets the bar |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| reference (bge, default threads, arena on, 50 candidates) | 53/54 | 0.900 | 0.914 | 0.987 | 0.835 | 5.24 | 2129.6 | no (time, memory) |
+| 4 threads | 55 | 0.900 | 0.914 | - | - | 5.30 | 2439.2 | no (time, memory) |
+| 2 threads | 56 | 0.900 | 0.914 | - | - | 7.35 | 2576.0 | no (time, memory) |
+| 1 thread | 57 | 0.900 | 0.914 | - | - | 7.60 | 2465.7 | no (time, memory) |
+| arena off | 58 | 0.900 | 0.914 | - | - | 6.41 | 2861.7 | no (time, memory) |
+| 30 candidates | 59/60 | 0.860 | 0.874 | 0.947 | 0.868 | 3.90 | 2822.0 | no (memory) |
+| 20 candidates | 61/62 | 0.820 | 0.834 | 0.867 | 0.891 | 1.92 | 2822.0 | no (memory) |
+| 10 candidates | 63/64 | 0.780 | 0.800 | 0.907 | 0.892 | 0.93 | 2724.2 | no (10 < 20, memory) |
+| MiniLM-L-12 (`Xenova/ms-marco-MiniLM-L-12-v2`) | 65/66 | 0.880 | 0.889 | 0.933 | 0.889 | 2.33 | 1500.5 | **yes** |
+
+The reference's verdict is worked out from the bar here (5.24 s > 5.0 s, 2129.6 MiB > 2,048 MiB);
+the selection row stores verdicts for the challengers only.
+
+Only the small model meets the owner's bar; it is the recommendation. Thread and arena
+settings change speed and memory only (identical retrieval lists), and on this machine none
+made `bge-reranker-base` fit. Changing the app's reranker or `rerank_enabled` stays the
+owner's decision.
+
+**How far to trust these numbers.**
+- The same configuration ran three times in three suites (eval_runs 35, 42 and 47: 4 with
+  rewriting, 512 tokens, the small model): context recall 0.987 / 0.987 / 0.987 on generated
+  questions, faithfulness 0.882 / 0.846 / 0.863. Retrieval parts are identical run to run
+  (cached question vectors); answer metrics move by about 0.02-0.04 between identical runs
+  (the model, the live query embeddings). Differences of that size in the tables are noise.
+- 27 generated questions, 25 paired per comparison: one question moves a mean by 0.04. Only
+  the reranker's gain cleared the corrected interval.
+- The held-out split disagrees on the reranker: on the golden questions configuration 4 has
+  R@8 0.794 against hybrid's 0.912 (as in the first measurement, M3), while on generated
+  questions it has 0.900 against 0.660. A possible reason (not tested): the golden questions
+  come from three papers whose reference passages the hybrid search already ranks high, the
+  generated ones from 30 other, longer papers. Nothing was chosen on the held-out numbers.
+- The generated questions were written and reviewed by models (decision 25); refusal
+  accuracy on them rests on 2 unanswerable questions.
+
+**Spend.** The smoke run and all of D cost $2.682941 (llm_usage), against $3.16 estimated and
+a $5.00 ceiling: smoke $0.035, ablations 1-5 $0.611, 6 $0.247, 7 $0.373 (+ indexes $0.032),
+8 $0.375 (+ indexes $0.701), reranker comparison $0.308. The first `text-embedding-3-large`
+index build stopped at its own guard cap after 8,512 of 8,912 points (the guard counted 143
+attempts for 133 billed requests, likely rate-limit retries) and was resumed (decision 18).
 
 ### Review before merge (part 2)
 A fresh reviewer, given only the plan's evaluation text and the diff, found: a variant
