@@ -4,9 +4,12 @@ from datetime import UTC, datetime
 from decimal import Decimal
 
 import pytest
+from qdrant_client import QdrantClient
+from qdrant_client.models import Distance, PointStruct, VectorParams
 from sqlalchemy.orm import Session
 
 from app.api import status
+from app.config import get_settings
 from app.db.models import IngestRun, LLMUsage
 from app.features import app_settings
 from tests.digest_fakes import make_paper
@@ -53,3 +56,19 @@ def test_an_empty_database(migrated_session: Session) -> None:
     out = status.read_database()
     assert out.papers_total == 0 and out.last_runs == []
     assert out.budget.cap_usd is None and not out.budget.paused
+
+
+async def test_qdrant_points_before_the_first_ingest_is_zero_not_an_error(
+    qdrant: QdrantClient, scratch_collection: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("QDRANT_COLLECTION", scratch_collection)
+    get_settings.cache_clear()
+    assert not qdrant.collection_exists(scratch_collection)
+    assert await status.read_qdrant_points() == 0  # a fresh install has no collection yet
+
+    qdrant.create_collection(
+        scratch_collection, vectors_config=VectorParams(size=2, distance=Distance.COSINE)
+    )
+    qdrant.upsert(scratch_collection, [PointStruct(id=1, vector=[0.1, 0.2]),
+                                       PointStruct(id=2, vector=[0.3, 0.4])])  # fmt: skip
+    assert await status.read_qdrant_points() == 2

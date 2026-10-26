@@ -116,7 +116,12 @@ async def read_queue_length() -> int:
 async def read_qdrant_points() -> int:
     client = AsyncQdrantClient(url=get_settings().qdrant_url, timeout=int(TIMEOUT_S))
     try:
-        info = await client.get_collection(get_settings().qdrant_collection)
+        name = get_settings().qdrant_collection
+        # The collection is created by the first ingest. Before that it is not a fault: a
+        # fresh install has 0 points, and the page should not open with a warning.
+        if not await client.collection_exists(name):
+            return 0
+        info = await client.get_collection(name)
         return int(info.points_count or 0)
     finally:
         await client.close()
