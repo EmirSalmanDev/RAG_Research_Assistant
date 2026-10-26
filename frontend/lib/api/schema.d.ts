@@ -540,6 +540,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Status */
+        get: operations["status_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/timeline": {
         parameters: {
             query?: never;
@@ -592,6 +609,20 @@ export interface components {
             id: number;
             /** Name */
             name: string;
+        };
+        /** BudgetOut */
+        BudgetOut: {
+            /** Cap Usd */
+            cap_usd: number | null;
+            /**
+             * Month Start
+             * Format: date-time
+             */
+            month_start: string;
+            /** Paused */
+            paused: boolean;
+            /** Spent Usd */
+            spent_usd: number;
         };
         /** CellOut */
         CellOut: {
@@ -733,6 +764,18 @@ export interface components {
             arxiv_ids: string[];
             /** Dimensions */
             dimensions?: ("task" | "method" | "data" | "metrics" | "compute" | "limitations")[];
+        };
+        /** DatabaseStatus */
+        DatabaseStatus: {
+            budget: components["schemas"]["BudgetOut"];
+            /** Last Runs */
+            last_runs: components["schemas"]["RunOut"][];
+            /** Papers By Fulltext Status */
+            papers_by_fulltext_status: {
+                [key: string]: number;
+            };
+            /** Papers Total */
+            papers_total: number;
         };
         /** DateRange */
         DateRange: {
@@ -1396,6 +1439,24 @@ export interface components {
             /** Title */
             title: string;
         };
+        /** RunOut */
+        RunOut: {
+            /** Error */
+            error: string | null;
+            /** Finished At */
+            finished_at: string | null;
+            /** Ok */
+            ok: boolean;
+            /** Skipped */
+            skipped: string | null;
+            /** Source */
+            source: string;
+            /**
+             * Started At
+             * Format: date-time
+             */
+            started_at: string;
+        };
         /** SearchHitOut */
         SearchHitOut: {
             /** Abs Url */
@@ -1505,6 +1566,19 @@ export interface components {
             section_path: string | null;
             /** Title */
             title: string;
+        };
+        /** StatusResponse */
+        StatusResponse: {
+            database: components["schemas"]["DatabaseStatus"] | null;
+            /** Errors */
+            errors: {
+                [key: string]: string;
+            };
+            /** Qdrant Points */
+            qdrant_points: number | null;
+            /** Queue Length */
+            queue_length: number | null;
+            stores: components["schemas"]["HealthResponse"];
         };
         /** TimelineBody */
         TimelineBody: {
@@ -2780,6 +2854,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    status_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatusResponse"];
                 };
             };
         };

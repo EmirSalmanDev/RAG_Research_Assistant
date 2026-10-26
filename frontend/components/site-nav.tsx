@@ -13,6 +13,7 @@ const LINKS = [
   { href: "/timeline", label: "Timeline" },
   { href: "/library", label: "Library" },
   { href: "/evals", label: "Evals" },
+  { href: "/health", label: "Health" },
   { href: "/settings", label: "Settings" },
 ];
 

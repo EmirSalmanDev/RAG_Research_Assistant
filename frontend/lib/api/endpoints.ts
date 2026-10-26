@@ -151,6 +151,8 @@ export type DigestEntryOut = components["schemas"]["DigestEntryOut"];
 export type InterestOut = components["schemas"]["InterestOut"];
 export type InterestIn = components["schemas"]["InterestIn"];
 export type SettingsOut = components["schemas"]["SettingsOut"];
+export type StatusOut = components["schemas"]["StatusResponse"];
+export type RunOut = components["schemas"]["RunOut"];
 export type SettingsIn = components["schemas"]["SettingsIn"];
 export type EntryAction = "save" | "dismiss" | "undo";
 
@@ -255,6 +257,19 @@ export async function fetchSettings(client: ApiClient): Promise<SettingsOut> {
   throw new ApiError(
     response.status,
     apiErrorMessage(response.status, detailOf(error), "settings"),
+  );
+}
+
+/** GET /status: stores, last pipeline runs, paper counts, queue, Qdrant points, budget. */
+export async function fetchStatus(
+  client: ApiClient,
+  signal?: AbortSignal,
+): Promise<StatusOut> {
+  const { data, error, response } = await client.GET("/status", { signal });
+  if (data) return data;
+  throw new ApiError(
+    response.status,
+    apiErrorMessage(response.status, detailOf(error), "status"),
   );
 }
 

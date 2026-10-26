@@ -106,6 +106,42 @@
         "title": "BestInterestOut",
         "type": "object"
       },
+      "BudgetOut": {
+        "properties": {
+          "cap_usd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cap Usd"
+          },
+          "month_start": {
+            "format": "date-time",
+            "title": "Month Start",
+            "type": "string"
+          },
+          "paused": {
+            "title": "Paused",
+            "type": "boolean"
+          },
+          "spent_usd": {
+            "title": "Spent Usd",
+            "type": "number"
+          }
+        },
+        "required": [
+          "cap_usd",
+          "spent_usd",
+          "paused",
+          "month_start"
+        ],
+        "title": "BudgetOut",
+        "type": "object"
+      },
       "CellOut": {
         "properties": {
           "citations": {
@@ -537,6 +573,39 @@
           "arxiv_ids"
         ],
         "title": "CompareRequest",
+        "type": "object"
+      },
+      "DatabaseStatus": {
+        "properties": {
+          "budget": {
+            "$ref": "#/components/schemas/BudgetOut"
+          },
+          "last_runs": {
+            "items": {
+              "$ref": "#/components/schemas/RunOut"
+            },
+            "title": "Last Runs",
+            "type": "array"
+          },
+          "papers_by_fulltext_status": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Papers By Fulltext Status",
+            "type": "object"
+          },
+          "papers_total": {
+            "title": "Papers Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "papers_total",
+          "papers_by_fulltext_status",
+          "last_runs",
+          "budget"
+        ],
+        "title": "DatabaseStatus",
         "type": "object"
       },
       "DateRange": {
@@ -2706,6 +2775,67 @@
         "title": "RowOut",
         "type": "object"
       },
+      "RunOut": {
+        "properties": {
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "skipped": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Skipped"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "started_at": {
+            "format": "date-time",
+            "title": "Started At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "started_at",
+          "finished_at",
+          "ok",
+          "error",
+          "skipped"
+        ],
+        "title": "RunOut",
+        "type": "object"
+      },
       "SearchHitOut": {
         "properties": {
           "abs_url": {
@@ -3018,6 +3148,61 @@
           "abs_url"
         ],
         "title": "SourceOut",
+        "type": "object"
+      },
+      "StatusResponse": {
+        "properties": {
+          "database": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DatabaseStatus"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "errors": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Errors",
+            "type": "object"
+          },
+          "qdrant_points": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Qdrant Points"
+          },
+          "queue_length": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Queue Length"
+          },
+          "stores": {
+            "$ref": "#/components/schemas/HealthResponse"
+          }
+        },
+        "required": [
+          "stores",
+          "database",
+          "queue_length",
+          "qdrant_points",
+          "errors"
+        ],
+        "title": "StatusResponse",
         "type": "object"
       },
       "TimelineBody": {
@@ -5058,6 +5243,24 @@
           }
         },
         "summary": "Save Settings"
+      }
+    },
+    "/status": {
+      "get": {
+        "operationId": "status_status_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Status"
       }
     },
     "/timeline": {
