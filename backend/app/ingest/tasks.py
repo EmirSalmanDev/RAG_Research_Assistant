@@ -17,16 +17,22 @@ Rules every task follows:
   up to 3 times with exponential backoff and jitter. After the last retry a per-paper
   task marks its paper 'failed' (shown on the health page; a manual request resets it).
 - Each run writes one `ingest_runs` row (source = the task name).
+- The steps that spend money (embedding) do nothing while the monthly budget cap is reached
+  (app/features/budget.py): the run records `skipped`, the paper keeps its status and is picked
+  up again by `select_fulltext` once the cap allows (docs/adr/0013).
 """
 
 import logging
+from collections.abc import Sequence
 from typing import Any
 
 from celery import Task, chain
 from celery.canvas import Signature
+from sqlalchemy import select
 
 from app.db.models import Paper
 from app.db.session import session_scope
+from app.features import budget
 from app.ingest import daily, pipeline
 from app.ingest.fulltext import default_sources, select_for_fulltext
 from app.ingest.fulltext import fetch_fulltext as fetch_fulltext_step
@@ -100,6 +106,10 @@ def index_abstracts() -> dict[str, Any]:
 
     ensure_collection()
     with session_scope() as session, daily.recorded_run(session, "index-abstracts") as counts:
+        if budget.is_paused(session):
+            # Unindexed abstracts are found again by the next run, so nothing is lost.
+            counts["skipped"] = budget.PAUSED_REASON
+            return counts
         counts["indexed"] = index_all(session, **_embedders())
     return counts
 
@@ -123,9 +133,19 @@ def select_fulltext() -> dict[str, Any]:
     with session_scope() as session, daily.recorded_run(session, "select-fulltext") as counts:
         top_n = app_settings.load(session).fulltext_top_n
         selected = list(select_for_fulltext(session, top_n=top_n))
+        counts.update(selected=len(selected), top_n=top_n, arxiv_ids=selected[:50])
+        if budget.is_paused(session):
+            counts["skipped"] = budget.PAUSED_REASON
+            return counts
         for arxiv_id in selected:
             paper_chain(arxiv_id).apply_async()
-        counts.update(selected=len(selected), top_n=top_n, arxiv_ids=selected[:50])
+        # Papers whose text is stored but not indexed (an embed step skipped under the
+        # budget cap, or a worker that died): clean, chunk and embed them again. All three
+        # steps are idempotent and start from the stored text.
+        waiting = list(stuck_papers(session))
+        for arxiv_id in waiting:
+            resume_chain(arxiv_id).apply_async()
+        counts["resumed"] = len(waiting)
     return counts
 
 
@@ -135,6 +155,22 @@ def paper_chain(arxiv_id: str) -> Signature:
         clean_paper.si(arxiv_id),
         chunk_paper.si(arxiv_id),
         embed_paper.si(arxiv_id),
+    )
+
+
+def resume_chain(arxiv_id: str) -> Signature:
+    """The steps after the download, for a paper whose text is already stored."""
+    return chain(clean_paper.si(arxiv_id), chunk_paper.si(arxiv_id), embed_paper.si(arxiv_id))
+
+
+def stuck_papers(session: Any) -> Sequence[str]:
+    """Papers with stored text that no chain has indexed ('fetched')."""
+    return list(
+        session.scalars(
+            select(Paper.arxiv_id)
+            .where(Paper.fulltext_status == "fetched")
+            .order_by(Paper.arxiv_id)
+        )
     )
 
 
@@ -201,6 +237,9 @@ def embed_paper(arxiv_id: str) -> dict[str, Any]:
         if _status(session, arxiv_id) != "fetched":
             counts.update(arxiv_id=arxiv_id, skipped=True)
             return counts
+        if budget.is_paused(session):
+            counts.update(arxiv_id=arxiv_id, skipped=budget.PAUSED_REASON)
+            return counts  # status stays 'fetched': select_fulltext resumes it later
         counts.update(
             arxiv_id=arxiv_id, embedded=upsert_paper_chunks(session, arxiv_id, **_embedders())
         )

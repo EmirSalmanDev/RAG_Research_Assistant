@@ -10,9 +10,10 @@
 
 Nothing here calls OpenAI or any other paid API. An interest's embedding is made later
 by the nightly scoring task (or `make digest`); `embedded` says whether the stored
-vector matches the interest's current text. The budget cap is only stored and shown: it
-pauses nothing yet. Interest text is the owner's own, but it ends up in an embedding
-request, so it is length-limited like any other input.
+vector matches the interest's current text. The budget cap is stored here; when the month's
+spend reaches it, the background jobs that spend money pause (app/features/budget.py).
+Interest text is the owner's own, but it ends up in an embedding request, so it is
+length-limited like any other input.
 """
 
 from datetime import datetime
@@ -105,7 +106,7 @@ class SettingsOut(BaseModel):
     categories_default: list[str]  # what an empty list falls back to
     categories_overridden: bool
     fulltext_top_n: int
-    budget_cap_usd: float | None  # stored and shown only: nothing is paused yet
+    budget_cap_usd: float | None  # background jobs that spend pause at the cap
     month_to_date_usd: float  # from llm_usage, month of the digest time zone
 
 

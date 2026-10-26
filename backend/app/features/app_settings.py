@@ -7,8 +7,9 @@ needs no rows and removing a row restores the default. Keys:
     categories       arXiv categories the daily fetch uses (replaces `arxiv_categories`;
                      adding one does not backfill older papers)
     fulltext_top_n   top papers by relevance that get full text each night
-    budget_cap_usd   monthly spending cap; only stored and shown for now (nothing is
-                     paused when it is reached; docs/adr/0009)
+    budget_cap_usd   monthly spending cap; when this month's spend reaches it, the
+                     background jobs that spend money pause (app/features/budget.py,
+                     docs/adr/0013)
 
 Nothing here calls an API.
 """
