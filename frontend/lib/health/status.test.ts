@@ -20,6 +20,7 @@ function status(over: Partial<StatusOut> = {}): StatusOut {
           ok: true,
           error: null,
           skipped: null,
+          abandoned: false,
         },
       ],
       budget: {
@@ -69,6 +70,7 @@ test("a paused budget, a failed step and failed papers are warnings", () => {
         ok: false,
         error: "RuntimeError: boom",
         skipped: null,
+        abandoned: false,
       },
       {
         // still running: not finished, so not a failure
@@ -78,6 +80,7 @@ test("a paused budget, a failed step and failed papers are warnings", () => {
         ok: false,
         error: null,
         skipped: null,
+        abandoned: false,
       },
     ],
     budget: { ...base.database!.budget, paused: true, spent_usd: 5.2 },
@@ -115,4 +118,37 @@ test("paperRows are in a fixed order and an unknown status comes last", () => {
   );
   assert.equal(rows[1]!.label, "Abstract only");
   assert.equal(rows[3]!.label, "weird");
+});
+
+test("a run that never finished is reported as abandoned, a running one is not", () => {
+  const base = status();
+  const started = "2026-10-04T06:56:00Z";
+  const database = {
+    ...base.database!,
+    last_runs: [
+      {
+        source: "arxiv-daily",
+        started_at: started,
+        finished_at: null,
+        ok: false,
+        error: "abandoned: started 533 h ago and never finished",
+        skipped: null,
+        abandoned: true,
+      },
+      {
+        source: "embed-paper",
+        started_at: "2026-10-26T11:00:00Z",
+        finished_at: null,
+        ok: false,
+        error: null,
+        skipped: null,
+        abandoned: false,
+      },
+    ],
+  };
+  const s = summarize(status({ database }));
+  assert.equal(s.level, "warning");
+  assert.deepEqual(s.problems, [
+    "A step never finished (abandoned, the worker stopped during the run): arxiv-daily.",
+  ]);
 });

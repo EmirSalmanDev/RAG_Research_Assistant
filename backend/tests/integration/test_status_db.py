@@ -72,3 +72,26 @@ async def test_qdrant_points_before_the_first_ingest_is_zero_not_an_error(
     qdrant.upsert(scratch_collection, [PointStruct(id=1, vector=[0.1, 0.2]),
                                        PointStruct(id=2, vector=[0.3, 0.4])])  # fmt: skip
     assert await status.read_qdrant_points() == 2
+
+
+def test_a_run_that_never_finished_is_abandoned_after_six_hours(migrated_session: Session) -> None:
+    s = migrated_session
+    now = datetime(2026, 10, 26, 12, 0, tzinfo=UTC)
+    s.add_all([
+        # killed with the stack three weeks ago: nothing will ever finish it
+        IngestRun(source="arxiv-daily", started_at=datetime(2026, 10, 4, 6, 56, tzinfo=UTC),
+                  counts={}, errors={}),
+        # started an hour ago: still running
+        IngestRun(source="embed-paper", started_at=datetime(2026, 10, 26, 11, 0, tzinfo=UTC),
+                  counts={}, errors={}),
+    ])  # fmt: skip
+    s.commit()
+
+    by_source = {r.source: r for r in status.read_database(now=now).last_runs}
+
+    old, running = by_source["arxiv-daily"], by_source["embed-paper"]
+    assert old.abandoned and old.ok is False and old.finished_at is None
+    assert old.error == (
+        "abandoned: started 533 h ago and never finished (the worker stopped during the run)"
+    )
+    assert not running.abandoned and running.error is None and running.ok is False

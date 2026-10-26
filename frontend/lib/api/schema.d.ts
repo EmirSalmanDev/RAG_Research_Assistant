@@ -1441,6 +1441,11 @@ export interface components {
         };
         /** RunOut */
         RunOut: {
+            /**
+             * Abandoned
+             * @default false
+             */
+            abandoned: boolean;
             /** Error */
             error: string | null;
             /** Finished At */

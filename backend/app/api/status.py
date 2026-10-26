@@ -13,7 +13,7 @@ the stores is in the body. Nothing here writes, and nothing calls a paid or exte
 
 import asyncio
 from collections.abc import Awaitable, Callable
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 
 import redis.asyncio as aioredis
 from fastapi import APIRouter
@@ -32,6 +32,10 @@ router = APIRouter()
 
 TIMEOUT_S = 3.0
 CELERY_QUEUE = "celery"  # Celery's default queue; its key in Redis is the queue's name
+# A run without finished_at is still going, unless it started long ago: then the worker
+# stopped during it (a restart, a crash, the computer shut down) and nothing will ever
+# finish it. No step of the pipeline runs anywhere near this long.
+ABANDONED_AFTER = timedelta(hours=6)
 
 
 class RunOut(BaseModel):
@@ -41,6 +45,7 @@ class RunOut(BaseModel):
     ok: bool  # finished without an error
     error: str | None
     skipped: str | None  # why the run did nothing (e.g. the budget cap), if it did not work
+    abandoned: bool = False  # never finished, and started more than ABANDONED_AFTER ago
 
 
 class BudgetOut(BaseModel):
@@ -65,7 +70,8 @@ class StatusResponse(BaseModel):
     errors: dict[str, str]  # part name -> why it could not be read
 
 
-def read_database() -> DatabaseStatus:
+def read_database(now: datetime | None = None) -> DatabaseStatus:
+    now = now or datetime.now(UTC)
     with session_scope() as session:
         by_status = dict(
             session.execute(
@@ -78,7 +84,7 @@ def read_database() -> DatabaseStatus:
             .order_by(IngestRun.source, IngestRun.id.desc())
         ).all()
         state = budget.budget_state(session)
-        runs = [_run_out(run) for run in latest]
+        runs = [_run_out(run, now) for run in latest]
         return DatabaseStatus(
             papers_total=sum(by_status.values()),
             papers_by_fulltext_status=by_status,
@@ -92,9 +98,16 @@ def read_database() -> DatabaseStatus:
         )
 
 
-def _run_out(run: IngestRun) -> RunOut:
+def _run_out(run: IngestRun, now: datetime) -> RunOut:
     error = run.errors.get("error") if run.errors else None
     skipped = run.counts.get("skipped") if run.counts else None
+    abandoned = run.finished_at is None and now - run.started_at > ABANDONED_AFTER
+    if abandoned and error is None:
+        hours = int((now - run.started_at).total_seconds() // 3600)
+        error = (
+            f"abandoned: started {hours} h ago and never finished "
+            "(the worker stopped during the run)"
+        )
     return RunOut(
         source=run.source,
         started_at=run.started_at,
@@ -102,6 +115,7 @@ def _run_out(run: IngestRun) -> RunOut:
         ok=run.finished_at is not None and not run.errors,
         error=None if error is None else str(error)[:300],
         skipped=None if skipped is None else str(skipped)[:200],
+        abandoned=abandoned,
     )
 
 

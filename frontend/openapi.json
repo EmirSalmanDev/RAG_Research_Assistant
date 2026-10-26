@@ -2777,6 +2777,11 @@
       },
       "RunOut": {
         "properties": {
+          "abandoned": {
+            "default": false,
+            "title": "Abandoned",
+            "type": "boolean"
+          },
           "error": {
             "anyOf": [
               {

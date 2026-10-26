@@ -39,6 +39,14 @@ export function summarize(status: StatusOut): Summary {
         "The monthly budget cap is reached: background jobs that spend money are paused.",
       );
     }
+    // A run that never finished and is long past any normal duration: the worker
+    // stopped during it. The API marks it; without this it would read as "running".
+    const abandoned = database.last_runs.filter((run) => run.abandoned);
+    if (abandoned.length > 0) {
+      warnings.push(
+        `${abandoned.length === 1 ? "A step never finished" : `${abandoned.length} steps never finished`} (abandoned, the worker stopped during the run): ${abandoned.map((r) => r.source).join(", ")}.`,
+      );
+    }
     const failed = database.last_runs.filter(
       (run) => run.finished_at !== null && !run.ok,
     );
