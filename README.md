@@ -91,7 +91,7 @@ To seed the corpus before that, `make backfill DAYS=7` indexes the last week of 
 | api (FastAPI, port 8000) | yes | |
 | worker (Celery, concurrency 1) | yes | runs ingestion and analysis tasks |
 | beat (the scheduler) | **no** | `make up-scheduler` starts it |
-| frontend | no | run it natively with `pnpm dev` (the compose `frontend` profile exists for a container) |
+| frontend | no | run it natively with `pnpm dev`. The compose `frontend` profile builds a container, but its `/api` proxy is fixed at build time to `127.0.0.1:8000`, which inside that container is not the API, so use the native app |
 
 **Why Beat is separate.** Beat sends a daily run that came due while it was stopped as soon as
 it starts. Starting it after a night off therefore fetches from arXiv and Hugging Face and
@@ -484,6 +484,7 @@ because it holds paper text) and needs the secrets `OPENAI_API_KEY`, `EVAL_CORPU
 revision must match the code's).
 
 ## Licence
-The project will be released under AGPL-3.0 (see `docs/adr/0004-licence-agpl.md`),
-because the PDF parser it uses (PyMuPDF4LLM) is AGPL-licensed. arXiv PDFs are only parsed
+The project is licensed under the GNU Affero General Public License v3.0 (AGPL-3.0; the
+text is in `LICENSE`, the reason in `docs/adr/0004-licence-agpl.md`), because the PDF parser it
+uses (PyMuPDF4LLM) is AGPL-licensed. arXiv PDFs are only parsed
 in memory and never stored or re-served; the app links to arXiv abstract pages.
