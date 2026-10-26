@@ -21,6 +21,7 @@ function status(over: Partial<StatusOut> = {}): StatusOut {
           error: null,
           skipped: null,
           abandoned: false,
+          note: null,
         },
       ],
       budget: {
@@ -71,6 +72,7 @@ test("a paused budget, a failed step and failed papers are warnings", () => {
         error: "RuntimeError: boom",
         skipped: null,
         abandoned: false,
+        note: null,
       },
       {
         // still running: not finished, so not a failure
@@ -81,6 +83,7 @@ test("a paused budget, a failed step and failed papers are warnings", () => {
         error: null,
         skipped: null,
         abandoned: false,
+        note: null,
       },
     ],
     budget: { ...base.database!.budget, paused: true, spent_usd: 5.2 },
@@ -134,6 +137,7 @@ test("a run that never finished is reported as abandoned, a running one is not",
         error: "abandoned: started 533 h ago and never finished",
         skipped: null,
         abandoned: true,
+        note: null,
       },
       {
         source: "embed-paper",
@@ -143,6 +147,7 @@ test("a run that never finished is reported as abandoned, a running one is not",
         error: null,
         skipped: null,
         abandoned: false,
+        note: null,
       },
     ],
   };

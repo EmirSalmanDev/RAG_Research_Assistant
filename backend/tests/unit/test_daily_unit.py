@@ -79,6 +79,13 @@ def test_first_run_without_cursor_looks_back_one_day_plus_overlap() -> None:
     assert daily.daily_window(None, NOW) == (NOW - timedelta(days=5), NOW)
 
 
+def test_daily_window_never_starts_more_than_max_days_back() -> None:
+    old_cursor = NOW - timedelta(days=24)
+    assert daily.daily_window(old_cursor, NOW, max_days=7) == (NOW - timedelta(days=7), NOW)
+    recent = NOW - timedelta(days=2)  # cursor - 4 days = 6 days back: inside the cap
+    assert daily.daily_window(recent, NOW, max_days=7) == (recent - timedelta(days=4), NOW)
+
+
 def test_backfill_plan() -> None:
     plan = daily.plan_backfill(7, NOW)
     assert (plan.since, plan.until) == (NOW - timedelta(days=7), NOW)

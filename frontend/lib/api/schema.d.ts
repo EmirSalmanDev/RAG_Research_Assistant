@@ -1450,6 +1450,8 @@ export interface components {
             error: string | null;
             /** Finished At */
             finished_at: string | null;
+            /** Note */
+            note?: string | null;
             /** Ok */
             ok: boolean;
             /** Skipped */

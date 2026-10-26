@@ -95,3 +95,25 @@ def test_a_run_that_never_finished_is_abandoned_after_six_hours(migrated_session
         "abandoned: started 533 h ago and never finished (the worker stopped during the run)"
     )
     assert not running.abandoned and running.error is None and running.ok is False
+
+
+def test_a_capped_arxiv_window_is_a_note_on_its_run(migrated_session: Session) -> None:
+    s = migrated_session
+    when = datetime(2026, 10, 26, 12, 0, tzinfo=UTC)
+    s.add_all([
+        IngestRun(source="arxiv-daily", started_at=when, finished_at=when, errors={},
+                  counts={"cursor": when.isoformat(), "window_capped": True,
+                          "skipped_from": "2026-09-28T08:35:41+00:00",
+                          "skipped_to": "2026-10-19T12:00:00+00:00"}),
+        IngestRun(source="hf-daily", started_at=when, finished_at=when, counts={}, errors={}),
+    ])  # fmt: skip
+    s.commit()
+
+    by_source = {r.source: r for r in status.read_database(now=when).last_runs}
+
+    capped = by_source["arxiv-daily"]
+    assert capped.ok and capped.error is None  # the run worked; the note is information
+    assert capped.note == (
+        "window capped: papers updated 2026-09-28 to 2026-10-19 skipped (make backfill)"
+    )
+    assert by_source["hf-daily"].note is None

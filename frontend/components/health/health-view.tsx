@@ -208,6 +208,11 @@ function StatusSections({ status }: { status: StatusOut }) {
                       ) : (
                         "ok"
                       )}
+                      {run.note ? (
+                        <span className="block text-xs text-muted-foreground">
+                          {run.note}
+                        </span>
+                      ) : null}
                     </td>
                   </tr>
                 ))}

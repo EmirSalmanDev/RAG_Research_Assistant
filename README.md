@@ -319,7 +319,8 @@ Celery Beat starts it every day at **07:00 Europe/Istanbul**:
 
 1. **fetch_arxiv**: new papers and new versions in the configured categories (the list on
    `/settings` replaces the configured one), from the last run's cursor minus 4 days (arXiv
-   announces papers with a delay).
+   announces papers with a delay), but never more than 7 days back
+   (`ARXIV_DAILY_MAX_WINDOW_DAYS`).
 2. **fetch_hf_daily**: Hugging Face daily papers of yesterday and today (upvotes, GitHub
    repo, project page); trending papers we do not hold are added.
 3. **index_abstracts**: every paper's title and abstract become its first chunk.
@@ -339,7 +340,9 @@ Every step is a separate, idempotent Celery task, retried with backoff; each run
 recorded in the `ingest_runs` table. Beat sends a run that came due while it was stopped as
 soon as it starts (seen after two restarts; so start it on purpose with `make up-scheduler`).
 The arXiv fetch also starts 4 days before the last run's cursor, so a day that was missed is
-covered by the next run. While the monthly budget cap is reached, the steps that spend money
+covered by the next run. After a longer pause it reads only the last 7 days: the run records
+the skipped days, the health page shows them, and `make backfill` fetches them if you want
+them. While the monthly budget cap is reached, the steps that spend money
 skip and say so in `ingest_runs`.
 
 Postgres is the source of truth; the Qdrant collection is derived from it and can be

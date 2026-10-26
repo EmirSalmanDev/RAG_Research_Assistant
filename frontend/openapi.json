@@ -2805,6 +2805,17 @@
             ],
             "title": "Finished At"
           },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
           "ok": {
             "title": "Ok",
             "type": "boolean"

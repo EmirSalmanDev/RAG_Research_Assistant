@@ -46,6 +46,7 @@ class RunOut(BaseModel):
     error: str | None
     skipped: str | None  # why the run did nothing (e.g. the budget cap), if it did not work
     abandoned: bool = False  # never finished, and started more than ABANDONED_AFTER ago
+    note: str | None = None  # something the owner should know about a run that worked
 
 
 class BudgetOut(BaseModel):
@@ -116,7 +117,16 @@ def _run_out(run: IngestRun, now: datetime) -> RunOut:
         error=None if error is None else str(error)[:300],
         skipped=None if skipped is None else str(skipped)[:200],
         abandoned=abandoned,
+        note=_note(run.counts or {}),
     )
+
+
+def _note(counts: dict[str, object]) -> str | None:
+    """The daily arXiv fetch's window cap (app/ingest/daily.py): which days it skipped."""
+    if not counts.get("window_capped"):
+        return None
+    days = [str(counts.get(key, "?"))[:10] for key in ("skipped_from", "skipped_to")]
+    return f"window capped: papers updated {days[0]} to {days[1]} skipped (make backfill)"
 
 
 async def read_queue_length() -> int:

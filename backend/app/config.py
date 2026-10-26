@@ -32,6 +32,12 @@ class Settings(BaseSettings):
     # arXiv categories fetched daily and by the backfill. In .env, a JSON list:
     # ARXIV_CATEGORIES='["cs.CL","cs.LG"]'
     arxiv_categories: list[str] = ["cs.CL", "cs.LG", "cs.AI", "cs.IR"]
+    # The daily arXiv fetch reads from the last run's cursor minus 4 days, but never more
+    # than this many days back: after a long pause (weeks without a run) one daily run
+    # would otherwise page through tens of thousands of papers. The skipped days are
+    # recorded on the run (`window_capped`, `skipped_from`, `skipped_to`) and shown on the
+    # health page; `make backfill` fetches them on purpose. Not applied to the backfill.
+    arxiv_daily_max_window_days: int = 7
 
     # Embeddings. Changing the model or the dimension means re-embedding everything,
     # and the Qdrant collection must be recreated with the new size.

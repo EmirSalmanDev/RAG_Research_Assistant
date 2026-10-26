@@ -36,6 +36,7 @@ function run(over: Record<string, unknown> = {}) {
     error: null,
     skipped: null,
     abandoned: false,
+    note: null,
     ...over,
   };
 }
@@ -126,6 +127,10 @@ test("health: a healthy system, then a store down, a failed step and a paused bu
               error: "RuntimeError: Invented failure",
             }),
             run({ source: "embed-paper", skipped: "budget cap reached" }),
+            run({
+              source: "arxiv-daily",
+              note: "window capped: papers updated 2026-09-28 to 2026-10-19 skipped (make backfill)",
+            }),
           ],
         }),
       }),
@@ -134,6 +139,10 @@ test("health: a healthy system, then a store down, a failed step and a paused bu
     await expect(summary).toHaveAttribute("data-level", "warning");
     await expect(summary).toContainText(
       "A step failed in its last run: index-abstracts.",
+    );
+    // a capped arXiv window is a note on its row, not a problem of the system
+    await expect(page.getByRole("row", { name: /arxiv-daily/ })).toContainText(
+      "window capped: papers updated 2026-09-28 to 2026-10-19 skipped",
     );
     await expect(
       page.getByRole("row", { name: /index-abstracts/ }),

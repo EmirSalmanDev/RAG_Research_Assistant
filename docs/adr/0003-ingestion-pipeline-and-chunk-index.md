@@ -28,7 +28,10 @@ the payload.
 the last successful run's cursor minus 4 days and now, so new versions (v2, v3) are
 caught, not only new submissions (`submittedDate` is the v1 date). The overlap covers
 arXiv's announcement delay and weekends; repeats are free because papers are upserted and
-abstracts already indexed are skipped. arXiv's `lastUpdatedDate:[...]` query filter does
+abstracts already indexed are skipped. The daily window never starts more than `arxiv_daily_max_window_days` (7) before
+now, so a run after weeks without one fetches about a week of papers instead of tens of
+thousands; the skipped days are recorded on the run (`window_capped`, `skipped_from`,
+`skipped_to`, shown on the health page) and fetched only by a deliberate `make backfill`. arXiv's `lastUpdatedDate:[...]` query filter does
 not restrict results to the requested window. Checked on 2026-10-01 with
 `search_query=cat:cs.CL AND lastUpdatedDate:[202609200000 TO 202609210000]`,
 `sortBy=lastUpdatedDate`, `sortOrder=descending`, `max_results=5`: arXiv answered
