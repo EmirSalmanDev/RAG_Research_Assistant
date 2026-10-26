@@ -1,11 +1,17 @@
-.PHONY: up down logs test lint e2e openapi digest compare timeline review ingest-pdf migrate ingest-one enrich-one analyze-submit analyze-collect backfill fetch-reranker eval-retrieval eval-smoke eval eval-ablations eval-select eval-index
+.PHONY: up up-scheduler down logs test lint e2e openapi digest compare timeline review ingest-pdf migrate ingest-one enrich-one analyze-submit analyze-collect backfill fetch-reranker eval-retrieval eval-smoke eval eval-ablations eval-select eval-index
 
-# Start the stack and wait until every service's healthcheck passes.
+# Start the stack and wait until every service's healthcheck passes. Beat (the scheduler) is
+# not part of it: it fires the daily run, and a missed one at once when it starts.
 up:
 	docker compose up -d --build --wait
 
+# The same, plus Beat: the 07:00 ingest, 08:00 digest and 09:00 analysis jobs run by themselves.
+up-scheduler:
+	docker compose --profile scheduler up -d --build --wait
+
+# --profile '*' also stops the services that are in a profile (beat, frontend).
 down:
-	docker compose down
+	docker compose --profile '*' down
 
 logs:
 	docker compose logs -f --tail=100

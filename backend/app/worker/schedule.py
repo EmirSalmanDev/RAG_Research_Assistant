@@ -4,8 +4,10 @@ the daily paper-analysis submission at 09:00 (it only submits when `analysis_aut
 and the analysis collector every 30 minutes (no API call while no batch is open).
 
 The time zone is set on the Celery app (`timezone="Europe/Istanbul"`), so the crontab
-below is read in Istanbul time. Beat does not catch up a missed run (e.g. the Mac was
-asleep at 07:00); the next run's 4-day window overlap picks up what was missed.
+below is read in Istanbul time. Beat keeps each entry's last run in a file inside its
+container and sends a run that came due while it was stopped as soon as it starts (seen on
+2026-10-02 and 2026-10-04). So a Beat start can begin a daily run at once, which is why
+Beat is in the compose profile "scheduler" and not started by `make up` (docs/adr/0013).
 """
 
 from celery.schedules import crontab

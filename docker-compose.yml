@@ -2,6 +2,11 @@
 # `make up` skips it. Run it natively with `cd frontend && pnpm dev`, or
 # start it in compose with `docker compose --profile frontend up -d frontend`.
 #
+# Beat, the scheduler, is in the "scheduler" profile, so a plain `make up` does not start it.
+# Beat sends a missed daily run as soon as it starts (it keeps its last-run times in a file
+# inside its container), so starting it can fetch from arXiv and Hugging Face and call
+# OpenAI at once. Start it on purpose with `make up-scheduler`.
+#
 # Every published port is bound to 127.0.0.1: without a host IP, Docker publishes on
 # 0.0.0.0 and the stores (with their default passwords) are reachable from the LAN.
 
@@ -102,6 +107,7 @@ services:
 
   beat:
     <<: *backend
+    profiles: ["scheduler"]
     command: celery -A app.worker.celery_app.celery_app beat --loglevel=info
     healthcheck:
       # Beat answers no remote-control pings, and the slim image has no pgrep:
