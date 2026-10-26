@@ -6,7 +6,7 @@ import {
   WEB_PORT,
 } from "./e2e/containment.ts";
 
-// Two browser tests (e2e/chat-citation.spec.ts, e2e/paper-page.spec.ts), run by `make e2e`. It is not part of
+// The browser tests (e2e/*.spec.ts), run by `make e2e`. They are not part of
 // `make test`. It drives the Google Chrome that is already installed (channel "chrome"),
 // so no browser is downloaded. See README, "Browser test", for how traffic is contained.
 export default defineConfig({

@@ -23,7 +23,7 @@ lint:
 	cd backend && uv run python -m app.export_openapi ../frontend/openapi.json --check
 	cd frontend && pnpm gen:api:check && pnpm lint && pnpm format:check
 
-# The browser test (one Playwright test, e2e/chat-citation.spec.ts). Not part of `make test`
+# The browser tests (frontend/e2e/*.spec.ts, Playwright). Not part of `make test`
 # or `make lint`: it starts the Next dev server and a mock API and drives the Google Chrome
 # installed on this machine. No real API, no OpenAI call, nothing leaves the machine: on
 # macOS everything runs inside sandbox-exec (frontend/e2e/e2e.sb: TCP only to localhost:3999
