@@ -4,6 +4,8 @@ import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 
 import { Badge } from "@/components/ui/badge";
+import { ErrorState } from "@/components/ui/error-state";
+import { LoadingState } from "@/components/ui/loading-state";
 import {
   Sheet,
   SheetContent,
@@ -114,14 +116,14 @@ export function SourcePanel({
 
               <figure className="border-l-2 border-primary/50 pl-4">
                 {chunk.isPending && (
-                  <p role="status" className="text-sm text-muted-foreground">
-                    Loading the passage&hellip;
-                  </p>
+                  <LoadingState label="Loading the passage…" lines={2} />
                 )}
                 {chunk.isError && (
-                  <p role="alert" className="text-sm text-destructive">
-                    {chunk.error.message}
-                  </p>
+                  <ErrorState
+                    what="The passage"
+                    error={chunk.error}
+                    onRetry={() => void chunk.refetch()}
+                  />
                 )}
                 {chunk.data && (
                   <blockquote

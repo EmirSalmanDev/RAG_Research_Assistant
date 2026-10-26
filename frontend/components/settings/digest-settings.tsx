@@ -4,7 +4,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { ErrorState } from "@/components/ui/error-state";
 import { Input } from "@/components/ui/input";
+import { LoadingState } from "@/components/ui/loading-state";
 import { fetchSettings, saveSettings } from "@/lib/api/queries";
 import type { SettingsOut } from "@/lib/api/queries";
 import {
@@ -21,17 +23,15 @@ import {
 export function DigestSettings() {
   const settings = useQuery({ queryKey: ["settings"], queryFn: fetchSettings });
   if (settings.isPending) {
-    return (
-      <p role="status" className="text-sm text-muted-foreground">
-        Loading settings&hellip;
-      </p>
-    );
+    return <LoadingState label="Loading settings…" lines={2} />;
   }
   if (settings.isError) {
     return (
-      <p role="alert" className="text-sm text-destructive">
-        Settings could not be loaded: {settings.error.message}
-      </p>
+      <ErrorState
+        what="Settings"
+        error={settings.error}
+        onRetry={() => void settings.refetch()}
+      />
     );
   }
   return <SettingsForm settings={settings.data} />;

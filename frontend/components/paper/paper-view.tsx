@@ -15,7 +15,9 @@ import {
   fetchPaperDetails,
   fetchPaperRelated,
 } from "@/lib/api/queries";
-import { ApiError } from "@/lib/api/errors";
+import { ErrorState } from "@/components/ui/error-state";
+import { LoadingState } from "@/components/ui/loading-state";
+import { ApiError, describeError } from "@/lib/api/errors";
 import { formatDate, fulltextLabel } from "@/lib/format";
 import { arxivAbsUrl, safeHttpUrl } from "@/lib/links";
 
@@ -47,12 +49,10 @@ export function PaperView({ id }: { id: string }) {
 
   if (paper.isPending) {
     return (
-      <p
-        role="status"
-        className="mx-auto w-full max-w-3xl px-4 py-8 text-muted-foreground"
-      >
-        Loading the paper&hellip;
-      </p>
+      <LoadingState
+        label="Loading the paper…"
+        className="mx-auto w-full max-w-3xl px-4 py-8"
+      />
     );
   }
   if (paper.isError) {
@@ -66,7 +66,7 @@ export function PaperView({ id }: { id: string }) {
         <p role="alert" className="text-muted-foreground">
           {notFound
             ? `arXiv ${id} is not in the local index. Only papers that were ingested have a page.`
-            : paper.error.message}
+            : describeError(paper.error)}
         </p>
         <Link href="/search" className={EXTERNAL_LINK}>
           Back to search
@@ -199,15 +199,13 @@ export function PaperView({ id }: { id: string }) {
             The pieces of this paper that search and chat can find and cite.
           </p>
         </div>
-        {chunks.isPending && (
-          <p role="status" className="text-muted-foreground">
-            Loading the passages&hellip;
-          </p>
-        )}
+        {chunks.isPending && <LoadingState label="Loading the passages…" />}
         {chunks.isError && (
-          <p role="alert" className="text-sm text-destructive">
-            {chunks.error.message}
-          </p>
+          <ErrorState
+            what="The passages"
+            error={chunks.error}
+            onRetry={() => void chunks.refetch()}
+          />
         )}
         {chunks.data && chunks.data.chunks.length === 0 && (
           <p className="text-muted-foreground">
@@ -249,19 +247,10 @@ function Loaded<T>({
   children: (data: T) => ReactNode;
 }) {
   if (query.isPending) {
-    return (
-      <p role="status" className="text-muted-foreground">
-        Loading the {what}&hellip;
-      </p>
-    );
+    return <LoadingState label={`Loading the ${what}…`} lines={2} />;
   }
   if (query.isError || query.data === undefined) {
-    return (
-      <p role="alert" className="text-sm text-destructive">
-        The {what} could not be loaded
-        {query.error ? `: ${query.error.message}` : "."}
-      </p>
-    );
+    return <ErrorState what={`The ${what}`} error={query.error} />;
   }
   return <>{children(query.data)}</>;
 }

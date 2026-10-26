@@ -6,6 +6,8 @@ import { useState } from "react";
 import { InterestForm } from "@/components/settings/interest-form";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ErrorState } from "@/components/ui/error-state";
+import { LoadingState } from "@/components/ui/loading-state";
 import {
   createInterest,
   deleteInterest,
@@ -72,14 +74,14 @@ export function InterestsSection() {
       </div>
 
       {interests.isPending && (
-        <p role="status" className="text-sm text-muted-foreground">
-          Loading interests&hellip;
-        </p>
+        <LoadingState label="Loading interests…" lines={2} />
       )}
       {interests.isError && (
-        <p role="alert" className="text-sm text-destructive">
-          Interests could not be loaded: {interests.error.message}
-        </p>
+        <ErrorState
+          what="Interests"
+          error={interests.error}
+          onRetry={() => void interests.refetch()}
+        />
       )}
       {interests.data?.length === 0 && (
         <p className="text-sm text-muted-foreground">

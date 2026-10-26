@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useReducer, useState } from "react";
 
 import { SourcePanel } from "@/components/chat/source-panel";
+import { ErrorState } from "@/components/ui/error-state";
 import { fetchCollections, fetchItems } from "@/lib/api/queries";
 import { panelReducer } from "@/lib/chat/panel";
 import { collectionsKey, itemsKey } from "@/lib/library/keys";
@@ -50,12 +51,11 @@ export function LibraryView() {
       </div>
 
       {collectionsQuery.isError && (
-        <p
-          role="alert"
-          className="rounded-md border border-destructive/40 p-3 text-sm text-destructive"
-        >
-          {collectionsQuery.error.message}
-        </p>
+        <ErrorState
+          what="The library"
+          error={collectionsQuery.error}
+          onRetry={() => void collectionsQuery.refetch()}
+        />
       )}
 
       <div className="grid gap-8 lg:grid-cols-[18rem_1fr]">
@@ -85,9 +85,11 @@ export function LibraryView() {
                   </p>
                 </div>
                 {itemsQuery.isError && (
-                  <p role="alert" className="text-sm text-destructive">
-                    {itemsQuery.error.message}
-                  </p>
+                  <ErrorState
+                    what="The papers"
+                    error={itemsQuery.error}
+                    onRetry={() => void itemsQuery.refetch()}
+                  />
                 )}
                 {itemsQuery.data && (
                   <ItemsTable

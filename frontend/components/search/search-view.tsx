@@ -7,7 +7,9 @@ import { useMemo, useState } from "react";
 
 import { Passage } from "@/components/passage";
 import { Button } from "@/components/ui/button";
+import { ErrorState } from "@/components/ui/error-state";
 import { Input } from "@/components/ui/input";
+import { LoadingState } from "@/components/ui/loading-state";
 import { fetchSearch } from "@/lib/api/queries";
 import { formatDate } from "@/lib/format";
 import { paperPath } from "@/lib/links";
@@ -182,20 +184,11 @@ function Results({ params }: { params: SearchParams | null }) {
     );
   }
   if (query.isPending) {
-    return (
-      <p role="status" className="text-muted-foreground">
-        Searching&hellip;
-      </p>
-    );
+    return <LoadingState label="Searching…" />;
   }
   if (query.isError) {
     return (
-      <p
-        role="alert"
-        className="rounded-md border border-destructive/40 p-3 text-sm text-destructive"
-      >
-        {query.error.message}
-      </p>
+      <ErrorState error={query.error} onRetry={() => void query.refetch()} />
     );
   }
 

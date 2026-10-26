@@ -36,3 +36,22 @@ export function detailOf(error: unknown): unknown {
     ? (error as { detail: unknown }).detail
     : undefined;
 }
+
+/**
+ * A sentence for anything a query or a render can throw. An `ApiError` already carries one.
+ * When the API process is not running, `fetch` itself rejects with a TypeError ("Failed to
+ * fetch" in Chrome, "NetworkError ..." in Firefox, "Load failed" in Safari): that is the
+ * case worth explaining, because the raw text says nothing about what to do.
+ */
+export function describeError(error: unknown): string {
+  if (error instanceof ApiError) return error.message;
+  if (
+    error instanceof TypeError &&
+    /fetch|network|load failed/i.test(error.message)
+  ) {
+    return "Could not reach the API. Is the stack running? Start it with `make up`.";
+  }
+  if (error instanceof Error && error.message.trim() !== "")
+    return error.message;
+  return "Something went wrong.";
+}

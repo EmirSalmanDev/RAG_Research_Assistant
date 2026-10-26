@@ -5,6 +5,8 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 
 import { DigestCard } from "@/components/digest/digest-card";
+import { ErrorState } from "@/components/ui/error-state";
+import { LoadingState } from "@/components/ui/loading-state";
 import { fetchDigest } from "@/lib/api/queries";
 import { formatDay, parseDay, statusCounts } from "@/lib/digest/digest";
 
@@ -23,28 +25,21 @@ export function DigestView() {
 
   if (digest.isPending) {
     return (
-      <p
-        role="status"
-        className="mx-auto w-full max-w-3xl px-4 py-8 text-muted-foreground"
-      >
-        Loading the digest&hellip;
-      </p>
+      <LoadingState
+        label="Loading the digest…"
+        className="mx-auto w-full max-w-3xl px-4 py-8"
+      />
     );
   }
   if (digest.isError) {
     return (
       <div className="mx-auto w-full max-w-3xl space-y-3 px-4 py-8">
         <h1 className="text-2xl font-semibold tracking-tight">Digest</h1>
-        <p role="alert" className="text-destructive">
-          The digest could not be loaded: {digest.error.message}
-        </p>
-        <button
-          type="button"
-          className="text-sm text-primary underline-offset-4 hover:underline"
-          onClick={() => void digest.refetch()}
-        >
-          Try again
-        </button>
+        <ErrorState
+          what="The digest"
+          error={digest.error}
+          onRetry={() => void digest.refetch()}
+        />
       </div>
     );
   }
