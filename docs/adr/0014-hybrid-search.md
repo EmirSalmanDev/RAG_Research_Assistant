@@ -36,6 +36,9 @@ was fixed before any measurement; it was never tuned on the evaluation questions
 ## Evidence
 Hybrid was the best or tied for best on both question sets, and not by a wide or certain margin.
 The sets are small, so one question moves a mean by 0.04 to 0.06.
+Measured on 2026-10-22 on the corpus of that day (6,653 papers, 8,912 chunks, 33 papers with
+full text; 0012). Later ingests, from the live check of the daily pipeline on 2026-10-26 on,
+add papers to that corpus; the numbers were not measured again.
 
 | Mode | Golden, 20 held-out (17 scored): R@8 / MRR | Generated, 27: R@8 / MRR / context recall |
 | --- | --- | --- |

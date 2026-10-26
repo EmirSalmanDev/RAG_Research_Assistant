@@ -368,7 +368,9 @@ Two kinds of numbers, both stored in `eval_runs` with the configuration and the 
   cap, see Ablations below). `--limit N` needs `--split heldout` or `--split generated`.
 
 ### Results: the eight ablations
-Run on 2026-10-22 on the author's corpus (8,912 chunks; 33 papers with full text). Every run
+Run on 2026-10-22 on the author's corpus of that day (6,653 papers, 8,912 chunks, 33 papers
+with full text). Later ingests, from the live check of the daily pipeline on 2026-10-26 on,
+add papers to that corpus; the tables below were not measured again. Every run
 is stored in `eval_runs` with its configuration and git commit; the full tables, the rule and
 the per-comparison intervals are in `docs/adr/0012`. Read the numbers with these limits:
 
@@ -431,7 +433,8 @@ What it says:
   on, so no challenger could beat it on the primary metric. Query rewriting, 512-token chunks
   and `text-embedding-3-small` stay because nothing beat them, not because they were shown to
   be best. The larger embedding model did not help.
-- The ablation runs cost $2.68 in total (the ceiling was $5.00).
+- The ablation runs cost $1.914659; $2.68 also includes the smoke runs, the index builds and
+  $0.000327 of question embeddings (the ceiling was $5.00).
 
 The questions: `backend/eval/golden.jsonl` holds 20 AI-drafted questions, verified against
 the stored chunk text. They are the held-out check, and no setting is ever chosen by them.

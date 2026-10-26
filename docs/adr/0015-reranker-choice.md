@@ -25,6 +25,9 @@ measured for quality in 0012. This record keeps the choice and the evidence in o
 ## Evidence (0012; run on this machine's CPU, each variant in its own process)
 Quality with the reranker, 27 generated questions, and the same on the 20 held-out golden
 questions (R@8): the first rows are hybrid search without a reranker.
+Measured on 2026-10-22 on the corpus of that day (6,653 papers, 8,912 chunks, 33 papers with
+full text; 0012). Later ingests, from the live check of the daily pipeline on 2026-10-26 on,
+add papers to that corpus; the numbers were not measured again.
 
 | Configuration | Generated: R@8 / context recall | Golden: R@8 | Median rerank | Peak memory |
 | --- | --- | --- | --- | --- |
