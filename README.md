@@ -1,35 +1,136 @@
 # AI Research Copilot
 
-A personal, local-first research assistant for AI papers. It ingests new arXiv papers
-every morning, indexes their abstracts (and the full text of the papers you care about)
-for hybrid search, and will answer questions with citations.
+A personal, local-first research assistant for AI papers. Every morning it fetches new
+arXiv papers, indexes their abstracts (and the full text of the papers you care about) for
+hybrid search, and ranks them against your interests in a daily digest. You ask questions
+and get answers whose every sentence cites a passage you can open. It also compares papers,
+draws topic timelines, keeps a library with BibTeX export and drafts related-work sections.
 
-Status: ingestion (M2) and hybrid retrieval with its evaluation (M3) are in place. Chat
-with citations (M4) is being built: the pipeline and `POST /chat` exist; tracing to
-Langfuse is not connected yet.
+<!-- Demo GIF: record a short screen capture of a chat answer with a citation chip opening
+     its passage, save it as docs/demo.gif and replace the line below with
+     ![A chat answer and its citation](docs/demo.gif) -->
+*Demo GIF: to be added (`docs/demo.gif`).*
+
+Everything runs on your machine with Docker Compose. The only outside services are the
+public APIs it reads (arXiv, Hugging Face, Semantic Scholar, GitHub) and OpenAI, for
+embeddings and answers. A typical chat turn costs about $0.001.
+
+## Architecture
+
+```mermaid
+flowchart LR
+    subgraph web["Public sources (read only)"]
+        arxiv[arXiv]
+        hf[Hugging Face]
+        s2[Semantic Scholar]
+        gh[GitHub]
+    end
+    subgraph stack["Docker Compose on your machine"]
+        beat["Beat<br/>(scheduler profile)"] -->|07:00 ingest<br/>08:00 digest<br/>09:00 analyses| redis[(Redis)]
+        redis --> worker[Celery worker]
+        worker --> pg[("Postgres<br/>source of truth")]
+        worker --> qd[("Qdrant<br/>dense + BM25 vectors")]
+        api[FastAPI] --> pg
+        api --> qd
+    end
+    web --> worker
+    worker -->|embeddings, Batch API| openai[OpenAI]
+    api -->|embeddings, chat| openai
+    ui["Next.js app<br/>(pnpm dev, native)"] -->|/api proxy| api
+    api -.->|optional traces| lf[Langfuse Cloud]
+```
+
+- **Postgres** holds papers, text, chunks, the digest, the library, usage and evaluation
+  runs. **Qdrant** is derived from it and can be rebuilt.
+- A **question** goes through six stages, each its own function with its own switch
+  (`condense`, `plan`, `search`, `rerank`, `generate`, `verify`; `docs/adr/0006`), so the
+  evaluation can switch any of them off and measure what it adds.
+- The **nightly pipeline** is a chain of idempotent Celery tasks (see "The daily pipeline").
+- Design decisions are in `docs/adr/`.
 
 ## Stack
 - Backend: Python 3.12, FastAPI, SQLAlchemy 2 + Alembic, Celery + Redis (Beat schedules)
 - Search: Qdrant with two named vectors per chunk: `text-dense` (OpenAI
   `text-embedding-3-small`, 1536 dims, cosine, int8 quantization) and `text-sparse`
-  (BM25 via FastEmbed, IDF applied by Qdrant)
-- Frontend: Next.js, TypeScript, Tailwind
-- Everything runs locally with Docker Compose (designed for an 8 GB Apple Silicon Mac)
+  (BM25 via FastEmbed, IDF applied by Qdrant), fused with Reciprocal Rank Fusion
+  (`docs/adr/0014`); an optional cross-encoder reranker (`docs/adr/0015`)
+- Models: OpenAI `gpt-4o-mini` for answers, the Batch API for paper analyses
+  (`docs/adr/0016`), `text-embedding-3-small` for embeddings. Model names live in config.
+- Frontend: Next.js (App Router), TypeScript, Tailwind, TanStack Query
+- Evaluation: our own retrieval metrics and an LLM judge that follows the RAGAS metric
+  definitions (see "Evaluation" for what that does and does not mean)
+- Optional: Langfuse Cloud traces, one per chat turn with a span per stage
 
-## Setup
-1. Copy `.env.example` to `.env` and set `OPENAI_API_KEY` (set a monthly spending limit
-   in your OpenAI account). Other settings have defaults, listed in `.env.example`.
-2. `make up` starts Postgres, Qdrant, Redis, the API, the Celery worker and Beat.
-3. `make migrate` creates the database schema.
-4. The frontend runs natively: `cd frontend && pnpm dev` (see "Frontend").
+## Quick start
+You need Docker Desktop (Compose v2), [uv](https://docs.astral.sh/uv/) 0.12 (it installs
+Python 3.12 for you), Node 24 with pnpm (`corepack enable`) and an OpenAI API key. The
+design target is an Apple Silicon Mac; the release workflow builds arm64 and amd64 images
+(see "Releases").
+
+1. `git clone` the repository and `cd` into it. Copy `.env.example` to `.env` and set
+   `OPENAI_API_KEY`. In your OpenAI account, set a monthly spending limit: it is the hard
+   backstop behind the app's own budget cap.
+2. `make up` builds the backend image and starts Postgres, Qdrant, Redis, the API and the
+   Celery worker, and waits until each one's healthcheck passes. The first build downloads
+   the Python packages (a few hundred MB) and the three store images.
+3. `make migrate` creates the database schema. It runs on the host through uv and installs
+   the backend dependencies on its first run.
+4. Ingest a paper to have something to ask about:
+   `make ingest-one ID=1706.03762`. It downloads the paper's text from public sources and
+   embeds it (a fraction of a cent).
+5. Start the web app: `cd frontend && pnpm install && pnpm dev`, then open
+   http://localhost:3000. Ask a question on `/chat`.
+
+To get a digest and new papers every morning you also need the scheduler (next section).
+To seed the corpus before that, `make backfill DAYS=7` indexes the last week of abstracts.
+
+### What `make up` starts
+| Service | Started by `make up` | Notes |
+| --- | --- | --- |
+| postgres, qdrant, redis | yes | ports bound to 127.0.0.1 only |
+| api (FastAPI, port 8000) | yes | |
+| worker (Celery, concurrency 1) | yes | runs ingestion and analysis tasks |
+| beat (the scheduler) | **no** | `make up-scheduler` starts it |
+| frontend | no | run it natively with `pnpm dev` (the compose `frontend` profile exists for a container) |
+
+**Why Beat is separate.** Beat sends a daily run that came due while it was stopped as soon as
+it starts. Starting it after a night off therefore fetches from arXiv and Hugging Face and
+calls OpenAI right away. That happened twice during development, so a plain `make up` does
+not start it. `make up-scheduler` does, and `make down` stops everything including Beat
+(`docs/adr/0013`).
+
+### The budget cap
+`/settings` has a monthly budget cap in USD, compared with this month's spend from the usage
+log (`llm_usage`, which every model call writes). When the spend reaches the cap, the
+**background** jobs that spend money pause: abstract and full-text embedding, the embedding of
+edited interests, and the Batch API submit and collect. Free steps keep running, and so do
+chat, search and compare, which you start yourself. A banner on every page says when the cap
+has paused the jobs; raising the cap or a new month resumes them. The check is made when a
+job starts, so a run can overshoot by its own cost, and a Batch job's cost is counted when
+its results are collected.
+
+### The health page
+`/health` shows whether Postgres, Qdrant and Redis answer, the last run of every pipeline step
+(and why a step did nothing), how many papers are in each full-text state, how many tasks wait
+in the queue, how many points the search index holds, and this month's spend against the cap.
+It reads the API's `GET /status`, every 30 seconds. `GET /health` is the plain probe Docker's
+healthcheck uses.
+
+### Releases
+Pushing a version tag such as `v1.0.0` builds the backend and the frontend images for
+`linux/amd64` and `linux/arm64` and publishes them to the GitHub Container Registry as
+`ghcr.io/<owner>/<repo>-backend` and `ghcr.io/<owner>/<repo>-frontend`
+(`.github/workflows/release.yml`; only a commit on `main` is published). `docker-compose.yml`
+builds from source; it does not pull these images.
 
 ## Commands
 | Command | What it does |
 | --- | --- |
-| `make up` / `make down` / `make logs` | start, stop, tail the stack |
+| `make up` / `make down` / `make logs` | start, stop, tail the stack (without the scheduler; `make down` stops everything) |
+| `make up-scheduler` | the same plus Beat, the scheduler: the 07:00, 08:00 and 09:00 jobs then run by themselves, and a run that came due while Beat was off is sent at once |
 | `make migrate` | apply database migrations |
 | `make test` / `make lint` | backend tests (offline) and frontend checks and unit tests / linters |
-| `make e2e` | the browser tests: Playwright tests of the chat, digest, paper, compare, timeline and library pages (see "Browser test"); not part of `make test` |
+| `make e2e` | the browser tests: Playwright tests of the chat, digest, paper, compare, timeline, library, evals and health pages and of the loading and error states (see "Browser test"); not part of `make test`, run in CI on `main` |
 | `make ingest-one ID=<arxiv_id> [SOURCE=hf\|html\|pdf] [METADATA_ONLY=1]` | ingest one paper end to end: metadata, abstract, full text, chunks, embeddings |
 | `make enrich-one ID=<arxiv_id>` | refresh a held paper's GitHub repo, Hugging Face models, datasets and Spaces, and Semantic Scholar citations (5 free calls, no OpenAI call) |
 | `make analyze-submit [DRY_RUN=1] [IDS="<id> ..."] [MAX=N]` | submit one OpenAI Batch job of paper analyses for full-text papers; `DRY_RUN=1` only prints the papers and the cost bound |
@@ -64,8 +165,9 @@ link. Optional parameters: `limit` (1-50, default 10), `category` and `arxiv_id`
    Qdrant returns it in (`docs/adr/0012`).
 2. **rerank** (only with `rerank=true`, or `RERANK_ENABLED=true`): a cross-encoder
    (`BAAI/bge-reranker-base`) rescores the candidates. On a laptop CPU this takes about
-   20 s for 50 candidates, which is why it is off by default. The model is only read from
-   the local cache (`make fetch-reranker`), never downloaded by the app.
+   20 s for 50 candidates (about 5 s on the current machine), which is why it is off by default;
+   `docs/adr/0015` has the measurements and the smaller model that fits. The model is only read
+   from the local cache (`make fetch-reranker`), never downloaded by the app.
 3. **cap**: at most 3 chunks of a paper's own text (abstract, sections) per paper, plus
    at most 1 generated analysis chunk, which never takes one of those 3 slots.
 
@@ -121,8 +223,8 @@ setup. Pages:
 - `/settings`: your interests (name, description, keywords, categories, active), the digest
   size, how many top papers get full text each night, the arXiv categories to fetch (adding
   one does not backfill older papers) and a monthly budget cap, shown next to this month's
-  spending (the cap pauses nothing yet). Saving costs nothing; a new or edited interest is
-  embedded by the next nightly run.
+  spending (when it is reached, the background jobs that spend money pause; see "The budget
+  cap"). Saving costs nothing; a new or edited interest is embedded by the next nightly run.
 - `/chat`: ask a question; the answer streams in, and every `[n]` is a chip. A chip opens
   the cited passage in a side panel (it stays open beside the chat; Escape or the close
   button closes it) with a link to the paper's arXiv abstract page. A dashed chip marked
@@ -143,6 +245,8 @@ setup. Pages:
   one model call. Citation counts are thin (Semantic Scholar covers few of the stored
   papers) and the stored papers cover a short time for most topics; the page says so.
 
+- `/health`: the stores, the last run of every pipeline step, the paper counts, the queue and
+  this month's spend (see "The health page").
 - `/library`: your collections of papers (create, rename, delete), each paper with a reading
   status (to read, reading, read, archived) and a note, a `.bib` download built from stored
   metadata (no model), an add-by-id box (only papers already in the database), a PDF upload
@@ -182,6 +286,10 @@ markdown; run a timeline (and that typing on either page sends nothing paid).
 `frontend/e2e/library-flow.spec.ts`: create a collection, add papers, change a status, edit a
 note, download the `.bib`, generate a review, open a chip, export the markdown; upload a PDF
 (one request, a repeat changes nothing, a 12 MB body reaches the API whole through the proxy).
+`frontend/e2e/evals-flow.spec.ts`: the `/evals` page. `frontend/e2e/health-flow.spec.ts`: the
+`/health` page for a healthy system, a store down, a failed step and a paused budget; the
+budget banner; the loading state while the API is slow, the API's own message on an error,
+"Try again", an API that cannot be reached, and an address with no page.
 It starts the Next
 dev server (with `--webpack`) and a small **mock API** with invented data
 (`frontend/e2e/mock-api.ts`), and drives the Google Chrome that is already installed
@@ -203,7 +311,8 @@ is what contains it, and the page loads only the local app.
 Without `sandbox-exec` (Linux, for instance) `make e2e` refuses to run. `E2E_UNSANDBOXED=1
 make e2e` runs it without the sandbox profile; layers 2 to 4 still apply, but layer 1 does
 not, so use it only on a machine where you are comfortable with that. It needs Google
-Chrome installed. Playwright is not run in CI yet.
+Chrome installed. CI runs the tests on `main` only (the `e2e` job), on Ubuntu without the
+sandbox profile.
 
 ## The daily pipeline
 Celery Beat starts it every day at **07:00 Europe/Istanbul**:
@@ -223,12 +332,15 @@ Celery Beat starts it every day at **07:00 Europe/Istanbul**:
    which is cleaned, chunked (about 512 tokens, by section) and indexed.
 
 At **08:00** a separate Beat entry builds the day's digest (`digest.build`) from the papers
-of the last 7 days that were not dismissed and are not in an earlier digest. Beat does not
-catch up a missed run; `make digest` builds one by hand. Decisions: `docs/adr/0009`.
+of the last 7 days that were not dismissed and are not in an earlier digest. `make digest`
+builds one by hand. Decisions: `docs/adr/0009`.
 
 Every step is a separate, idempotent Celery task, retried with backoff; each run is
-recorded in the `ingest_runs` table. A missed run (computer asleep) is not caught up; the
-next run's 4-day overlap covers it.
+recorded in the `ingest_runs` table. Beat sends a run that came due while it was stopped as
+soon as it starts (seen after two restarts; so start it on purpose with `make up-scheduler`).
+The arXiv fetch also starts 4 days before the last run's cursor, so a day that was missed is
+covered by the next run. While the monthly budget cap is reached, the steps that spend money
+skip and say so in `ingest_runs`.
 
 Postgres is the source of truth; the Qdrant collection is derived from it and can be
 rebuilt. Design decisions are recorded in `docs/adr/`.
@@ -251,6 +363,72 @@ Two kinds of numbers, both stored in `eval_runs` with the configuration and the 
   (about $0.004 per question, measured from earlier chat turns): `--estimate` prints the
   requests and the cost without sending anything, and a real run needs `--max-usd` (a hard
   cap, see Ablations below). `--limit N` needs `--split heldout` or `--split generated`.
+
+### Results: the eight ablations
+Run on 2026-10-22 on the author's corpus (8,912 chunks; 33 papers with full text). Every run
+is stored in `eval_runs` with its configuration and git commit; the full tables, the rule and
+the per-comparison intervals are in `docs/adr/0012`. Read the numbers with these limits:
+
+- **Who wrote and judged the questions.** The 27 *generated* questions were AI-generated and
+  AI-reviewed (a Claude Code subagent reviewed them, not a person). The 20 *golden* questions
+  were AI-drafted and checked against the stored chunk text. Neither set was reviewed by a
+  domain expert.
+- **What "RAGAS metrics" means here.** Faithfulness, response relevancy, context precision and
+  context recall follow the RAGAS definitions, but they are computed by our own judge calls
+  (`gpt-4o-mini`, temperature 0), not by the `ragas` library. The judge is from the same model
+  family as the answers, which can favour its own style.
+- **How the winner was chosen.** A rule fixed before any run picked each step's winner on the
+  generated questions only (context recall, paired bootstrap, faithfulness as a guard). The
+  golden questions were never used to choose; they are reported next to it.
+- **Noise.** The same configuration run three times moved the answer metrics by 0.02 to 0.04.
+  With 27 questions (25 paired), one question moves a mean by about 0.04; with 17 scored
+  golden questions, by about 0.06. Differences of that size are noise.
+
+Retrieval and answer quality for the five search configurations (R@8 = Recall@8, ctx recall =
+context recall, faith. = faithfulness):
+
+| Configuration | Generated (27): R@8 | MRR | ctx recall | faith. | Golden (20): R@8 | MRR | faith. |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 dense only | 0.540 | 0.513 | 0.667 | 0.835 | 0.824 | 0.667 | 0.911 |
+| 2 BM25 only | 0.620 | 0.613 | 0.767 | 0.872 | 0.912 | 0.779 | 0.833 |
+| 3 hybrid (RRF), the default | 0.660 | 0.627 | 0.807 | 0.846 | 0.912 | 0.775 | 0.844 |
+| 4 hybrid + `bge-reranker-base` | 0.900 | 0.793 | 0.987 | 0.848 | 0.794 | 0.667 | 0.832 |
+| 5 hybrid + MiniLM-L-12 reranker | 0.880 | 0.760 | 0.973 | 0.859 | 0.912 | 0.716 | 0.849 |
+
+The later steps, each run on the winner of the step before (generated questions):
+
+| Step | Variant | ctx recall | faith. |
+| --- | --- | --- | --- |
+| 6 query rewriting | with | 0.987 | 0.882 |
+| | without | 0.987 | 0.865 |
+| 7 chunk size | 256 tokens | 0.987 | 0.893 |
+| | 512 tokens (default) | 0.987 | 0.846 |
+| | 1024 tokens | 0.960 | 0.923 |
+| 8 embedding model | `text-embedding-3-small`, 1536 | 0.987 | 0.863 |
+| | `text-embedding-3-large`, shortened to 1536 | 0.947 | 0.825 |
+| | `text-embedding-3-large`, 3072 | 0.947 | 0.884 |
+
+What the cost of reranking is, on this machine (a CPU; 27 generated questions, 50 candidates):
+
+| Reranker | median rerank time | peak memory |
+| --- | --- | --- |
+| `bge-reranker-base` | 5.24 s | 2,130 MiB |
+| MiniLM-L-12 (`Xenova/ms-marco-MiniLM-L-12-v2`) | 2.33 s | 1,500 MiB |
+
+What it says:
+- **Hybrid search is the default and BM25 does most of the work.** Hybrid is level with BM25
+  on the golden questions and 0.04 ahead on the generated ones (about one question). Dense
+  search alone is the weakest (`docs/adr/0014`).
+- **The reranker is a mixed result, so it is off by default.** On the generated questions it
+  lifts context recall from 0.807 to 0.987 (+0.18, interval [0.02, 0.38]). On the golden
+  questions the `bge` reranker is *worse* than none (R@8 0.794 against 0.912), and it misses
+  the speed and memory bar set for this machine. Only the MiniLM model meets that bar
+  (`docs/adr/0015`). This project does not claim that the reranker helps.
+- **Steps 6 to 8 could not show a gain.** Context recall sat at its ceiling (0.987) from step 4
+  on, so no challenger could beat it on the primary metric. Query rewriting, 512-token chunks
+  and `text-embedding-3-small` stay because nothing beat them, not because they were shown to
+  be best. The larger embedding model did not help.
+- The ablation runs cost $2.68 in total (the ceiling was $5.00).
 
 The questions: `backend/eval/golden.jsonl` holds 20 AI-drafted questions, verified against
 the stored chunk text. They are the held-out check, and no setting is ever chosen by them.
