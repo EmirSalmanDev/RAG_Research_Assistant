@@ -80,12 +80,46 @@ LlamaIndex read compatibility is decided with retrieval.
 process, takes one task at a time and acknowledges a task only after it finishes, so a
 task killed mid-run is run again (safe, since every task is idempotent).
 
+**Retries of the two daily fetch steps** (added 2026-10-28). On 2026-10-28 arXiv failed
+from the first page on for about five minutes: 20 requests, read timeouts of 20 s mixed
+with fast failures, one shown as HTTP 429. The chain's tasks then retried after 0-1, 0-2 and
+0-4 s (Celery's backoff with full jitter), so all four attempts were used within 4 min
+46 s, and the rest of the chain was lost for that day. The two first steps of the chain,
+`fetch_arxiv` and `fetch_hf_daily`, therefore wait minutes between task attempts:
+- 3 retries (4 attempts), the first after 2 minutes, each next one 3 times longer: 2, 6
+  and 18 minutes, each multiplied by a random factor between 0.8 and 1.2 (+/-20 %), so
+  retries from several runs do not line up. Settings `DAILY_FETCH_RETRIES`,
+  `DAILY_FETCH_RETRY_FIRST_DELAY_MIN`, `DAILY_FETCH_RETRY_FACTOR`, `DAILY_FETCH_RETRY_JITTER`.
+- The longest possible delay (18 x 1.2 = 21.6 min) stays below the Redis broker's
+  visibility timeout (set to 3600 s, kombu's default, in the Celery config). A retry
+  is a message with an ETA that the worker holds unacknowledged until it is due. A
+  delay longer than the visibility timeout would make Redis deliver it a second time.
+  Settings that break this are refused when they are loaded.
+- The ingest_runs row of a failed attempt that will be retried starts its error with
+  "will retry in N min (attempt k of 4)"; the last attempt's row starts with "last attempt
+  (4 of 4), no retry". The note comes first because the health page cuts errors at 300
+  characters. A ValueError is not retried and gets no note.
+- arXiv's 429 reaches us without its `Retry-After` header: the `arxiv` package's HTTPError
+  keeps only the URL and the status. So the schedule above is used as it is, and the
+  package is not patched.
+- Unchanged: the 3-second arXiv limiter, the 5 inner HTTP tries per request with their
+  1-9 s backoff, the 20 s timeout, the 7-day window cap, and "the cursor moves only on
+  success". Every attempt fetches the whole window again from the first page (a failed
+  attempt stores nothing). The final failure still stops the chain. The other chain
+  tasks keep the seconds-scale backoff.
+
 ## Consequences
 - Qdrant can always be rebuilt from Postgres; re-running any step or the whole chain
   costs no extra embeddings for unchanged papers.
 - The 4-day overlap re-reads a few hundred papers a day from arXiv (metadata only).
 - Beat does not catch up a run missed while the Mac sleeps; the next run's overlap
   covers the gap.
+- An arXiv outage of up to about half an hour no longer costs the day. The price is
+  time and requests. Waits alone add 20.8-31.2 minutes when every attempt fails. One
+  failing day can send up to pages x 5 inner tries x 4 attempts arXiv requests (33 pages
+  for a 7-day window: 660, all at least 3 s apart). A chain that succeeds only on its last
+  retry can finish after the 08:00 digest, which is then built from the papers already
+  stored.
 - Parsing a PDF adds about 360 MB to the worker while it runs.
 - A rare native crash at interpreter exit (after all work finished) has been seen twice
   on macOS since onnxruntime and PyMuPDF were added. It is accepted and watched: one more
