@@ -6,8 +6,13 @@ Model names live here and nowhere else (never hard-code them in other modules).
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import SecretStr, field_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# How long Redis waits for an unacknowledged Celery message before it delivers the message
+# again (kombu's own default, set explicitly in app/worker/celery_app.py). A task retry
+# waiting for its countdown is such a message, so every retry delay must stay below it.
+BROKER_VISIBILITY_TIMEOUT_S = 3600
 
 
 class Settings(BaseSettings):
@@ -38,6 +43,15 @@ class Settings(BaseSettings):
     # recorded on the run (`window_capped`, `skipped_from`, `skipped_to`) and shown on the
     # health page; `make backfill` fetches them on purpose. Not applied to the backfill.
     arxiv_daily_max_window_days: int = 7
+    # Task-level retries of the chain's two fetch steps, fetch_arxiv and fetch_hf_daily
+    # (docs/adr/0003). They wait minutes, not seconds, so a source that is down for a few
+    # minutes does not cost the day: retry n waits first_delay * factor**(n-1) minutes,
+    # times a random factor between 1 - jitter and 1 + jitter (2, 6 and 18 min +/-20 %).
+    # The longest delay must stay below BROKER_VISIBILITY_TIMEOUT_S (checked below).
+    daily_fetch_retries: int = Field(default=3, ge=0)
+    daily_fetch_retry_first_delay_min: float = Field(default=2.0, gt=0)
+    daily_fetch_retry_factor: float = Field(default=3.0, ge=1)
+    daily_fetch_retry_jitter: float = Field(default=0.2, ge=0, lt=1)
 
     # Embeddings. Changing the model or the dimension means re-embedding everything,
     # and the Qdrant collection must be recreated with the new size.
@@ -248,6 +262,24 @@ class Settings(BaseSettings):
     def _empty_means_unset(cls, value: object) -> object:
         """`S2_API_KEY=` in .env arrives as "": treat it as "no key", not an empty key."""
         return None if value == "" else value
+
+    @model_validator(mode="after")
+    def _fetch_retries_fit_the_broker(self) -> "Settings":
+        """Refuse a retry schedule whose longest delay could reach the visibility timeout:
+        Redis would deliver the waiting retry a second time (two runs of the same step)."""
+        if self.daily_fetch_retries > 0:
+            longest_s = (
+                self.daily_fetch_retry_first_delay_min
+                * self.daily_fetch_retry_factor ** (self.daily_fetch_retries - 1)
+                * (1 + self.daily_fetch_retry_jitter)
+                * 60
+            )
+            if longest_s >= BROKER_VISIBILITY_TIMEOUT_S:
+                raise ValueError(
+                    f"the longest daily fetch retry delay ({longest_s:.0f} s) must stay below "
+                    f"the broker visibility timeout ({BROKER_VISIBILITY_TIMEOUT_S} s)"
+                )
+        return self
 
 
 @lru_cache

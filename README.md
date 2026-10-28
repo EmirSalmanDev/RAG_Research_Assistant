@@ -337,7 +337,15 @@ of the last 7 days that were not dismissed and are not in an earlier digest. `ma
 builds one by hand. Decisions: `docs/adr/0009`.
 
 Every step is a separate, idempotent Celery task, retried with backoff; each run is
-recorded in the `ingest_runs` table. Beat sends a run that came due while it was stopped as
+recorded in the `ingest_runs` table. The two fetch steps (fetch_arxiv, fetch_hf_daily) wait
+minutes between their attempts, so a source that is down for a while does not cost the
+day: 3 retries after 2, 6 and 18 minutes, each +/-20 % (`DAILY_FETCH_RETRIES`,
+`DAILY_FETCH_RETRY_FIRST_DELAY_MIN`, `DAILY_FETCH_RETRY_FACTOR`, `DAILY_FETCH_RETRY_JITTER`).
+A failed attempt's error on the health page says "will retry in N min (attempt k of 4)".
+"last attempt (4 of 4), no retry", or an error without a note (bad input, never retried),
+means the step gave up and the rest of the chain did not run that day. A chain that
+succeeds only on its last retry can finish after 08:00; the digest is then built from the
+papers already stored. Beat sends a run that came due while it was stopped as
 soon as it starts (seen after two restarts; so start it on purpose with `make up-scheduler`).
 The arXiv fetch also starts 4 days before the last run's cursor, so a day that was missed is
 covered by the next run. After a longer pause it reads only the last 7 days: the run records

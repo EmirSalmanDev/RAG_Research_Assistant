@@ -2,7 +2,7 @@
 
 from celery import Celery
 
-from app.config import get_settings
+from app.config import BROKER_VISIBILITY_TIMEOUT_S, get_settings
 from app.worker.schedule import BEAT_SCHEDULE
 
 celery_app = Celery(
@@ -20,5 +20,9 @@ celery_app.conf.update(
     # restart, crash) is run again; safe because every task is idempotent.
     task_acks_late=True,
     worker_prefetch_multiplier=1,  # take one task at a time (long tasks, one process)
+    # Redis delivers an unacknowledged message again after this many seconds. A retry that
+    # waits for its countdown is held unacknowledged, so the daily fetch retries' longest
+    # delay must stay below it (app/config.py refuses settings that break this).
+    broker_transport_options={"visibility_timeout": BROKER_VISIBILITY_TIMEOUT_S},
     beat_schedule=BEAT_SCHEDULE,
 )

@@ -156,10 +156,17 @@ def test_celery_settings_for_one_small_worker() -> None:
         assert f"ingest.{name}" in names
 
 
-@pytest.mark.parametrize("task", [tasks.fetch_arxiv, tasks.fetch_fulltext, tasks.embed_paper])
+@pytest.mark.parametrize("task", [tasks.index_abstracts, tasks.fetch_fulltext, tasks.embed_paper])
 def test_tasks_retry_three_times_with_backoff(task: Any) -> None:
     assert task.max_retries == 3 and task.retry_backoff is True
     assert task.autoretry_for == (Exception,) and task.dont_autoretry_for == (ValueError,)
+
+
+@pytest.mark.parametrize("task", [tasks.fetch_arxiv, tasks.fetch_hf_daily])
+def test_the_fetch_steps_do_not_use_the_seconds_scale_autoretry(task: Any) -> None:
+    """They retry through run_with_fetch_retries (minutes; app/ingest/retry.py) instead."""
+    assert not getattr(task, "autoretry_for", ())
+    assert not getattr(task, "retry_backoff", False)
 
 
 def test_last_failure_marks_the_paper_failed(monkeypatch: pytest.MonkeyPatch) -> None:

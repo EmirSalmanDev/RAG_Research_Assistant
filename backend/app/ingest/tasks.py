@@ -16,6 +16,9 @@ Rules every task follows:
 - Retries: any error except a ValueError (bad input, retrying cannot help) is retried
   up to 3 times with exponential backoff and jitter. After the last retry a per-paper
   task marks its paper 'failed' (shown on the health page; a manual request resets it).
+  The chain's two fetch steps (fetch_arxiv, fetch_hf_daily) wait minutes between attempts
+  instead of seconds, so a source that is down for a while does not cost the day; their
+  failed runs say whether and when they will be retried (app/ingest/retry.py).
 - Each run writes one `ingest_runs` row (source = the task name).
 - The steps that spend money (embedding) do nothing while the monthly budget cap is reached
   (app/features/budget.py): the run records `skipped`, the paper keeps its status and is picked
@@ -23,17 +26,18 @@ Rules every task follows:
 """
 
 import logging
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from typing import Any
 
 from celery import Task, chain
 from celery.canvas import Signature
 from sqlalchemy import select
 
+from app.config import get_settings
 from app.db.models import Paper
 from app.db.session import session_scope
 from app.features import budget
-from app.ingest import daily, pipeline
+from app.ingest import daily, pipeline, retry
 from app.ingest.fulltext import default_sources, select_for_fulltext
 from app.ingest.fulltext import fetch_fulltext as fetch_fulltext_step
 from app.worker.celery_app import celery_app
@@ -85,18 +89,47 @@ def _embedders() -> dict[str, Any]:
 # --- the daily chain --------------------------------------------------------------------------
 
 
-@celery_app.task(name="ingest.fetch_arxiv", **RETRY_OPTIONS)
-def fetch_arxiv() -> dict[str, Any]:
-    with session_scope() as session:
-        return daily.fetch_arxiv_daily(session, _arxiv())
+def run_with_fetch_retries(
+    task: Task, step: Callable[[daily.ErrorNote], dict[str, Any]]
+) -> dict[str, Any]:
+    """Run one attempt of a daily fetch step under the minutes-scale retry rule
+    (app/ingest/retry.py, docs/adr/0003). `step` gets the error note for its run row.
+
+    A failure before the last attempt is retried after the delay drawn for it (the retry
+    keeps the rest of the chain, so a later success continues the chain). The last
+    attempt's failure is raised, which stops the chain as before. A ValueError is raised
+    at once, as with RETRY_OPTIONS."""
+    plan = retry.plan_attempt(task.request.retries, get_settings())
+    try:
+        return step(plan.error_note)
+    except ValueError:
+        raise
+    except Exception as err:
+        if plan.delay_s is None:
+            raise
+        logger.warning("%s failed (%s): %s", task.name, plan.note, err)
+        # max_retries is given here, so the setting decides (not the decorator's default).
+        raise task.retry(exc=err, countdown=plan.delay_s, max_retries=plan.attempts - 1) from err
 
 
-@celery_app.task(name="ingest.fetch_hf_daily", **RETRY_OPTIONS)
-def fetch_hf_daily() -> dict[str, Any]:
+@celery_app.task(name="ingest.fetch_arxiv", bind=True)
+def fetch_arxiv(self: Task) -> dict[str, Any]:
+    def step(error_note: daily.ErrorNote) -> dict[str, Any]:
+        with session_scope() as session:
+            return daily.fetch_arxiv_daily(session, _arxiv(), error_note=error_note)
+
+    return run_with_fetch_retries(self, step)
+
+
+@celery_app.task(name="ingest.fetch_hf_daily", bind=True)
+def fetch_hf_daily(self: Task) -> dict[str, Any]:
     from app.sources.hf import HFClient
 
-    with session_scope() as session:
-        return daily.fetch_hf_daily(session, HFClient(), _arxiv())
+    def step(error_note: daily.ErrorNote) -> dict[str, Any]:
+        with session_scope() as session:
+            return daily.fetch_hf_daily(session, HFClient(), _arxiv(), error_note=error_note)
+
+    return run_with_fetch_retries(self, step)
 
 
 @celery_app.task(name="ingest.index_abstracts", **RETRY_OPTIONS)
