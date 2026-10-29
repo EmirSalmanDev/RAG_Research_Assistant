@@ -1,6 +1,7 @@
-# Memory note (8 GB machine): the frontend is in the "frontend" profile, so
-# `make up` skips it. Run it natively with `cd frontend && pnpm dev`, or
-# start it in compose with `docker compose --profile frontend up -d frontend`.
+# The frontend is in the "frontend" profile, so `make up` skips it (it saves memory). Start it
+# in compose with `docker compose --profile frontend up -d frontend`: its /api proxy reaches
+# the API at http://api:8000 (fixed when the image is built; see the frontend service). Or run
+# it natively with `cd frontend && pnpm dev`, which proxies to 127.0.0.1:8000.
 #
 # Beat, the scheduler, is in the "scheduler" profile, so a plain `make up` does not start it.
 # Beat sends a missed daily run as soon as it starts (it keeps its last-run times in a file
@@ -123,7 +124,12 @@ services:
 
   frontend:
     profiles: ["frontend"]
-    build: ./frontend
+    build:
+      context: ./frontend
+      args:
+        # Where the /api proxy sends requests. Next writes it into the build, so changing it
+        # needs a rebuild (`docker compose --profile frontend build frontend`), not a restart.
+        API_ORIGIN: ${FRONTEND_API_ORIGIN:-http://api:8000}
     ports: ["127.0.0.1:3000:3000"]
     healthcheck:
       test:

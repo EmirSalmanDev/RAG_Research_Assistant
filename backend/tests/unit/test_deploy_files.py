@@ -45,6 +45,13 @@ def test_make_up_does_not_name_the_scheduler_profile_and_up_scheduler_does() -> 
     assert "--wait" in up.group(1) and "--wait" in up_scheduler.group(1)
 
 
+def test_the_compose_frontend_is_built_to_proxy_to_the_api_service() -> None:
+    build = _yaml("docker-compose.yml")["services"]["frontend"]["build"]
+    assert build["context"] == "./frontend"
+    # Compose fills ${VAR:-default} from the shell or .env; unset means the service name.
+    assert build["args"] == {"API_ORIGIN": "${FRONTEND_API_ORIGIN:-http://api:8000}"}
+
+
 def test_make_down_also_stops_the_services_in_profiles() -> None:
     # Without --profile '*', `docker compose down` leaves beat and the frontend running.
     down = re.search(r"^down:\n((?:\t.*\n)+)", (ROOT / "Makefile").read_text(), re.M)
@@ -92,6 +99,16 @@ def test_release_builds_both_images_for_both_platforms_and_pushes_them(
     assert any(u.startswith("docker/login-action") for u in uses)
 
 
+def test_release_builds_the_frontend_with_the_dockerfile_default_api_origin(
+    release: dict[Any, Any],
+) -> None:
+    # No build-args: the published frontend image proxies /api to http://api:8000.
+    job = release["jobs"]["images"]
+    build = next(s for s in job["steps"] if str(s.get("uses", "")).startswith("docker/build-push"))
+    assert "build-args" not in build["with"]
+    assert "API_ORIGIN" not in (ROOT / ".github/workflows/release.yml").read_text()
+
+
 def test_release_writes_to_ghcr_with_the_job_token_and_nothing_wider(
     release: dict[Any, Any],
 ) -> None:
@@ -125,6 +142,44 @@ def test_release_tags_are_semver_and_latest_skips_prereleases(release: dict[Any,
         and "type=semver,pattern={{major}}.{{minor}}" in tags
     )
     assert meta["with"]["flavor"] == "latest=auto"
+
+
+# --- frontend/Dockerfile --------------------------------------------------------------------
+
+
+def _instructions(path: str) -> list[str]:
+    """The Dockerfile's instructions, one per entry, comments and blank lines left out."""
+    lines = (ROOT / path).read_text().splitlines()
+    return [line.strip() for line in lines if line.strip() and not line.lstrip().startswith("#")]
+
+
+def test_the_frontend_build_sets_api_origin_before_next_builds() -> None:
+    # next.config.ts reads API_ORIGIN when Next builds; an ENV set after `pnpm build` (or at
+    # container start) would not reach the /api proxy.
+    lines = _instructions("frontend/Dockerfile")
+    build_at = lines.index("RUN pnpm build")
+    stage_at = max(i for i, line in enumerate(lines[:build_at]) if line.startswith("FROM "))
+    stage = lines[stage_at:build_at]
+    assert "ARG API_ORIGIN=http://api:8000" in stage
+    assert "ENV API_ORIGIN=$API_ORIGIN" in stage
+    assert stage.index("ARG API_ORIGIN=http://api:8000") < stage.index("ENV API_ORIGIN=$API_ORIGIN")
+
+
+def test_every_dockerfile_base_image_is_pinned_by_digest() -> None:
+    for path in ("frontend/Dockerfile", "backend/Dockerfile"):
+        lines = _instructions(path)
+        froms = [line.split() for line in lines if line.startswith("FROM ")]
+        stages = {words[3] for words in froms if len(words) == 4 and words[2].upper() == "AS"}
+        copied = [m for line in lines for m in re.findall(r"^COPY --from=(\S+)", line)]
+        images = [words[1] for words in froms] + [m for m in copied if m not in stages]
+        assert images, path
+        for image in images:
+            assert re.fullmatch(r"[\w./-]+:[\w.-]+@sha256:[0-9a-f]{64}", image), (path, image)
+    node = [
+        line.split()[1] for line in _instructions("frontend/Dockerfile") if line.startswith("FROM ")
+    ]
+    assert len(node) == 2 and node[0] == node[1]  # both stages use the same Node
+    assert node[0].startswith("node:24-slim@sha256:")
 
 
 # --- backend/.dockerignore ------------------------------------------------------------------

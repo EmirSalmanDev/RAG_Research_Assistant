@@ -36,7 +36,7 @@ flowchart LR
     web --> worker
     worker -->|embeddings, Batch API| openai[OpenAI]
     api -->|embeddings, chat| openai
-    ui["Next.js app<br/>(pnpm dev, native)"] -->|/api proxy| api
+    ui["Next.js app<br/>(pnpm dev, or the frontend profile)"] -->|/api proxy| api
     api -.->|optional traces| lf[Langfuse Cloud]
 ```
 
@@ -79,7 +79,9 @@ design target is an Apple Silicon Mac; the release workflow builds arm64 and amd
    `make ingest-one ID=1706.03762`. It downloads the paper's text from public sources and
    embeds it (a fraction of a cent).
 5. Start the web app: `cd frontend && pnpm install && pnpm dev`, then open
-   http://localhost:3000. Ask a question on `/chat`.
+   http://localhost:3000. Ask a question on `/chat`. Or, without Node on the host, build and
+   start it in compose: `docker compose --profile frontend up -d --wait frontend` (same
+   address).
 
 To get a digest and new papers every morning you also need the scheduler (next section).
 To seed the corpus before that, `make backfill DAYS=7` indexes the last week of abstracts.
@@ -91,7 +93,7 @@ To seed the corpus before that, `make backfill DAYS=7` indexes the last week of 
 | api (FastAPI, port 8000) | yes | |
 | worker (Celery, concurrency 1) | yes | runs ingestion and analysis tasks |
 | beat (the scheduler) | **no** | `make up-scheduler` starts it |
-| frontend | no | run it natively with `pnpm dev`. The compose `frontend` profile builds a container, but its `/api` proxy is fixed at build time to `127.0.0.1:8000`, which inside that container is not the API, so use the native app |
+| frontend | no | `docker compose --profile frontend up -d --wait frontend` builds and starts it in compose (port 3000; its `/api` proxy goes to `http://api:8000`), or run it natively with `pnpm dev` |
 
 **Why Beat is separate.** Beat sends a daily run that came due while it was stopped as soon as
 it starts. Starting it after a night off therefore fetches from arXiv and Hugging Face and
@@ -121,7 +123,10 @@ Pushing a version tag such as `v1.0.0` builds the backend and the frontend image
 `linux/amd64` and `linux/arm64` and publishes them to the GitHub Container Registry as
 `ghcr.io/<owner>/<repo>-backend` and `ghcr.io/<owner>/<repo>-frontend`
 (`.github/workflows/release.yml`; only a commit on `main` is published). `docker-compose.yml`
-builds from source; it does not pull these images.
+builds from source; it does not pull these images. The frontend image's `/api` proxy is fixed
+when the image is built, and the published one expects the API at `http://api:8000`, the
+compose service name `api`: run it on a Docker network where the API container is called
+`api`, or build your own with `--build-arg API_ORIGIN=...`.
 
 ## Commands
 | Command | What it does |
@@ -211,10 +216,15 @@ a fixed refusal instead of a guess. A turn makes up to four chat requests (`gpt-
 and up to three small embedding requests; each one is logged in `llm_usage`.
 
 ## Frontend
-The web app is Next.js (App Router) and runs natively: `cd frontend && pnpm dev`, then
-open http://localhost:3000. It talks to the API through a same-origin proxy (`/api/*` is
-rewritten to `API_ORIGIN`, default `http://127.0.0.1:8000`), so the API needs no CORS
-setup. Pages:
+The web app is Next.js (App Router). Run it natively with `cd frontend && pnpm dev`, or in
+compose with `docker compose --profile frontend up -d --wait frontend`; either way open
+http://localhost:3000. It talks to the API through a same-origin proxy (`/api/*` is
+rewritten to `API_ORIGIN`), so the API needs no CORS setup. `pnpm dev` reads `API_ORIGIN`
+when it starts (default `http://127.0.0.1:8000`); a build (`pnpm build`, and so the
+container image) fixes it when it builds. The container is built with `http://api:8000`;
+`FRONTEND_API_ORIGIN` in `.env` changes that, followed by
+`docker compose --profile frontend build frontend` (setting it when the container starts has
+no effect). Pages:
 
 - `/`: the daily digest. The day's papers ranked against your interests, with a trending
   badge, the best-matching interest, a one-line summary, links to the paper page and to
