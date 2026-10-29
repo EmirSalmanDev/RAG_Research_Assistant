@@ -163,6 +163,7 @@ def test_the_frontend_build_sets_api_origin_before_next_builds() -> None:
     assert "ARG API_ORIGIN=http://api:8000" in stage
     assert "ENV API_ORIGIN=$API_ORIGIN" in stage
     assert stage.index("ARG API_ORIGIN=http://api:8000") < stage.index("ENV API_ORIGIN=$API_ORIGIN")
+    assert "ENV NEXT_TELEMETRY_DISABLED=1" in stage  # the build sends no usage data
 
 
 def test_every_dockerfile_base_image_is_pinned_by_digest() -> None:

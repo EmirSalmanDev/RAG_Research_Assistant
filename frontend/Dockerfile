@@ -12,6 +12,9 @@ COPY . .
 # the API's compose service name; docker-compose.yml passes FRONTEND_API_ORIGIN here.
 ARG API_ORIGIN=http://api:8000
 ENV API_ORIGIN=$API_ORIGIN
+# `next build` reports anonymous usage data to Vercel unless this is set; the image build
+# (here and in the release workflow) contacts no host but the package registry.
+ENV NEXT_TELEMETRY_DISABLED=1
 RUN pnpm build
 
 FROM node:24-slim@sha256:c86ecead9e55a5210ac1727de38a4ca840bf03dcaf34dc9749addbf383b1920c
