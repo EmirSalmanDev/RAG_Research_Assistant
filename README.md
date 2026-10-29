@@ -26,7 +26,7 @@ flowchart LR
         gh[GitHub]
     end
     subgraph stack["Docker Compose on your machine"]
-        beat["Beat<br/>(scheduler profile)"] -->|07:00 ingest<br/>08:00 digest<br/>09:00 analyses| redis[(Redis)]
+        beat["Beat<br/>(scheduler profile)"] -->|07:00 ingest<br/>08:00 digest<br/>09:00 analyses<br/>13:00, 19:00 catch-up| redis[(Redis)]
         redis --> worker[Celery worker]
         worker --> pg[("Postgres<br/>source of truth")]
         worker --> qd[("Qdrant<br/>dense + BM25 vectors")]
@@ -127,7 +127,7 @@ builds from source; it does not pull these images.
 | Command | What it does |
 | --- | --- |
 | `make up` / `make down` / `make logs` | start, stop, tail the stack (without the scheduler; `make down` stops everything) |
-| `make up-scheduler` | the same plus Beat, the scheduler: the 07:00, 08:00 and 09:00 jobs then run by themselves, and a run that came due while Beat was off is sent at once |
+| `make up-scheduler` | the same plus Beat, the scheduler: the 07:00, 08:00 and 09:00 jobs (and the 13:00 and 19:00 catch-ups) then run by themselves, and a run that came due while Beat was off is sent at once |
 | `make migrate` | apply database migrations |
 | `make test` / `make lint` | backend tests (offline) and frontend checks and unit tests / linters |
 | `make e2e` | the browser tests: Playwright tests of the chat, digest, paper, compare, timeline, library, evals and health pages and of the loading and error states (see "Browser test"); not part of `make test`, run in CI on `main` |
@@ -345,7 +345,18 @@ A failed attempt's error on the health page says "will retry in N min (attempt k
 "last attempt (4 of 4), no retry", or an error without a note (bad input, never retried),
 means the step gave up and the rest of the chain did not run that day. A chain that
 succeeds only on its last retry can finish after 08:00; the digest is then built from the
-papers already stored. Beat sends a run that came due while it was stopped as
+papers already stored. On the health page such a step is listed as "waiting to retry", and
+only the last attempt's failure as failed.
+
+If the 07:00 run did not get past arXiv (arXiv has refused early-morning runs with HTTP 429
+"Rate exceeded" while answering later in the day), Beat tries the same chain again at
+**13:00** and **19:00** (`DAILY_CATCHUP_TIMES`, HH:MM Istanbul, comma-separated, each later
+than 07:00; empty switches it off). A catch-up starts the chain only if no `arxiv-daily` run
+has succeeded since 07:00 and no chain is still running or waiting for a retry; otherwise it
+makes no request. Either way it writes one `daily-catchup` run ("started" or "skipped", with
+the reason), shown as its own step on the health page. Papers fetched by a catch-up get
+their full text the same day and appear in the next morning's digest; today's digest is not
+rebuilt. Beat sends a run that came due while it was stopped as
 soon as it starts (seen after two restarts; so start it on purpose with `make up-scheduler`).
 The arXiv fetch also starts 4 days before the last run's cursor, so a day that was missed is
 covered by the next run. After a longer pause it reads only the last 7 days: the run records

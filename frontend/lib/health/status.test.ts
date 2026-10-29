@@ -21,6 +21,7 @@ function status(over: Partial<StatusOut> = {}): StatusOut {
           error: null,
           skipped: null,
           abandoned: false,
+          retrying: false,
           note: null,
         },
       ],
@@ -72,6 +73,7 @@ test("a paused budget, a failed step and failed papers are warnings", () => {
         error: "RuntimeError: boom",
         skipped: null,
         abandoned: false,
+        retrying: false,
         note: null,
       },
       {
@@ -83,6 +85,7 @@ test("a paused budget, a failed step and failed papers are warnings", () => {
         error: null,
         skipped: null,
         abandoned: false,
+        retrying: false,
         note: null,
       },
     ],
@@ -137,6 +140,7 @@ test("a run that never finished is reported as abandoned, a running one is not",
         error: "abandoned: started 533 h ago and never finished",
         skipped: null,
         abandoned: true,
+        retrying: false,
         note: null,
       },
       {
@@ -147,6 +151,7 @@ test("a run that never finished is reported as abandoned, a running one is not",
         error: null,
         skipped: null,
         abandoned: false,
+        retrying: false,
         note: null,
       },
     ],
@@ -155,5 +160,70 @@ test("a run that never finished is reported as abandoned, a running one is not",
   assert.equal(s.level, "warning");
   assert.deepEqual(s.problems, [
     "A step never finished (abandoned, the worker stopped during the run): arxiv-daily.",
+  ]);
+});
+
+function arxivRun(error: string, retrying: boolean) {
+  return {
+    source: "arxiv-daily",
+    started_at: "2026-10-26T04:00:00Z",
+    finished_at: "2026-10-26T04:00:50Z",
+    ok: false,
+    error,
+    skipped: null,
+    abandoned: false,
+    note: null,
+    retrying,
+  };
+}
+
+test("a step whose retry is still to come waits to retry, it has not failed", () => {
+  const base = status();
+  const database = {
+    ...base.database!,
+    last_runs: [
+      arxivRun(
+        "will retry in 7 min (attempt 2 of 4): RetryableError: HTTP 429",
+        true,
+      ),
+    ],
+  };
+  const s = summarize(status({ database }));
+  assert.equal(s.level, "warning");
+  assert.deepEqual(s.problems, ["A step is waiting to retry: arxiv-daily."]);
+});
+
+test("the last attempt's failure is still a failed step", () => {
+  const base = status();
+  const database = {
+    ...base.database!,
+    last_runs: [
+      arxivRun(
+        "last attempt (4 of 4), no retry: RetryableError: HTTP 429",
+        false,
+      ),
+    ],
+  };
+  const s = summarize(status({ database }));
+  assert.deepEqual(s.problems, ["A step failed in its last run: arxiv-daily."]);
+});
+
+test("several retrying steps are counted, apart from the failed ones", () => {
+  const base = status();
+  const database = {
+    ...base.database!,
+    last_runs: [
+      arxivRun("will retry in 2 min (attempt 1 of 4): boom", true),
+      {
+        ...arxivRun("will retry in 2 min (attempt 1 of 4): boom", true),
+        source: "hf-daily",
+      },
+      { ...arxivRun("RuntimeError: boom", false), source: "index-abstracts" },
+    ],
+  };
+  const s = summarize(status({ database }));
+  assert.deepEqual(s.problems, [
+    "2 steps are waiting to retry: arxiv-daily, hf-daily.",
+    "A step failed in its last run: index-abstracts.",
   ]);
 });

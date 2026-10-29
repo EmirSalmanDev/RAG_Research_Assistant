@@ -17,6 +17,16 @@ from dataclasses import dataclass
 
 from app.config import Settings
 
+# The start of a failed attempt's error when the step will be retried. The health page
+# (app/api/status.py) and the daily catch-up (app/ingest/catchup.py) look for it, so it is
+# written and read through this one constant.
+RETRY_MARKER = "will retry in "
+
+
+def is_retry_note(error: object) -> bool:
+    """True for an `ingest_runs` error written by an attempt that will be retried."""
+    return isinstance(error, str) and error.startswith(RETRY_MARKER)
+
 
 def retry_delay_s(
     retries_done: int,
@@ -47,7 +57,7 @@ class AttemptPlan:
         if self.delay_s is None:
             return f"last attempt ({self.attempt} of {self.attempts}), no retry"
         minutes = max(1, round(self.delay_s / 60))
-        return f"will retry in {minutes} min (attempt {self.attempt} of {self.attempts})"
+        return f"{RETRY_MARKER}{minutes} min (attempt {self.attempt} of {self.attempts})"
 
     def error_note(self, err: Exception) -> str | None:
         """The note for `err`. A ValueError is bad input that is not retried, so it gets none."""

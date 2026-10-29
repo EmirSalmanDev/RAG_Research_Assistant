@@ -20,7 +20,8 @@ const STORE_NAMES: Record<string, string> = {
 /**
  * "down" when a store is unreachable or the database numbers cannot be read (nothing
  * works without them); "warning" when the system runs but needs attention (the budget
- * cap paused the background jobs, a step failed, a part of this page could not be read).
+ * cap paused the background jobs, a step failed or waits to retry, a part of this page could
+ * not be read).
  */
 export function summarize(status: StatusOut): Summary {
   const down: string[] = [];
@@ -47,8 +48,18 @@ export function summarize(status: StatusOut): Summary {
         `${abandoned.length === 1 ? "A step never finished" : `${abandoned.length} steps never finished`} (abandoned, the worker stopped during the run): ${abandoned.map((r) => r.source).join(", ")}.`,
       );
     }
+    // A failed attempt whose retry is still to come (the API marks it): it says so,
+    // instead of reading as a step that gave up. Its last attempt's failure stays "failed".
+    const retrying = database.last_runs.filter(
+      (run) => run.finished_at !== null && !run.ok && run.retrying,
+    );
+    if (retrying.length > 0) {
+      warnings.push(
+        `${retrying.length === 1 ? "A step is waiting to retry" : `${retrying.length} steps are waiting to retry`}: ${retrying.map((r) => r.source).join(", ")}.`,
+      );
+    }
     const failed = database.last_runs.filter(
-      (run) => run.finished_at !== null && !run.ok,
+      (run) => run.finished_at !== null && !run.ok && !run.retrying,
     );
     if (failed.length > 0) {
       warnings.push(

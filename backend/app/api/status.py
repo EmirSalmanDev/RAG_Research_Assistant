@@ -27,6 +27,7 @@ from app.config import get_settings
 from app.db.models import IngestRun, Paper
 from app.db.session import session_scope
 from app.features import budget
+from app.ingest import retry
 
 router = APIRouter()
 
@@ -47,6 +48,9 @@ class RunOut(BaseModel):
     skipped: str | None  # why the run did nothing (e.g. the budget cap), if it did not work
     abandoned: bool = False  # never finished, and started more than ABANDONED_AFTER ago
     note: str | None = None  # something the owner should know about a run that worked
+    # The latest run of its source failed, and the step will be retried (its error starts
+    # with the retry note of app/ingest/retry.py): waiting, not failed for good.
+    retrying: bool = False
 
 
 class BudgetOut(BaseModel):
@@ -100,6 +104,8 @@ def read_database(now: datetime | None = None) -> DatabaseStatus:
 
 
 def _run_out(run: IngestRun, now: datetime) -> RunOut:
+    """`run` is the latest run of its source (read_database), so a retry note on it means
+    the step's retry is still to come."""
     error = run.errors.get("error") if run.errors else None
     skipped = run.counts.get("skipped") if run.counts else None
     abandoned = run.finished_at is None and now - run.started_at > ABANDONED_AFTER
@@ -118,11 +124,15 @@ def _run_out(run: IngestRun, now: datetime) -> RunOut:
         skipped=None if skipped is None else str(skipped)[:200],
         abandoned=abandoned,
         note=_note(run.counts or {}),
+        retrying=run.finished_at is not None and retry.is_retry_note(error),
     )
 
 
 def _note(counts: dict[str, object]) -> str | None:
-    """The daily arXiv fetch's window cap (app/ingest/daily.py): which days it skipped."""
+    """The daily arXiv fetch's window cap (app/ingest/daily.py): which days it skipped; the
+    daily catch-up (app/ingest/catchup.py): whether it started the chain, and why."""
+    if "action" in counts and "reason" in counts:
+        return f"{counts['action']}: {counts['reason']}"[:300]
     if not counts.get("window_capped"):
         return None
     days = [str(counts.get(key, "?"))[:10] for key in ("skipped_from", "skipped_to")]

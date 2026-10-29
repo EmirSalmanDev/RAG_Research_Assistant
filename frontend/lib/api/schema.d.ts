@@ -1454,6 +1454,11 @@ export interface components {
             note?: string | null;
             /** Ok */
             ok: boolean;
+            /**
+             * Retrying
+             * @default false
+             */
+            retrying: boolean;
             /** Skipped */
             skipped: string | null;
             /** Source */

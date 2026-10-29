@@ -176,6 +176,7 @@ def test_arxiv_fails_twice_then_succeeds_and_the_chain_goes_on(
     shown = status._run_out(runs[1], datetime.now(UTC))
     assert shown.error is not None
     assert shown.error.startswith("will retry in 6 min (attempt 2 of 4)")
+    assert shown.retrying is True  # the health summary says "waiting to retry", not "failed"
 
 
 def test_arxiv_failing_every_attempt_stops_the_chain_and_keeps_the_cursor(

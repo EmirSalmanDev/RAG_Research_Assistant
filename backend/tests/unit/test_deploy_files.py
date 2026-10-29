@@ -125,3 +125,62 @@ def test_release_tags_are_semver_and_latest_skips_prereleases(release: dict[Any,
         and "type=semver,pattern={{major}}.{{minor}}" in tags
     )
     assert meta["with"]["flavor"] == "latest=auto"
+
+
+# --- backend/.dockerignore ------------------------------------------------------------------
+
+
+def _docker_ignored(path: str, patterns: list[str]) -> bool:
+    """Docker's .dockerignore rule, as far as this file uses it: a pattern is matched against
+    the path from the build context and against each of its parent directories (an ignored
+    directory takes its contents with it). `**` matches any number of directories, `*` and
+    `?` stay inside one path part. No `!` exceptions are used here."""
+
+    def regex(pattern: str) -> re.Pattern[str]:
+        out, i = "", 0
+        while i < len(pattern):
+            if pattern.startswith("**/", i):
+                out, i = out + "(?:.*/)?", i + 3
+            elif pattern[i] == "*":
+                out, i = out + "[^/]*", i + 1
+            elif pattern[i] == "?":
+                out, i = out + "[^/]", i + 1
+            else:
+                out, i = out + re.escape(pattern[i]), i + 1
+        return re.compile(out)
+
+    parts = path.split("/")
+    prefixes = ["/".join(parts[:n]) for n in range(1, len(parts) + 1)]
+    return any(regex(p).fullmatch(prefix) for p in patterns for prefix in prefixes)
+
+
+def _dockerignore() -> list[str]:
+    lines = (ROOT / "backend/.dockerignore").read_text().splitlines()
+    return [line.strip() for line in lines if line.strip() and not line.startswith("#")]
+
+
+def test_the_matcher_reads_a_top_level_pattern_as_top_level_only() -> None:
+    # What the file had before: `__pycache__` kept the nested caches in the image.
+    assert _docker_ignored("__pycache__/x.pyc", ["__pycache__"])
+    assert not _docker_ignored("app/ingest/__pycache__/tasks.cpython-312.pyc", ["__pycache__"])
+
+
+def test_the_backend_image_gets_no_python_caches_at_any_depth() -> None:
+    patterns = _dockerignore()
+    assert "**/__pycache__" in patterns and "**/*.pyc" in patterns
+    for cache in (
+        "__pycache__/x.cpython-312.pyc",
+        "app/__pycache__/config.cpython-312.pyc",
+        "app/ingest/__pycache__/tasks.cpython-312.pyc",
+        "eval/stray.pyc",
+    ):
+        assert _docker_ignored(cache, patterns), cache
+    for kept in (
+        "app/ingest/tasks.py",
+        "app/rag/prompts/analyze_v1.txt",
+        "app/ingest/data/bm25_stopwords_english.txt",
+        "alembic/env.py",
+        "pyproject.toml",
+        "uv.lock",
+    ):
+        assert not _docker_ignored(kept, patterns), kept

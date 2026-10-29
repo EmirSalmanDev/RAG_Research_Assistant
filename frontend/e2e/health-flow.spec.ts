@@ -36,6 +36,7 @@ function run(over: Record<string, unknown> = {}) {
     error: null,
     skipped: null,
     abandoned: false,
+    retrying: false,
     note: null,
     ...over,
   };

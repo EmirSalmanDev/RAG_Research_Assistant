@@ -68,6 +68,7 @@ async def test_everything_readable(client: AsyncClient) -> None:
     assert body["queue_length"] == 4 and body["qdrant_points"] == 8912 and body["errors"] == {}
     assert body["database"]["budget"]["paused"] is True
     assert body["database"]["last_runs"][0]["skipped"] == "budget cap reached"
+    assert body["database"]["last_runs"][0]["retrying"] is False  # always sent
 
 
 async def test_a_dead_redis_does_not_hide_the_database(

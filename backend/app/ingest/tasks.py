@@ -6,7 +6,8 @@ The daily chain (Beat, 07:00 Europe/Istanbul):
     fetch_arxiv -> fetch_hf_daily -> index_abstracts -> enrich_new -> score_relevance
     -> select_fulltext
 (`score_relevance` is in app/features/tasks.py; the digest is built by its own Beat entry
-at 08:00) and `select_fulltext` starts, for every selected paper, its own chain:
+at 08:00; `daily_catchup` sends the same chain again later the same day when the 07:00 run
+did not get past arXiv) and `select_fulltext` starts, for every selected paper, its own chain:
     fetch_fulltext -> clean_paper -> chunk_paper -> embed_paper
 
 Rules every task follows:
@@ -27,6 +28,7 @@ Rules every task follows:
 
 import logging
 from collections.abc import Callable, Sequence
+from datetime import UTC, datetime
 from typing import Any
 
 from celery import Task, chain
@@ -37,7 +39,7 @@ from app.config import get_settings
 from app.db.models import Paper
 from app.db.session import session_scope
 from app.features import budget
-from app.ingest import daily, pipeline, retry
+from app.ingest import catchup, daily, pipeline, retry
 from app.ingest.fulltext import default_sources, select_for_fulltext
 from app.ingest.fulltext import fetch_fulltext as fetch_fulltext_step
 from app.worker.celery_app import celery_app
@@ -223,6 +225,20 @@ def daily_pipeline() -> str:
     """Started by Beat at 07:00 Europe/Istanbul (or by hand): queue the daily chain."""
     result = daily_chain().apply_async()
     return str(result.id)
+
+
+@celery_app.task(name="ingest.daily_catchup")
+def daily_catchup() -> dict[str, Any]:
+    """Sent by Beat at the catch-up times (13:00 and 19:00 Istanbul by default): send the
+    daily chain again if no arXiv run has succeeded since 07:00 and none is in progress
+    (app/ingest/catchup.py). Writes one 'daily-catchup' run either way. Not retried: it
+    only reads Postgres and sends one message, and the next catch-up decides again."""
+    with session_scope() as session, daily.recorded_run(session, catchup.SOURCE) as counts:
+        decision = catchup.decide(session, datetime.now(UTC), get_settings())
+        counts.update(action=decision.action, reason=decision.reason)
+        if decision.start:
+            counts["chain_id"] = str(daily_chain().apply_async().id)
+    return counts
 
 
 # --- per-paper full-text steps ----------------------------------------------------------------

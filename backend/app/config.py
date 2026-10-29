@@ -3,6 +3,8 @@
 Model names live here and nowhere else (never hard-code them in other modules).
 """
 
+import re
+from datetime import time
 from functools import lru_cache
 from typing import Literal
 
@@ -13,6 +15,11 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 # again (kombu's own default, set explicitly in app/worker/celery_app.py). A task retry
 # waiting for its countdown is such a message, so every retry delay must stay below it.
 BROKER_VISIBILITY_TIMEOUT_S = 3600
+# Beat reads every schedule time in this zone (app/worker/celery_app.py); the daily chain
+# starts at DAILY_INGEST_AT there (app/worker/schedule.py).
+SCHEDULE_TIMEZONE = "Europe/Istanbul"
+DAILY_INGEST_AT = time(7, 0)
+_HH_MM = re.compile(r"([01][0-9]|2[0-3]):([0-5][0-9])")
 
 
 class Settings(BaseSettings):
@@ -52,6 +59,10 @@ class Settings(BaseSettings):
     daily_fetch_retry_first_delay_min: float = Field(default=2.0, gt=0)
     daily_fetch_retry_factor: float = Field(default=3.0, ge=1)
     daily_fetch_retry_jitter: float = Field(default=0.2, ge=0, lt=1)
+    # Same-day catch-up (docs/adr/0003): at these times (HH:MM, Istanbul, comma-separated,
+    # each later than 07:00) Beat sends the daily chain again, but only if no arXiv run has
+    # succeeded since 07:00 and no chain is in progress. Empty = no catch-up.
+    daily_catchup_times: str = "13:00,19:00"
 
     # Embeddings. Changing the model or the dimension means re-embedding everything,
     # and the Qdrant collection must be recreated with the new size.
@@ -262,6 +273,33 @@ class Settings(BaseSettings):
     def _empty_means_unset(cls, value: object) -> object:
         """`S2_API_KEY=` in .env arrives as "": treat it as "no key", not an empty key."""
         return None if value == "" else value
+
+    @field_validator("daily_catchup_times")
+    @classmethod
+    def _catchup_times_are_valid(cls, value: str) -> str:
+        """Refuse what Beat could not schedule or what would come before the 07:00 run
+        (a catch-up then would look back at yesterday's 07:00)."""
+        if not value.strip():
+            return ""
+        times = [part.strip() for part in value.split(",")]
+        for part in times:
+            if not _HH_MM.fullmatch(part):
+                raise ValueError(f"daily catch-up time {part!r} is not HH:MM (00:00-23:59)")
+            if time.fromisoformat(part) <= DAILY_INGEST_AT:
+                raise ValueError(
+                    f"daily catch-up time {part} must be later than the daily run at "
+                    f"{DAILY_INGEST_AT:%H:%M}"
+                )
+        if len(set(times)) != len(times):
+            raise ValueError(f"daily catch-up times repeat: {value!r}")
+        return ",".join(times)
+
+    @property
+    def daily_catchup_at(self) -> list[time]:
+        """The catch-up times, in the order given; empty when the catch-up is off."""
+        if not self.daily_catchup_times:
+            return []
+        return [time.fromisoformat(part) for part in self.daily_catchup_times.split(",")]
 
     @model_validator(mode="after")
     def _fetch_retries_fit_the_broker(self) -> "Settings":

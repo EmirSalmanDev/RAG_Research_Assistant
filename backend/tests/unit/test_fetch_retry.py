@@ -91,3 +91,12 @@ def test_without_retries_the_first_attempt_is_the_last() -> None:
     none = Settings(_env_file=None, daily_fetch_retries=0)
     plan = retry.plan_attempt(0, none)
     assert plan.delay_s is None and plan.note == "last attempt (1 of 1), no retry"
+
+
+def test_the_retry_note_starts_with_the_marker_the_health_page_reads() -> None:
+    plans = [retry.plan_attempt(n, DEFAULTS, _low) for n in range(4)]
+    assert [retry.is_retry_note(p.note + ": RetryableError: x") for p in plans] == [
+        True, True, True, False,
+    ]  # fmt: skip
+    assert all(p.note.startswith(retry.RETRY_MARKER) for p in plans[:3])
+    assert not retry.is_retry_note(None) and not retry.is_retry_note("RuntimeError: will retry in")

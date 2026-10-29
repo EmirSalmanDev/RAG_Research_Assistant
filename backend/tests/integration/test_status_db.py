@@ -117,3 +117,34 @@ def test_a_capped_arxiv_window_is_a_note_on_its_run(migrated_session: Session) -
         "window capped: papers updated 2026-09-28 to 2026-10-19 skipped (make backfill)"
     )
     assert by_source["hf-daily"].note is None
+
+
+def test_a_latest_run_with_a_retry_note_is_retrying_and_nothing_else_is(
+    migrated_session: Session,
+) -> None:
+    s = migrated_session
+    t = [datetime(2026, 10, 29, 4, minute, tzinfo=UTC) for minute in range(6)]
+    will_retry = "will retry in 7 min (attempt 2 of 4): RetryableError: HTTP 429"
+    s.add_all([
+        # arxiv-daily: the latest row will be retried
+        IngestRun(source="arxiv-daily", started_at=t[0], finished_at=t[1], counts={},
+                  errors={"error": "will retry in 2 min (attempt 1 of 4): x"}),
+        IngestRun(source="arxiv-daily", started_at=t[2], finished_at=t[3], counts={},
+                  errors={"error": will_retry}),
+        # hf-daily: retried earlier, then it worked; the latest row is what counts
+        IngestRun(source="hf-daily", started_at=t[0], finished_at=t[1], counts={},
+                  errors={"error": "will retry in 2 min (attempt 1 of 4): y"}),
+        IngestRun(source="hf-daily", started_at=t[4], finished_at=t[5], counts={}, errors={}),
+        # index-abstracts: the last attempt failed for good
+        IngestRun(source="index-abstracts", started_at=t[4], finished_at=t[5], counts={},
+                  errors={"error": "last attempt (4 of 4), no retry: RuntimeError: boom"}),
+    ])  # fmt: skip
+    s.commit()
+
+    by_source = {r.source: r for r in status.read_database().last_runs}
+
+    arxiv = by_source["arxiv-daily"]
+    assert arxiv.retrying is True and arxiv.ok is False and arxiv.error == will_retry
+    assert by_source["hf-daily"].retrying is False and by_source["hf-daily"].ok
+    assert by_source["index-abstracts"].retrying is False
+    assert by_source["index-abstracts"].ok is False

@@ -2,7 +2,7 @@
 
 from celery import Celery
 
-from app.config import BROKER_VISIBILITY_TIMEOUT_S, get_settings
+from app.config import BROKER_VISIBILITY_TIMEOUT_S, SCHEDULE_TIMEZONE, get_settings
 from app.worker.schedule import BEAT_SCHEDULE
 
 celery_app = Celery(
@@ -14,7 +14,7 @@ celery_app = Celery(
 celery_app.conf.update(
     worker_concurrency=1,  # 8 GB RAM machine: one worker process
     broker_connection_retry_on_startup=True,
-    timezone="Europe/Istanbul",  # Beat reads crontab times in this zone
+    timezone=SCHEDULE_TIMEZONE,  # Beat reads crontab times in this zone (Europe/Istanbul)
     enable_utc=True,  # timestamps are still stored in UTC
     # A task is acknowledged only after it finishes, so one killed mid-run (worker
     # restart, crash) is run again; safe because every task is idempotent.
