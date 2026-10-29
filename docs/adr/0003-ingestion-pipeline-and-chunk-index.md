@@ -76,7 +76,8 @@ LlamaIndex read compatibility is decided with retrieval.
 `papers.project_url`, a CHECK on `papers.fulltext_status`, and `paper_texts.version`,
 `raw_markdown` and `references`.
 
-**Schedule.** Celery Beat starts the chain at 07:00 Europe/Istanbul. The worker runs one
+**Schedule.** Celery Beat starts the chain at 07:00 Europe/Istanbul (and again at the
+catch-up times when that run did not get past arXiv, see below). The worker runs one
 process, takes one task at a time and acknowledges a task only after it finishes, so a
 task killed mid-run is run again (safe, since every task is idempotent).
 
@@ -99,6 +100,10 @@ with fast failures, one shown as HTTP 429. The chain's tasks then retried after 
   "will retry in N min (attempt k of 4)"; the last attempt's row starts with "last attempt
   (4 of 4), no retry". The note comes first because the health page cuts errors at 300
   characters. A ValueError is not retried and gets no note.
+- On the health page (`GET /status`) such a row is `retrying` when it is the latest row of
+  its source and its error starts with the "will retry" note (one constant in
+  `app/ingest/retry.py` writes it and reads it). The page's summary lists it as "A step is
+  waiting to retry", not as a failed step. The last attempt's failure stays "failed".
 - arXiv's 429 reaches us without its `Retry-After` header: the `arxiv` package's HTTPError
   keeps only the URL and the status. So the schedule above is used as it is, and the
   package is not patched.
@@ -107,6 +112,42 @@ with fast failures, one shown as HTTP 429. The chain's tasks then retried after 
   success". Every attempt fetches the whole window again from the first page (a failed
   attempt stores nothing). The final failure still stops the chain. The other chain
   tasks keep the seconds-scale backoff.
+
+**Same-day catch-up of the daily chain** (added 2026-10-29). On 2026-10-28 and 2026-10-29
+export.arxiv.org refused the 07:00 run (04:00 UTC) from its first request on, with HTTP 429
+"Rate exceeded" and read timeouts, through all four attempts (about 29 minutes). Runs started
+by hand later in the day (18:25, 08:27 and 12:23 UTC on other days) were answered. arXiv's
+staff describe "Rate exceeded" as a limit of their servers' capacity that is met by trying
+again later. So Beat tries the same chain again later the same day:
+- Beat entries at the times in `DAILY_CATCHUP_TIMES` (default `13:00,19:00`, read in
+  Europe/Istanbul like every Beat entry; empty = no catch-up). Each time is `HH:MM`, later
+  than 07:00, and given once. Anything else is refused when the settings are loaded, so the
+  API, the worker and Beat do not start with it.
+- Each entry sends `ingest.daily_catchup`. It sends the same daily chain (the same tasks
+  and the same retry rule) only if both hold:
+  1. no `arxiv-daily` run finished without an error at or after the latest 07:00 Istanbul
+     (for every allowed time that is today's 07:00), and
+  2. no daily chain is still in progress: no unfinished `arxiv-daily` run that started
+     less than 2 hours ago, and no waiting fetch_arxiv retry, i.e. the latest `arxiv-daily`
+     row is not a "will retry" row that finished less than 2 hours ago. Two hours is longer
+     than one attempt and longer than any retry delay (both stay below the 1-hour
+     visibility timeout). An unfinished row older than that was left by a stopped worker.
+  Otherwise it sends nothing and makes no external request.
+- Every catch-up writes one `ingest_runs` row with source `daily-catchup` and counts
+  `{"action": "started" | "skipped", "reason": ...}`. The health page shows it as its own
+  step, with the action and the reason as its note. The chain it starts writes the usual
+  `arxiv-daily`, `hf-daily`, ... rows, so the `arxiv-daily` line still shows the real latest
+  arXiv outcome.
+- The catch-up task itself is not retried. It only reads Postgres and sends one message,
+  and the next entry (or the next morning) decides again.
+- Beat sends a missed entry as soon as it starts (docs/adr/0013). For a catch-up that is
+  safe: the same check decides, so it starts a chain only when the morning run has not
+  succeeded and nothing is in progress.
+- The digest: papers fetched by a catch-up reach the next day's digest at 08:00, whose
+  7-day window still holds them. Today's digest is not rebuilt; it was built at 08:00 from
+  the papers stored then. Their full text is fetched by the catch-up chain the same day.
+- Unchanged: the 07:00 chain, the 08:00 digest, the retry rule above, the 3-second arXiv
+  limiter, the inner tries and the timeout.
 
 ## Consequences
 - Qdrant can always be rebuilt from Postgres; re-running any step or the whole chain
@@ -120,6 +161,12 @@ with fast failures, one shown as HTTP 429. The chain's tasks then retried after 
   for a 7-day window: 660, all at least 3 s apart). A chain that succeeds only on its last
   retry can finish after the 08:00 digest, which is then built from the papers already
   stored.
+- A day on which arXiv refuses the morning run but answers by the last catch-up is no
+  longer lost; its papers reach the next morning's digest instead of today's. The price is
+  requests: up to three chain attempts a day, so on a day that fails every time up to
+  3 x 660 arXiv requests for a 7-day window (3 x 20 in an outage at the first page), all at
+  least 3 s apart. Money is spent once: only a chain whose arXiv fetch succeeded embeds,
+  and that success stops the later catch-ups.
 - Parsing a PDF adds about 360 MB to the worker while it runs.
 - A rare native crash at interpreter exit (after all work finished) has been seen twice
   on macOS since onnxruntime and PyMuPDF were added. It is accepted and watched: one more

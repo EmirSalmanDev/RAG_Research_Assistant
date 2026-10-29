@@ -53,6 +53,14 @@ worker. `make up-scheduler` adds Beat. `make down` uses `--profile '*'`, which a
 services that are in a profile (Beat and the frontend); a plain `docker compose down` leaves
 them running.
 
+**The catch-up entries** (added 2026-10-29, docs/adr/0003). Beat also sends
+`ingest.daily_catchup` at the times in `DAILY_CATCHUP_TIMES` (default 13:00 and 19:00
+Istanbul; empty = no entries). Like any entry, an overdue one is sent as soon as Beat starts.
+The task only reads Postgres and starts the daily chain only when no `arxiv-daily` run has
+succeeded since 07:00 and no chain is in progress; otherwise it records a skipped
+`daily-catchup` run and makes no external request. It spends nothing itself: the chain it
+starts is gated by the budget guard like the 07:00 one.
+
 ## Alternatives considered
 - **Block interactive requests at the cap too.** Rejected for the reason above; it would also
   need an error path in every feature for a state the owner can change in one field.
@@ -71,7 +79,9 @@ them running.
   cost is written to `llm_usage` when its results are collected, not when it is submitted, so
   a job submitted just under the cap is counted a day later.
 - A started Beat no longer comes with `make up`. Someone who wants the nightly pipeline runs
-  `make up-scheduler`, and should know it sends an overdue run on start.
+  `make up-scheduler`, and should know it sends an overdue run on start. A start in the
+  afternoon after a failed morning run therefore starts the daily chain at once (the
+  overdue catch-up); after a successful one it only writes a skipped `daily-catchup` row.
 - Tests: the state (no cap, exactly at the cap, a cap of 0, a new month, a raised cap), each
   gated task with every paid path replaced by a function that fails the test, the resume of
   stuck papers, and the compose, Makefile and workflow files by parsing them. Removing the
