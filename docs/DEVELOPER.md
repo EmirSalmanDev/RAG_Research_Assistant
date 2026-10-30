@@ -67,8 +67,9 @@ make down      # docker compose --profile '*' down
 - `make migrate` creates or updates the schema in the Postgres from `make up`. Until it has
   run, `GET /status` shows `database: null` and the reason under `errors`.
 - `make down` stops and removes the containers of every profile (beat included).
-  The named volumes `postgres_data` and `qdrant_data` stay. Redis has no named volume, so
-  count queued tasks as lost once its container is removed.
+  The named volumes `postgres_data` and `qdrant_data` stay. Redis keeps its data in memory
+  (a tmpfs at `/data`, no volume), so count queued tasks as lost once its container stops or
+  is removed.
 - **`docker compose down -v` deletes the volumes, and with them the whole corpus**: papers,
   text, chunks, the search index, your library, the usage log and the evaluation runs. Do not
   use `-v` unless that is what you want.

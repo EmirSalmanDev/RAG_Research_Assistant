@@ -68,6 +68,11 @@ services:
   redis:
     image: redis:7
     ports: ["127.0.0.1:6379:6379"]
+    # Redis holds only the Celery queue and short-lived locks, and is not meant to persist:
+    # its data lives in memory and is gone when the container stops. The image declares
+    # VOLUME /data, so without this mount every container gets an anonymous volume that
+    # `make down` leaves behind.
+    tmpfs: [/data]
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s

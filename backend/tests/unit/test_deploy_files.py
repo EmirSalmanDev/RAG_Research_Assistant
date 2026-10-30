@@ -89,6 +89,14 @@ def test_every_make_line_that_builds_skips_the_default_attestations() -> None:
         assert line.startswith("BUILDX_NO_DEFAULT_ATTESTATIONS=1 docker compose "), line
 
 
+def test_redis_keeps_its_data_in_a_tmpfs_not_a_volume() -> None:
+    # The redis image declares VOLUME /data: without a mount there, every container gets an
+    # anonymous volume that `make down` leaves behind. The queue is not meant to persist.
+    redis = _yaml("docker-compose.yml")["services"]["redis"]
+    assert redis["tmpfs"] == ["/data"]
+    assert "volumes" not in redis
+
+
 # --- ci.yml: the browser tests run on main only ------------------------------------------
 
 
