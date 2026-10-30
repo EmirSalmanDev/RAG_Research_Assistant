@@ -87,6 +87,7 @@ design target is an Apple Silicon Mac; the release workflow builds arm64 and amd
 The daily runs (new papers and the digest) also need the scheduler (next section).
 To seed the corpus before that, `make backfill DAYS=7` indexes the last week of abstracts.
 How to run it as a developer and follow what it does (health page, logs, queue, SQL, traces): [`docs/DEVELOPER.md`](docs/DEVELOPER.md).
+The technical decisions in short, each with its trade-offs and reasons: [`docs/TECHNICAL_DECISIONS.md`](docs/TECHNICAL_DECISIONS.md).
 
 ### What `make up` starts
 | Service | Started by `make up` | Notes |
