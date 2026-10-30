@@ -3,12 +3,18 @@
 # Start the stack (stores, api, worker, frontend) and wait until every service's healthcheck
 # passes. Beat (the scheduler) is not part of it: it fires the daily run, and a missed one at
 # once when it starts.
+# BUILDX_NO_DEFAULT_ATTESTATIONS=1: BuildKit's default provenance attestation records the
+# build's time and session, so every build, a fully cached one too, gives the image a new ID,
+# and Compose recreates every container whose image ID changed (recreating the worker kills its
+# running task). Without it, a `make up` with nothing changed keeps the running containers.
+# Compose 2.40 builds through Bake and does not pass `provenance: false` from the compose
+# file on, so it is set here, on every line that builds.
 up:
-	docker compose up -d --build --wait
+	BUILDX_NO_DEFAULT_ATTESTATIONS=1 docker compose up -d --build --wait
 
 # The same, plus Beat: the 07:00 ingest, 08:00 digest and 09:00 analysis jobs run by themselves.
 up-scheduler:
-	docker compose --profile scheduler up -d --build --wait
+	BUILDX_NO_DEFAULT_ATTESTATIONS=1 docker compose --profile scheduler up -d --build --wait
 
 # --profile '*' also stops the services that are in a profile (beat, in `scheduler`).
 down:

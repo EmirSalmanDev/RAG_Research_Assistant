@@ -45,7 +45,7 @@ app's own budget cap.
 
 ### Start, migrate, stop
 ```sh
-make up        # docker compose up -d --build --wait
+make up        # BUILDX_NO_DEFAULT_ATTESTATIONS=1 docker compose up -d --build --wait
 make migrate   # cd backend && uv run alembic upgrade head
 make down      # docker compose --profile '*' down
 ```
@@ -55,6 +55,13 @@ make down      # docker compose --profile '*' down
   until every healthcheck passes. It does **not** start **beat** (the scheduler): beat is in
   the compose profile `scheduler`. The first build downloads the Python and Node packages, the
   Node base image and the store images.
+- `make up` rebuilds the images every time (from the build cache when nothing changed), but
+  recreates a container only when its image or its configuration changed. So a second
+  `make up` leaves the running containers alone, and a running worker task keeps running;
+  after a code change, only the services built from that code are recreated. This needs
+  `BUILDX_NO_DEFAULT_ATTESTATIONS=1`, which the Makefile sets: without it BuildKit adds a new
+  provenance attestation, and so a new image ID, to every build, and a plain
+  `docker compose up --build` recreates the api, the worker and the frontend every time.
 - Every port is bound to `127.0.0.1` only: the API on 8000, the frontend on 3000, Postgres on
   5432, Qdrant on 6333, Redis on 6379.
 - `make migrate` creates or updates the schema in the Postgres from `make up`. Until it has
@@ -69,7 +76,7 @@ make down      # docker compose --profile '*' down
 
 ### The scheduler (Beat)
 ```sh
-make up-scheduler   # docker compose --profile scheduler up -d --build --wait
+make up-scheduler   # BUILDX_NO_DEFAULT_ATTESTATIONS=1 docker compose --profile scheduler up -d --build --wait
 ```
 Beat sends these jobs (`app/worker/schedule.py`; times are Europe/Istanbul):
 

@@ -52,3 +52,17 @@ natively day to day.
   or `make up`, which builds); setting it when the container starts has no effect.
 - On a smaller machine, `docker compose stop frontend` frees its memory while the web app is
   not needed.
+- `make up` builds on every run but recreates a container only when its image or its
+  configuration changed. At first every `make up` recreated the api, the worker and the
+  frontend even with nothing changed: BuildKit's default provenance attestation records the
+  build's time and session, so every build, a fully cached one too, gave a new image ID.
+  Recreating the worker kills a running task, which Redis delivers again only after the
+  3600 s visibility timeout. `make up` and `make up-scheduler` therefore build with
+  `BUILDX_NO_DEFAULT_ATTESTATIONS=1`. `provenance: false` in the compose file was tried first
+  and had no effect: Compose 2.40 builds through Bake and does not pass it on. Checked on
+  2026-10-31 in a disposable compose project: before, two builds with nothing changed had the
+  same image manifest and config and differed only in the attestation; after, a second
+  `make up` kept all six containers, and a changed frontend or backend file still rebuilt and
+  recreated only the services built from it. A plain `docker compose up --build` still adds
+  the attestation. The release workflow has its own build settings, so the published images
+  do not change.

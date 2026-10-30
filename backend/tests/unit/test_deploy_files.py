@@ -77,6 +77,18 @@ def test_make_down_also_stops_the_services_in_profiles() -> None:
     assert down and "--profile '*'" in down.group(1)
 
 
+def test_every_make_line_that_builds_skips_the_default_attestations() -> None:
+    # BuildKit's default attestation is new on every build, so even a fully cached build gets
+    # a new image ID and `make up` recreates the container (and kills the worker's task).
+    # Compose's Bake build ignores `provenance: false` in the compose file, hence the variable.
+    makefile = (ROOT / "Makefile").read_text()
+    recipes = [line.strip() for line in makefile.splitlines() if line.startswith("\t")]
+    building = [r for r in recipes if "docker compose" in r and re.search(r"--build|\bbuild\b", r)]
+    assert len(building) == 2  # make up and make up-scheduler
+    for line in building:
+        assert line.startswith("BUILDX_NO_DEFAULT_ATTESTATIONS=1 docker compose "), line
+
+
 # --- ci.yml: the browser tests run on main only ------------------------------------------
 
 
