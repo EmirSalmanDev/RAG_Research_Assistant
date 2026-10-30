@@ -79,6 +79,13 @@ def test_first_run_without_cursor_looks_back_one_day_plus_overlap() -> None:
     assert daily.daily_window(None, NOW) == (NOW - timedelta(days=5), NOW)
 
 
+def test_daily_window_never_starts_more_than_max_days_back() -> None:
+    old_cursor = NOW - timedelta(days=24)
+    assert daily.daily_window(old_cursor, NOW, max_days=7) == (NOW - timedelta(days=7), NOW)
+    recent = NOW - timedelta(days=2)  # cursor - 4 days = 6 days back: inside the cap
+    assert daily.daily_window(recent, NOW, max_days=7) == (recent - timedelta(days=4), NOW)
+
+
 def test_backfill_plan() -> None:
     plan = daily.plan_backfill(7, NOW)
     assert (plan.since, plan.until) == (NOW - timedelta(days=7), NOW)
@@ -149,10 +156,17 @@ def test_celery_settings_for_one_small_worker() -> None:
         assert f"ingest.{name}" in names
 
 
-@pytest.mark.parametrize("task", [tasks.fetch_arxiv, tasks.fetch_fulltext, tasks.embed_paper])
+@pytest.mark.parametrize("task", [tasks.index_abstracts, tasks.fetch_fulltext, tasks.embed_paper])
 def test_tasks_retry_three_times_with_backoff(task: Any) -> None:
     assert task.max_retries == 3 and task.retry_backoff is True
     assert task.autoretry_for == (Exception,) and task.dont_autoretry_for == (ValueError,)
+
+
+@pytest.mark.parametrize("task", [tasks.fetch_arxiv, tasks.fetch_hf_daily])
+def test_the_fetch_steps_do_not_use_the_seconds_scale_autoretry(task: Any) -> None:
+    """They retry through run_with_fetch_retries (minutes; app/ingest/retry.py) instead."""
+    assert not getattr(task, "autoretry_for", ())
+    assert not getattr(task, "retry_backoff", False)
 
 
 def test_last_failure_marks_the_paper_failed(monkeypatch: pytest.MonkeyPatch) -> None:

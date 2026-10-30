@@ -1266,6 +1266,26 @@ createServer(async (req, res) => {
   if (req.method === "GET" && evalsRoute(res, url)) return;
   if (req.method === "GET" && url === "/health")
     return json(res, 200, { ok: true });
+  // The system status the budget banner and the /health page read: a healthy system,
+  // invented numbers. The health spec replaces it per test with page.route.
+  if (req.method === "GET" && url === "/status")
+    return json(res, 200, {
+      stores: { postgres: "up", qdrant: "up", redis: "up" },
+      database: {
+        papers_total: 12,
+        papers_by_fulltext_status: { none: 9, indexed: 3 },
+        last_runs: [],
+        budget: {
+          cap_usd: null,
+          spent_usd: 0.42,
+          paused: false,
+          month_start: "2026-10-01T00:00:00Z",
+        },
+      },
+      queue_length: 0,
+      qdrant_points: 40,
+      errors: {},
+    });
   if (req.method === "POST" && url === "/chat") {
     req.resume();
     void chat(res);

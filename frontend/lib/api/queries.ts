@@ -36,6 +36,8 @@ export type {
   UploadParams,
   SettingsIn,
   SettingsOut,
+  StatusOut,
+  RunOut,
   PaperChunksOut,
   PaperDetailsOut,
   PaperListItemOut,
@@ -75,6 +77,8 @@ export const updateInterest = (id: number, body: endpoints.InterestIn) =>
   endpoints.updateInterest(api, id, body);
 export const deleteInterest = (id: number) => endpoints.deleteInterest(api, id);
 export const fetchSettings = () => endpoints.fetchSettings(api);
+export const fetchStatus = (signal?: AbortSignal) =>
+  endpoints.fetchStatus(api, signal);
 export const saveSettings = (body: endpoints.SettingsIn) =>
   endpoints.saveSettings(api, body);
 export const fetchPapers = (
@@ -178,5 +182,22 @@ export function useEvalResult(
     queryKey: [...EVALS_KEY, "result", target?.runId, target?.itemId],
     queryFn: () => fetchEvalResult(target?.runId ?? 0, target?.itemId ?? 0),
     enabled: target !== null,
+  });
+}
+
+/** How often the system status is read again, in milliseconds. */
+export const STATUS_REFRESH_MS = 30_000;
+
+/**
+ * The system status (GET /status). The /health page and the budget banner in the layout
+ * share this one query (same key), and it is read again every 30 s: unlike the other
+ * reads it is meant to be watched.
+ */
+export function useStatus() {
+  return useQuery({
+    queryKey: ["status"],
+    queryFn: ({ signal }) => fetchStatus(signal),
+    refetchInterval: STATUS_REFRESH_MS,
+    staleTime: STATUS_REFRESH_MS,
   });
 }

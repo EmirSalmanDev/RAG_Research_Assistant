@@ -51,13 +51,16 @@ async def test_the_whole_digest_flow_over_http(
     alpha, beta = s.scalars(select(Interest).order_by(Interest.name)).all()
     alpha.embedding, beta.embedding = [1.0, 0.0], [0.0, 1.0]
     s.commit()
+    # The papers must be young relative to the clock the digest reads (7-day window); the
+    # default fixed date of make_paper ages out of the window as the real date moves on.
+    now = datetime.now(UTC)
     for i, upvotes in enumerate((25, None), start=1):
         make_paper(
             s, f"2610.0000{i}", age_days=1, upvotes=upvotes,
-            abstract=f"First sentence {i}. Second sentence.",
+            abstract=f"First sentence {i}. Second sentence.", now=now,
         )  # fmt: skip
     vectors = FakeVectors({"2610.00001": [1.0, 0.0], "2610.00002": [0.0, 1.0]})
-    digest.build_digest(s, vectors, now=datetime.now(UTC))
+    digest.build_digest(s, vectors, now=now)
     s.commit()
 
     # 4. GET /digest

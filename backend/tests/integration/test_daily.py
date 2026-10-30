@@ -41,6 +41,7 @@ class FakeArxiv:
     def __init__(self, window: list[ArxivPaper], by_id: dict[str, ArxivPaper] | None = None):
         self.window, self.by_id = window, by_id or {}
         self.calls: list[tuple[datetime, datetime | None]] = []
+        self.max_papers: list[int] = []
         self.categories: list[list[str]] = []
         self.id_requests: list[list[str]] = []
 
@@ -48,6 +49,7 @@ class FakeArxiv:
                        until: datetime | None = None, page_size: int = 100,
                        max_papers: int = 20_000) -> list[ArxivPaper]:  # fmt: skip
         self.calls.append((since, until))
+        self.max_papers.append(max_papers)
         self.categories.append(list(categories))
         return self.window[:max_papers]
 
@@ -116,6 +118,52 @@ def test_daily_fetch_uses_the_cursor_and_is_idempotent(migrated_session: Session
     assert (second["new"], second["new_version"], second["unchanged"]) == (1, 1, 1)
     assert _count(s, Paper) == 3
     assert [r.source for r in s.scalars(select(IngestRun))] == ["arxiv-daily", "arxiv-daily"]
+
+
+def _cursor_run(session: Session, cursor: datetime) -> None:
+    session.add(IngestRun(source="arxiv-daily", counts={"cursor": cursor.isoformat()},
+                          errors={}, finished_at=cursor))  # fmt: skip
+    session.commit()
+
+
+def test_a_cursor_24_days_old_gives_a_7_day_window_and_records_the_gap(
+    migrated_session: Session,
+) -> None:
+    s = migrated_session
+    _cursor_run(s, NOW - timedelta(days=24))
+    arxiv = FakeArxiv([_arxiv(1)])
+    counts = daily.fetch_arxiv_daily(s, arxiv, now=NOW)
+    assert arxiv.calls == [(NOW - timedelta(days=7), NOW)]  # not 28 days back
+    assert counts["window_capped"] is True
+    assert counts["skipped_from"] == (NOW - timedelta(days=28)).isoformat()  # cursor - 4 days
+    assert counts["skipped_to"] == (NOW - timedelta(days=7)).isoformat()
+    assert counts["cursor"] == NOW.isoformat()  # the next run starts from here
+    run = s.scalars(select(IngestRun).order_by(IngestRun.id.desc())).first()
+    assert run is not None and run.counts["window_capped"] is True and run.errors == {}
+
+
+def test_a_cursor_2_days_old_keeps_the_window_and_records_no_gap(
+    migrated_session: Session,
+) -> None:
+    s = migrated_session
+    _cursor_run(s, NOW - timedelta(days=2))
+    arxiv = FakeArxiv([_arxiv(1)])
+    counts = daily.fetch_arxiv_daily(s, arxiv, now=NOW)
+    assert arxiv.calls == [(NOW - timedelta(days=6), NOW)]  # cursor minus the overlap
+    assert not {"window_capped", "skipped_from", "skipped_to"} & set(counts)
+
+
+def test_the_paper_cap_still_applies_inside_the_capped_window(
+    migrated_session: Session,
+) -> None:
+    s = migrated_session
+    _cursor_run(s, NOW - timedelta(days=24))
+    arxiv = FakeArxiv([_arxiv(n) for n in range(1, 6)])
+    counts = daily.fetch_arxiv_daily(s, arxiv, now=NOW, max_papers=3)
+    assert arxiv.max_papers == [3]
+    assert (counts["fetched"], counts["capped"], counts["window_capped"]) == (3, True, True)
+    daily.fetch_arxiv_daily(s, arxiv, now=NOW)
+    assert arxiv.max_papers[-1] == daily.DEFAULT_MAX_PAPERS  # the default limit is unchanged
 
 
 def test_hf_daily_merges_and_fetches_missing_papers(migrated_session: Session) -> None:

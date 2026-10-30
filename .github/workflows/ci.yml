@@ -89,3 +89,35 @@ jobs:
       - run: pnpm format:check
       - run: pnpm typecheck
       - run: pnpm build
+
+  # The browser tests (frontend/e2e): a mock API and the Next dev server, driven by the
+  # Google Chrome that GitHub's Ubuntu runners ship with. Only on main: they take about a
+  # minute and the pull requests already run lint, types, unit tests and a production build.
+  # The sandbox-exec layer of `make e2e` exists only on macOS, so the Linux run relies on the
+  # other layers (Chrome's resolver rules, the route handler that aborts non-local requests).
+  e2e:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: frontend/package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright test
+        env:
+          NEXT_TELEMETRY_DISABLED: "1"
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-results
+          path: frontend/test-results
+          retention-days: 7

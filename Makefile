@@ -1,11 +1,17 @@
-.PHONY: up down logs test lint e2e openapi digest compare timeline review ingest-pdf migrate ingest-one enrich-one analyze-submit analyze-collect backfill fetch-reranker eval-retrieval eval-smoke eval eval-ablations eval-select eval-index
+.PHONY: up up-scheduler down logs test lint e2e openapi digest compare timeline review ingest-pdf migrate ingest-one enrich-one analyze-submit analyze-collect backfill fetch-reranker eval-retrieval eval-smoke eval eval-ablations eval-select eval-index
 
-# Start the stack and wait until every service's healthcheck passes.
+# Start the stack and wait until every service's healthcheck passes. Beat (the scheduler) is
+# not part of it: it fires the daily run, and a missed one at once when it starts.
 up:
 	docker compose up -d --build --wait
 
+# The same, plus Beat: the 07:00 ingest, 08:00 digest and 09:00 analysis jobs run by themselves.
+up-scheduler:
+	docker compose --profile scheduler up -d --build --wait
+
+# --profile '*' also stops the services that are in a profile (beat, frontend).
 down:
-	docker compose down
+	docker compose --profile '*' down
 
 logs:
 	docker compose logs -f --tail=100
@@ -23,7 +29,7 @@ lint:
 	cd backend && uv run python -m app.export_openapi ../frontend/openapi.json --check
 	cd frontend && pnpm gen:api:check && pnpm lint && pnpm format:check
 
-# The browser test (one Playwright test, e2e/chat-citation.spec.ts). Not part of `make test`
+# The browser tests (frontend/e2e/*.spec.ts, Playwright). Not part of `make test`
 # or `make lint`: it starts the Next dev server and a mock API and drives the Google Chrome
 # installed on this machine. No real API, no OpenAI call, nothing leaves the machine: on
 # macOS everything runs inside sandbox-exec (frontend/e2e/e2e.sb: TCP only to localhost:3999

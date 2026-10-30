@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 
+import { ErrorState } from "@/components/ui/error-state";
+import { LoadingState } from "@/components/ui/loading-state";
 import { useEvalRuns } from "@/lib/api/queries";
 import type { JoinedRow } from "@/lib/evals/compare";
 import { panelTargets, pickTarget } from "@/lib/evals/panel";
@@ -50,18 +52,13 @@ export function EvalsView() {
         </p>
       </div>
 
-      {runs.isPending && (
-        <p role="status" className="text-muted-foreground">
-          Loading the runs&hellip;
-        </p>
-      )}
+      {runs.isPending && <LoadingState label="Loading the runs…" />}
       {runs.isError && (
-        <p
-          role="alert"
-          className="rounded-md border border-destructive/40 p-3 text-sm text-destructive"
-        >
-          {runs.error.message}
-        </p>
+        <ErrorState
+          what="The runs"
+          error={runs.error}
+          onRetry={() => void runs.refetch()}
+        />
       )}
       {runs.data && list.length === 0 && (
         <p className="text-muted-foreground" data-testid="no-runs">

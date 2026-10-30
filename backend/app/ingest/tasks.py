@@ -6,7 +6,8 @@ The daily chain (Beat, 07:00 Europe/Istanbul):
     fetch_arxiv -> fetch_hf_daily -> index_abstracts -> enrich_new -> score_relevance
     -> select_fulltext
 (`score_relevance` is in app/features/tasks.py; the digest is built by its own Beat entry
-at 08:00) and `select_fulltext` starts, for every selected paper, its own chain:
+at 08:00; `daily_catchup` sends the same chain again later the same day when the 07:00 run
+did not get past arXiv) and `select_fulltext` starts, for every selected paper, its own chain:
     fetch_fulltext -> clean_paper -> chunk_paper -> embed_paper
 
 Rules every task follows:
@@ -16,18 +17,29 @@ Rules every task follows:
 - Retries: any error except a ValueError (bad input, retrying cannot help) is retried
   up to 3 times with exponential backoff and jitter. After the last retry a per-paper
   task marks its paper 'failed' (shown on the health page; a manual request resets it).
+  The chain's two fetch steps (fetch_arxiv, fetch_hf_daily) wait minutes between attempts
+  instead of seconds, so a source that is down for a while does not cost the day; their
+  failed runs say whether and when they will be retried (app/ingest/retry.py).
 - Each run writes one `ingest_runs` row (source = the task name).
+- The steps that spend money (embedding) do nothing while the monthly budget cap is reached
+  (app/features/budget.py): the run records `skipped`, the paper keeps its status and is picked
+  up again by `select_fulltext` once the cap allows (docs/adr/0013).
 """
 
 import logging
+from collections.abc import Callable, Sequence
+from datetime import UTC, datetime
 from typing import Any
 
 from celery import Task, chain
 from celery.canvas import Signature
+from sqlalchemy import select
 
+from app.config import get_settings
 from app.db.models import Paper
 from app.db.session import session_scope
-from app.ingest import daily, pipeline
+from app.features import budget
+from app.ingest import catchup, daily, pipeline, retry
 from app.ingest.fulltext import default_sources, select_for_fulltext
 from app.ingest.fulltext import fetch_fulltext as fetch_fulltext_step
 from app.worker.celery_app import celery_app
@@ -79,18 +91,47 @@ def _embedders() -> dict[str, Any]:
 # --- the daily chain --------------------------------------------------------------------------
 
 
-@celery_app.task(name="ingest.fetch_arxiv", **RETRY_OPTIONS)
-def fetch_arxiv() -> dict[str, Any]:
-    with session_scope() as session:
-        return daily.fetch_arxiv_daily(session, _arxiv())
+def run_with_fetch_retries(
+    task: Task, step: Callable[[daily.ErrorNote], dict[str, Any]]
+) -> dict[str, Any]:
+    """Run one attempt of a daily fetch step under the minutes-scale retry rule
+    (app/ingest/retry.py, docs/adr/0003). `step` gets the error note for its run row.
+
+    A failure before the last attempt is retried after the delay drawn for it (the retry
+    keeps the rest of the chain, so a later success continues the chain). The last
+    attempt's failure is raised, which stops the chain as before. A ValueError is raised
+    at once, as with RETRY_OPTIONS."""
+    plan = retry.plan_attempt(task.request.retries, get_settings())
+    try:
+        return step(plan.error_note)
+    except ValueError:
+        raise
+    except Exception as err:
+        if plan.delay_s is None:
+            raise
+        logger.warning("%s failed (%s): %s", task.name, plan.note, err)
+        # max_retries is given here, so the setting decides (not the decorator's default).
+        raise task.retry(exc=err, countdown=plan.delay_s, max_retries=plan.attempts - 1) from err
 
 
-@celery_app.task(name="ingest.fetch_hf_daily", **RETRY_OPTIONS)
-def fetch_hf_daily() -> dict[str, Any]:
+@celery_app.task(name="ingest.fetch_arxiv", bind=True)
+def fetch_arxiv(self: Task) -> dict[str, Any]:
+    def step(error_note: daily.ErrorNote) -> dict[str, Any]:
+        with session_scope() as session:
+            return daily.fetch_arxiv_daily(session, _arxiv(), error_note=error_note)
+
+    return run_with_fetch_retries(self, step)
+
+
+@celery_app.task(name="ingest.fetch_hf_daily", bind=True)
+def fetch_hf_daily(self: Task) -> dict[str, Any]:
     from app.sources.hf import HFClient
 
-    with session_scope() as session:
-        return daily.fetch_hf_daily(session, HFClient(), _arxiv())
+    def step(error_note: daily.ErrorNote) -> dict[str, Any]:
+        with session_scope() as session:
+            return daily.fetch_hf_daily(session, HFClient(), _arxiv(), error_note=error_note)
+
+    return run_with_fetch_retries(self, step)
 
 
 @celery_app.task(name="ingest.index_abstracts", **RETRY_OPTIONS)
@@ -100,6 +141,10 @@ def index_abstracts() -> dict[str, Any]:
 
     ensure_collection()
     with session_scope() as session, daily.recorded_run(session, "index-abstracts") as counts:
+        if budget.is_paused(session):
+            # Unindexed abstracts are found again by the next run, so nothing is lost.
+            counts["skipped"] = budget.PAUSED_REASON
+            return counts
         counts["indexed"] = index_all(session, **_embedders())
     return counts
 
@@ -123,9 +168,19 @@ def select_fulltext() -> dict[str, Any]:
     with session_scope() as session, daily.recorded_run(session, "select-fulltext") as counts:
         top_n = app_settings.load(session).fulltext_top_n
         selected = list(select_for_fulltext(session, top_n=top_n))
+        counts.update(selected=len(selected), top_n=top_n, arxiv_ids=selected[:50])
+        if budget.is_paused(session):
+            counts["skipped"] = budget.PAUSED_REASON
+            return counts
         for arxiv_id in selected:
             paper_chain(arxiv_id).apply_async()
-        counts.update(selected=len(selected), top_n=top_n, arxiv_ids=selected[:50])
+        # Papers whose text is stored but not indexed (an embed step skipped under the
+        # budget cap, or a worker that died): clean, chunk and embed them again. All three
+        # steps are idempotent and start from the stored text.
+        waiting = list(stuck_papers(session))
+        for arxiv_id in waiting:
+            resume_chain(arxiv_id).apply_async()
+        counts["resumed"] = len(waiting)
     return counts
 
 
@@ -135,6 +190,22 @@ def paper_chain(arxiv_id: str) -> Signature:
         clean_paper.si(arxiv_id),
         chunk_paper.si(arxiv_id),
         embed_paper.si(arxiv_id),
+    )
+
+
+def resume_chain(arxiv_id: str) -> Signature:
+    """The steps after the download, for a paper whose text is already stored."""
+    return chain(clean_paper.si(arxiv_id), chunk_paper.si(arxiv_id), embed_paper.si(arxiv_id))
+
+
+def stuck_papers(session: Any) -> Sequence[str]:
+    """Papers with stored text that no chain has indexed ('fetched')."""
+    return list(
+        session.scalars(
+            select(Paper.arxiv_id)
+            .where(Paper.fulltext_status == "fetched")
+            .order_by(Paper.arxiv_id)
+        )
     )
 
 
@@ -154,6 +225,20 @@ def daily_pipeline() -> str:
     """Started by Beat at 07:00 Europe/Istanbul (or by hand): queue the daily chain."""
     result = daily_chain().apply_async()
     return str(result.id)
+
+
+@celery_app.task(name="ingest.daily_catchup")
+def daily_catchup() -> dict[str, Any]:
+    """Sent by Beat at the catch-up times (13:00 and 19:00 Istanbul by default): send the
+    daily chain again if no arXiv run has succeeded since 07:00 and none is in progress
+    (app/ingest/catchup.py). Writes one 'daily-catchup' run either way. Not retried: it
+    only reads Postgres and sends one message, and the next catch-up decides again."""
+    with session_scope() as session, daily.recorded_run(session, catchup.SOURCE) as counts:
+        decision = catchup.decide(session, datetime.now(UTC), get_settings())
+        counts.update(action=decision.action, reason=decision.reason)
+        if decision.start:
+            counts["chain_id"] = str(daily_chain().apply_async().id)
+    return counts
 
 
 # --- per-paper full-text steps ----------------------------------------------------------------
@@ -201,6 +286,9 @@ def embed_paper(arxiv_id: str) -> dict[str, Any]:
         if _status(session, arxiv_id) != "fetched":
             counts.update(arxiv_id=arxiv_id, skipped=True)
             return counts
+        if budget.is_paused(session):
+            counts.update(arxiv_id=arxiv_id, skipped=budget.PAUSED_REASON)
+            return counts  # status stays 'fetched': select_fulltext resumes it later
         counts.update(
             arxiv_id=arxiv_id, embedded=upsert_paper_chunks(session, arxiv_id, **_embedders())
         )

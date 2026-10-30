@@ -3,11 +3,23 @@
 Model names live here and nowhere else (never hard-code them in other modules).
 """
 
+import re
+from datetime import time
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import SecretStr, field_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# How long Redis waits for an unacknowledged Celery message before it delivers the message
+# again (kombu's own default, set explicitly in app/worker/celery_app.py). A task retry
+# waiting for its countdown is such a message, so every retry delay must stay below it.
+BROKER_VISIBILITY_TIMEOUT_S = 3600
+# Beat reads every schedule time in this zone (app/worker/celery_app.py); the daily chain
+# starts at DAILY_INGEST_AT there (app/worker/schedule.py).
+SCHEDULE_TIMEZONE = "Europe/Istanbul"
+DAILY_INGEST_AT = time(7, 0)
+_HH_MM = re.compile(r"([01][0-9]|2[0-3]):([0-5][0-9])")
 
 
 class Settings(BaseSettings):
@@ -32,6 +44,25 @@ class Settings(BaseSettings):
     # arXiv categories fetched daily and by the backfill. In .env, a JSON list:
     # ARXIV_CATEGORIES='["cs.CL","cs.LG"]'
     arxiv_categories: list[str] = ["cs.CL", "cs.LG", "cs.AI", "cs.IR"]
+    # The daily arXiv fetch reads from the last run's cursor minus 4 days, but never more
+    # than this many days back: after a long pause (weeks without a run) one daily run
+    # would otherwise page through tens of thousands of papers. The skipped days are
+    # recorded on the run (`window_capped`, `skipped_from`, `skipped_to`) and shown on the
+    # health page; `make backfill` fetches them on purpose. Not applied to the backfill.
+    arxiv_daily_max_window_days: int = 7
+    # Task-level retries of the chain's two fetch steps, fetch_arxiv and fetch_hf_daily
+    # (docs/adr/0003). They wait minutes, not seconds, so a source that is down for a few
+    # minutes does not cost the day: retry n waits first_delay * factor**(n-1) minutes,
+    # times a random factor between 1 - jitter and 1 + jitter (2, 6 and 18 min +/-20 %).
+    # The longest delay must stay below BROKER_VISIBILITY_TIMEOUT_S (checked below).
+    daily_fetch_retries: int = Field(default=3, ge=0)
+    daily_fetch_retry_first_delay_min: float = Field(default=2.0, gt=0)
+    daily_fetch_retry_factor: float = Field(default=3.0, ge=1)
+    daily_fetch_retry_jitter: float = Field(default=0.2, ge=0, lt=1)
+    # Same-day catch-up (docs/adr/0003): at these times (HH:MM, Istanbul, comma-separated,
+    # each later than 07:00) Beat sends the daily chain again, but only if no arXiv run has
+    # succeeded since 07:00 and no chain is in progress. Empty = no catch-up.
+    daily_catchup_times: str = "13:00,19:00"
 
     # Embeddings. Changing the model or the dimension means re-embedding everything,
     # and the Qdrant collection must be recreated with the new size.
@@ -242,6 +273,51 @@ class Settings(BaseSettings):
     def _empty_means_unset(cls, value: object) -> object:
         """`S2_API_KEY=` in .env arrives as "": treat it as "no key", not an empty key."""
         return None if value == "" else value
+
+    @field_validator("daily_catchup_times")
+    @classmethod
+    def _catchup_times_are_valid(cls, value: str) -> str:
+        """Refuse what Beat could not schedule or what would come before the 07:00 run
+        (a catch-up then would look back at yesterday's 07:00)."""
+        if not value.strip():
+            return ""
+        times = [part.strip() for part in value.split(",")]
+        for part in times:
+            if not _HH_MM.fullmatch(part):
+                raise ValueError(f"daily catch-up time {part!r} is not HH:MM (00:00-23:59)")
+            if time.fromisoformat(part) <= DAILY_INGEST_AT:
+                raise ValueError(
+                    f"daily catch-up time {part} must be later than the daily run at "
+                    f"{DAILY_INGEST_AT:%H:%M}"
+                )
+        if len(set(times)) != len(times):
+            raise ValueError(f"daily catch-up times repeat: {value!r}")
+        return ",".join(times)
+
+    @property
+    def daily_catchup_at(self) -> list[time]:
+        """The catch-up times, in the order given; empty when the catch-up is off."""
+        if not self.daily_catchup_times:
+            return []
+        return [time.fromisoformat(part) for part in self.daily_catchup_times.split(",")]
+
+    @model_validator(mode="after")
+    def _fetch_retries_fit_the_broker(self) -> "Settings":
+        """Refuse a retry schedule whose longest delay could reach the visibility timeout:
+        Redis would deliver the waiting retry a second time (two runs of the same step)."""
+        if self.daily_fetch_retries > 0:
+            longest_s = (
+                self.daily_fetch_retry_first_delay_min
+                * self.daily_fetch_retry_factor ** (self.daily_fetch_retries - 1)
+                * (1 + self.daily_fetch_retry_jitter)
+                * 60
+            )
+            if longest_s >= BROKER_VISIBILITY_TIMEOUT_S:
+                raise ValueError(
+                    f"the longest daily fetch retry delay ({longest_s:.0f} s) must stay below "
+                    f"the broker visibility timeout ({BROKER_VISIBILITY_TIMEOUT_S} s)"
+                )
+        return self
 
 
 @lru_cache

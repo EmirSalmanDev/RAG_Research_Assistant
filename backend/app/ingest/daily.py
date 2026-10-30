@@ -6,7 +6,9 @@
   from the last successful run's cursor minus a 4-day overlap until now. arXiv shows
   papers a day or more after submission (and not at weekends), so the overlap catches
   late arrivals; upserts make the repeats free, and `index_abstracts` skips papers that
-  are already indexed, so they cost no embeddings either.
+  are already indexed, so they cost no embeddings either. The daily window never starts
+  more than `arxiv_daily_max_window_days` (7) before now: after weeks without a run the
+  older days are skipped, recorded on the run and left to a deliberate backfill.
 - `fetch_hf_daily()` merges Hugging Face's daily papers (upvotes, GitHub repo, project
   page) and adds trending papers we do not hold, even outside our categories.
 - `backfill()` fetches a past window and indexes abstracts only (no full text).
@@ -24,6 +26,7 @@ from typing import Any, Protocol
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
+from app.config import get_settings
 from app.db.models import IngestRun, Paper
 from app.features import app_settings
 from app.ingest.paper import upsert_paper
@@ -41,13 +44,20 @@ DEFAULT_MAX_PAPERS = 20_000
 # --- ingest_runs bookkeeping ---------------------------------------------------------------
 
 
+ErrorNote = Callable[[Exception], str | None]
+
+
 @contextmanager
-def recorded_run(session: Session, source: str) -> Iterator[dict[str, Any]]:
+def recorded_run(
+    session: Session, source: str, error_note: ErrorNote | None = None
+) -> Iterator[dict[str, Any]]:
     """Record one run in `ingest_runs`. The body fills the yielded `counts` dict.
 
     On success the row is committed with its counts and an empty `errors`. If the body
     raises, the work is rolled back, the row is written with the error, and the
-    exception is re-raised (so Celery can retry).
+    exception is re-raised (so Celery can retry). `error_note(err)` can put a note in
+    front of the error, e.g. "will retry in 6 min (attempt 1 of 4)" (app/ingest/retry.py);
+    in front, because the health page cuts long errors.
     """
     run = IngestRun(source=source, counts={}, errors={})
     session.add(run)
@@ -57,7 +67,11 @@ def recorded_run(session: Session, source: str) -> Iterator[dict[str, Any]]:
         yield counts
     except Exception as err:
         session.rollback()
-        run.counts, run.errors = counts, {"error": f"{type(err).__name__}: {err}"[:500]}
+        message = f"{type(err).__name__}: {err}"
+        note = error_note(err) if error_note is not None else None
+        if note:
+            message = f"{note}: {message}"
+        run.counts, run.errors = counts, {"error": message[:500]}
         run.finished_at = datetime.now(UTC)
         session.commit()
         raise
@@ -82,10 +96,15 @@ def last_cursor(session: Session, sources: Sequence[str] = ARXIV_SOURCES) -> dat
     return None
 
 
-def daily_window(cursor: datetime | None, now: datetime) -> tuple[datetime, datetime]:
-    """[cursor - 4 days, now]; without a cursor, [now - 1 day - 4 days, now]."""
-    start = cursor if cursor is not None else now - FIRST_RUN_LOOKBACK
-    return start - OVERLAP, now
+def daily_window(
+    cursor: datetime | None, now: datetime, max_days: int | None = None
+) -> tuple[datetime, datetime]:
+    """[cursor - 4 days, now]; without a cursor, [now - 1 day - 4 days, now]. With
+    `max_days`, the start is never earlier than `now - max_days` days."""
+    start = (cursor if cursor is not None else now - FIRST_RUN_LOOKBACK) - OVERLAP
+    if max_days is not None:
+        start = max(start, now - timedelta(days=max_days))
+    return start, now
 
 
 class ArxivWindowSource(Protocol):
@@ -133,13 +152,31 @@ def fetch_arxiv_window(
 
 
 def fetch_arxiv_daily(
-    session: Session, arxiv: ArxivWindowSource, now: datetime | None = None
+    session: Session,
+    arxiv: ArxivWindowSource,
+    now: datetime | None = None,
+    *,
+    max_papers: int = DEFAULT_MAX_PAPERS,
+    error_note: ErrorNote | None = None,
 ) -> dict[str, Any]:
-    """The daily step: fetch [cursor - 4 days, now] and record the run as 'arxiv-daily'."""
+    """The daily step: fetch [cursor - 4 days, now], at most `arxiv_daily_max_window_days`
+    back, and record the run as 'arxiv-daily'. When the cap cut the window, the run's
+    counts say which days were skipped (`window_capped`, `skipped_from`, `skipped_to`).
+    The cursor still moves to now when the run succeeds, so the next run starts from here
+    and the skipped days are only fetched by `make backfill`. `max_papers` stays a second
+    limit inside the window. `error_note`: see `recorded_run`."""
     now = now or datetime.now(UTC)
-    since, until = daily_window(last_cursor(session), now)
-    with recorded_run(session, "arxiv-daily") as counts:
-        counts.update(fetch_arxiv_window(session, arxiv, since, until))
+    cursor = last_cursor(session)
+    full_since, _ = daily_window(cursor, now)
+    since, until = daily_window(cursor, now, get_settings().arxiv_daily_max_window_days)
+    with recorded_run(session, "arxiv-daily", error_note) as counts:
+        counts.update(fetch_arxiv_window(session, arxiv, since, until, max_papers=max_papers))
+        if since > full_since:
+            counts.update(
+                window_capped=True,
+                skipped_from=full_since.isoformat(),
+                skipped_to=since.isoformat(),
+            )
     return counts
 
 
@@ -151,13 +188,18 @@ class HFDailySource(Protocol):
 
 
 def fetch_hf_daily(
-    session: Session, hf: HFDailySource, arxiv: ArxivWindowSource, today: date | None = None
+    session: Session,
+    hf: HFDailySource,
+    arxiv: ArxivWindowSource,
+    today: date | None = None,
+    *,
+    error_note: ErrorNote | None = None,
 ) -> dict[str, Any]:
     """Yesterday's and today's Hugging Face daily papers: fetch the ones we do not hold
     from arXiv (50 ids per request), then merge upvotes, GitHub repo and project page.
-    Recorded as an 'hf-daily' run."""
+    Recorded as an 'hf-daily' run. `error_note`: see `recorded_run`."""
     today = today or datetime.now(UTC).date()
-    with recorded_run(session, "hf-daily") as counts:
+    with recorded_run(session, "hf-daily", error_note) as counts:
         listed: dict[str, HFPaper] = {}
         for day in (today - timedelta(days=1), today):
             for paper in hf.daily_papers(day):

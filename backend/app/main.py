@@ -10,6 +10,7 @@ from app.api.library import router as library_router
 from app.api.papers import router as papers_router
 from app.api.review import router as review_router
 from app.api.search import router as search_router
+from app.api.status import router as status_router
 from app.api.upload import router as upload_router
 from app.egress_guard import install_from_env
 
@@ -19,6 +20,7 @@ install_from_env()
 
 app = FastAPI(title="AI Research Copilot")
 app.include_router(health_router)
+app.include_router(status_router)
 app.include_router(search_router)
 app.include_router(chat_router)
 app.include_router(papers_router)

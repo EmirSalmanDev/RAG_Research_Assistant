@@ -3,8 +3,9 @@
 - `digest.score_relevance` is step 4 of the nightly chain (after `enrich_new`, before
   `select_fulltext`, see app/ingest/tasks.py): it embeds interests whose text changed,
   then stores `relevance_score` for the papers of the window. The interest embedding is
-  the only paid call (a few hundred tokens, once per edit); if it fails the scoring still
-  runs with the vectors it has and the error is recorded in the run.
+  the only paid call (a few hundred tokens, once per edit); if it fails, or the monthly
+  budget cap is reached (app/features/budget.py), the scoring still runs with the vectors
+  it has and the reason is recorded in the run.
 - `digest.build` (Beat, 08:00 Europe/Istanbul) writes the day's digest. A second run for
   the same day changes nothing.
 
@@ -15,7 +16,7 @@ from datetime import date
 from typing import Any
 
 from app.db.session import session_scope
-from app.features import digest
+from app.features import budget, digest
 from app.ingest.daily import recorded_run
 from app.ingest.tasks import RETRY_OPTIONS
 from app.worker.celery_app import celery_app
@@ -35,7 +36,12 @@ def _vectors() -> digest.AbstractVectors:
 def score_relevance() -> dict[str, Any]:
     with session_scope() as session, recorded_run(session, "score-relevance") as counts:
         try:
-            counts["interests_embedded"] = digest.ensure_interest_embeddings(session, _dense())
+            if budget.is_paused(session):
+                # Scoring with the stored vectors costs nothing, so only the embedding waits;
+                # an edited interest is embedded by the first run after the cap allows it.
+                counts["embed_skipped"] = budget.PAUSED_REASON
+            else:
+                counts["interests_embedded"] = digest.ensure_interest_embeddings(session, _dense())
             session.commit()  # keep the vectors that cost money even if scoring fails later
         except Exception as err:  # no key, API down: score with the vectors we have
             session.rollback()

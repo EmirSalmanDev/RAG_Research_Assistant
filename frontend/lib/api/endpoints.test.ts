@@ -22,6 +22,7 @@ import {
   fetchDigest,
   fetchInterests,
   fetchSettings,
+  fetchStatus,
   saveSettings,
   updateInterest,
   addItem,
@@ -355,6 +356,27 @@ test("settings: read and save", async () => {
       ["PUT", "/api/settings"],
     ],
   );
+});
+
+test("the status read asks /status and a failed answer becomes an ApiError", async () => {
+  const body = {
+    stores: { postgres: "up", qdrant: "up", redis: "up" },
+    errors: {},
+  };
+  const ok = mocked(() => Response.json(body));
+  assert.deepEqual(await fetchStatus(ok.client), body);
+  assert.deepEqual(
+    ok.calls.map((c) => [c.method, c.url.pathname]),
+    [["GET", "/api/status"]],
+  );
+  const bad = mocked(() =>
+    Response.json({ detail: "database is down" }, { status: 503 }),
+  );
+  await assert.rejects(fetchStatus(bad.client), (err: Error) => {
+    assert.equal(err.name, "ApiError");
+    assert.equal(err.message, "database is down");
+    return true;
+  });
 });
 
 // --- paper comparison and timeline -----------------------------------------------------------

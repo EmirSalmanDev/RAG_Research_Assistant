@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 
+import { BudgetBanner } from "@/components/health/budget-banner";
 import { SiteNav } from "@/components/site-nav";
 
 import { Providers } from "./providers";
@@ -19,6 +20,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       <body className="flex min-h-full flex-col">
         <Providers>
           <SiteNav />
+          <BudgetBanner />
           <main className="flex flex-1 flex-col">{children}</main>
         </Providers>
       </body>

@@ -121,7 +121,7 @@ quality of the ranking beyond that sanity check, and the scoring was not tuned.
   of this milestone.
 - DEVIATION PROPOSAL (pre-accepted by owner in this prompt): the budget cap is stored and
   shown next to the month-to-date spend, but nothing is paused when it is reached; that is
-  a later milestone.
+  a later milestone (done in docs/adr/0013).
 - DEVIATION PROPOSAL (pre-accepted by owner in this prompt): the data model gains the
   interest columns, `app_settings` and `digest_entries` described above.
 - DEVIATION PROPOSAL (needs owner ok): "top N by relevance" is read as the N best papers

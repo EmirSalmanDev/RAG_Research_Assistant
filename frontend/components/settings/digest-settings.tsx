@@ -4,7 +4,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { ErrorState } from "@/components/ui/error-state";
 import { Input } from "@/components/ui/input";
+import { LoadingState } from "@/components/ui/loading-state";
 import { fetchSettings, saveSettings } from "@/lib/api/queries";
 import type { SettingsOut } from "@/lib/api/queries";
 import {
@@ -16,22 +18,20 @@ import {
 } from "@/lib/settings/form";
 
 // Digest size, the arXiv categories the daily fetch uses, how many papers get full text
-// each night, and the monthly budget cap. The cap is stored and shown next to this month's
-// spending, but nothing is paused when it is reached yet.
+// each night, and the monthly budget cap. The cap is shown next to this month's spending;
+// when it is reached, the background jobs that spend money pause (chat and search do not).
 export function DigestSettings() {
   const settings = useQuery({ queryKey: ["settings"], queryFn: fetchSettings });
   if (settings.isPending) {
-    return (
-      <p role="status" className="text-sm text-muted-foreground">
-        Loading settings&hellip;
-      </p>
-    );
+    return <LoadingState label="Loading settings…" lines={2} />;
   }
   if (settings.isError) {
     return (
-      <p role="alert" className="text-sm text-destructive">
-        Settings could not be loaded: {settings.error.message}
-      </p>
+      <ErrorState
+        what="Settings"
+        error={settings.error}
+        onRetry={() => void settings.refetch()}
+      />
     );
   }
   return <SettingsForm settings={settings.data} />;
@@ -140,8 +140,9 @@ function SettingsForm({ settings }: { settings: SettingsOut }) {
           <strong data-testid="month-spend">
             {formatUsd(settings.month_to_date_usd)}
           </strong>
-          . The cap is stored and shown here only; nothing is paused when it is
-          reached yet.
+          . When the cap is reached, the nightly jobs that spend money
+          (embedding, paper analyses) pause until next month or a higher cap.
+          Chat and search keep working.
         </p>
       </div>
       {problems.length > 0 && (
