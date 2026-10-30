@@ -1,8 +1,9 @@
 # AI Research Copilot
 
-A personal, local-first research assistant for AI papers. Every morning it fetches new
-arXiv papers, indexes their abstracts (and the full text of the papers you care about) for
-hybrid search, and ranks them against your interests in a daily digest. You ask questions
+A personal, local-first research assistant for AI papers. Every morning its scheduler starts
+a run that fetches new arXiv papers, indexes their abstracts (and the full text of the papers
+you care about) for hybrid search, and ranks them against your interests in a daily digest
+(how much of that run has been seen working: "Known limitations"). You ask questions
 and get answers whose every sentence cites a passage you can open. It also compares papers,
 draws topic timelines, keeps a library with BibTeX export and drafts related-work sections.
 
@@ -83,7 +84,7 @@ design target is an Apple Silicon Mac; the release workflow builds arm64 and amd
    start it in compose: `docker compose --profile frontend up -d --wait frontend` (same
    address).
 
-To get a digest and new papers every morning you also need the scheduler (next section).
+The daily runs (new papers and the digest) also need the scheduler (next section).
 To seed the corpus before that, `make backfill DAYS=7` indexes the last week of abstracts.
 
 ### What `make up` starts
@@ -132,7 +133,7 @@ compose service name `api`: run it on a Docker network where the API container i
 | Command | What it does |
 | --- | --- |
 | `make up` / `make down` / `make logs` | start, stop, tail the stack (without the scheduler; `make down` stops everything) |
-| `make up-scheduler` | the same plus Beat, the scheduler: the 07:00, 08:00 and 09:00 jobs (and the 13:00 and 19:00 catch-ups) then run by themselves, and a run that came due while Beat was off is sent at once |
+| `make up-scheduler` | the same plus Beat, the scheduler: Beat then sends the 07:00, 08:00 and 09:00 jobs (and the 13:00 and 19:00 catch-ups) by itself, and a run that came due while Beat was off is sent at once (see "Known limitations") |
 | `make migrate` | apply database migrations |
 | `make test` / `make lint` | backend tests (offline) and frontend checks and unit tests / linters |
 | `make e2e` | the browser tests: Playwright tests of the chat, digest, paper, compare, timeline, library, evals and health pages and of the loading and error states (see "Browser test"); not part of `make test`, run in CI on `main` |
@@ -348,9 +349,11 @@ builds one by hand. Decisions: `docs/adr/0009`.
 
 Every step is a separate, idempotent Celery task, retried with backoff; each run is
 recorded in the `ingest_runs` table. The two fetch steps (fetch_arxiv, fetch_hf_daily) wait
-minutes between their attempts, so a source that is down for a while does not cost the
-day: 3 retries after 2, 6 and 18 minutes, each +/-20 % (`DAILY_FETCH_RETRIES`,
-`DAILY_FETCH_RETRY_FIRST_DELAY_MIN`, `DAILY_FETCH_RETRY_FACTOR`, `DAILY_FETCH_RETRY_JITTER`).
+minutes between their attempts, so that a source that comes back within about half an hour
+does not stop the run: 3 retries after 2, 6 and 18 minutes, each +/-20 %
+(`DAILY_FETCH_RETRIES`, `DAILY_FETCH_RETRY_FIRST_DELAY_MIN`, `DAILY_FETCH_RETRY_FACTOR`, `DAILY_FETCH_RETRY_JITTER`).
+Such a recovery has not been seen yet: on the mornings observed, arXiv refused for longer
+(see "Known limitations").
 A failed attempt's error on the health page says "will retry in N min (attempt k of 4)".
 "last attempt (4 of 4), no retry", or an error without a note (bad input, never retried),
 means the step gave up and the rest of the chain did not run that day. A chain that
@@ -358,8 +361,9 @@ succeeds only on its last retry can finish after 08:00; the digest is then built
 papers already stored. On the health page such a step is listed as "waiting to retry", and
 only the last attempt's failure as failed.
 
-If the 07:00 run did not get past arXiv (arXiv has refused early-morning runs with HTTP 429
-"Rate exceeded" while answering later in the day), Beat tries the same chain again at
+If the 07:00 run did not get past arXiv (on both mornings observed, arXiv refused it with
+HTTP 429 "Rate exceeded" and read timeouts, while runs started later in the day were
+answered), Beat tries the same chain again at
 **13:00** and **19:00** (`DAILY_CATCHUP_TIMES`, HH:MM Istanbul, comma-separated, each later
 than 07:00; empty switches it off). A catch-up starts the chain only if no `arxiv-daily` run
 has succeeded since 07:00 and no chain is still running or waiting for a retry; otherwise it
@@ -376,6 +380,27 @@ skip and say so in `ingest_runs`.
 
 Postgres is the source of truth; the Qdrant collection is derived from it and can be
 rebuilt. Design decisions are recorded in `docs/adr/`.
+
+## Known limitations
+The daily pipeline has been checked in parts, not yet as one unattended run:
+
+- **Beat sends the 07:00 run, but arXiv refused it both times it was watched.** On the two
+  mornings observed (28 and 29 October 2026), Beat sent the daily chain at 07:00 Istanbul,
+  and arXiv refused it from the first request on (HTTP 429 and read timeouts). The chain
+  stopped at its first step, the arXiv fetch, after its retries. On the first morning the
+  retries were still seconds apart; on the second, with the retries after about 2, 6 and 18
+  minutes, arXiv kept refusing for all 29 minutes. Runs started by hand later in the day
+  were answered, and one of them (29 October, 15:23 Istanbul) ran the whole chain to the end
+  in the compose worker, full texts included.
+- **The same-day catch-up has been seen only when it skips.** Because of those refusals, a
+  catch-up runs at 13:00 and 19:00 (`DAILY_CATCHUP_TIMES`): it starts the chain only if no
+  `arxiv-daily` run has succeeded since 07:00 and none is running or waiting to retry;
+  otherwise it records a skipped run. The skip path has been observed under Beat (19:00 on 29 October 2026, after
+  that day's successful run). The start path is covered by tests only.
+- **A Beat-triggered 07:00 chain has not yet been observed finishing end to end.** So it is
+  not shown that the daily ingest runs unattended. The health page tells you what happened:
+  an `arxiv-daily` line "last attempt (4 of 4), no retry" means the run gave up, and the
+  `daily-catchup` line says whether a catch-up started the chain again.
 
 ## Evaluation
 Two kinds of numbers, both stored in `eval_runs` with the configuration and the git commit
