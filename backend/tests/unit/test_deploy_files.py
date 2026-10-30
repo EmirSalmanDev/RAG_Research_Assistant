@@ -28,11 +28,30 @@ def _steps_text(job: dict[str, Any]) -> str:
 # --- docker-compose.yml / Makefile --------------------------------------------------------
 
 
-def test_beat_is_only_started_by_its_profile_and_nothing_else_is_in_one_but_the_frontend() -> None:
+def test_beat_is_only_started_by_its_profile_and_nothing_else_is_in_one() -> None:
     services = _yaml("docker-compose.yml")["services"]
     assert services["beat"]["profiles"] == ["scheduler"]
     profiled = {name for name, svc in services.items() if "profiles" in svc}
-    assert profiled == {"beat", "frontend"}  # a plain `make up` starts everything else
+    assert profiled == {"beat"}  # a plain `make up` starts everything else, the frontend too
+
+
+def test_make_up_starts_the_frontend_once_the_api_is_healthy() -> None:
+    frontend = _yaml("docker-compose.yml")["services"]["frontend"]
+    assert "profiles" not in frontend
+    # Without the condition Compose starts it as soon as the api container exists.
+    assert frontend["depends_on"] == {"api": {"condition": "service_healthy"}}
+    # `make up --wait` waits for a healthcheck only if the service has one.
+    test = frontend["healthcheck"]["test"]
+    assert test[:3] == ["CMD", "node", "-e"] and "localhost:3000" in test[3]
+
+
+def test_every_published_port_is_bound_to_localhost() -> None:
+    # Without a host IP, Docker publishes on 0.0.0.0 and the service is reachable from the LAN.
+    services = _yaml("docker-compose.yml")["services"]
+    for name, svc in services.items():
+        for port in svc.get("ports", []):
+            assert str(port).startswith("127.0.0.1:"), (name, port)
+    assert services["frontend"]["ports"] == ["127.0.0.1:3000:3000"]
 
 
 def test_make_up_does_not_name_the_scheduler_profile_and_up_scheduler_does() -> None:
@@ -53,7 +72,7 @@ def test_the_compose_frontend_is_built_to_proxy_to_the_api_service() -> None:
 
 
 def test_make_down_also_stops_the_services_in_profiles() -> None:
-    # Without --profile '*', `docker compose down` leaves beat and the frontend running.
+    # Without --profile '*', `docker compose down` leaves beat running.
     down = re.search(r"^down:\n((?:\t.*\n)+)", (ROOT / "Makefile").read_text(), re.M)
     assert down and "--profile '*'" in down.group(1)
 
