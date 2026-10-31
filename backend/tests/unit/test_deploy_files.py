@@ -28,11 +28,30 @@ def _steps_text(job: dict[str, Any]) -> str:
 # --- docker-compose.yml / Makefile --------------------------------------------------------
 
 
-def test_beat_is_only_started_by_its_profile_and_nothing_else_is_in_one_but_the_frontend() -> None:
+def test_beat_is_only_started_by_its_profile_and_nothing_else_is_in_one() -> None:
     services = _yaml("docker-compose.yml")["services"]
     assert services["beat"]["profiles"] == ["scheduler"]
     profiled = {name for name, svc in services.items() if "profiles" in svc}
-    assert profiled == {"beat", "frontend"}  # a plain `make up` starts everything else
+    assert profiled == {"beat"}  # a plain `make up` starts everything else, the frontend too
+
+
+def test_make_up_starts_the_frontend_once_the_api_is_healthy() -> None:
+    frontend = _yaml("docker-compose.yml")["services"]["frontend"]
+    assert "profiles" not in frontend
+    # Without the condition Compose starts it as soon as the api container exists.
+    assert frontend["depends_on"] == {"api": {"condition": "service_healthy"}}
+    # `make up --wait` waits for a healthcheck only if the service has one.
+    test = frontend["healthcheck"]["test"]
+    assert test[:3] == ["CMD", "node", "-e"] and "localhost:3000" in test[3]
+
+
+def test_every_published_port_is_bound_to_localhost() -> None:
+    # Without a host IP, Docker publishes on 0.0.0.0 and the service is reachable from the LAN.
+    services = _yaml("docker-compose.yml")["services"]
+    for name, svc in services.items():
+        for port in svc.get("ports", []):
+            assert str(port).startswith("127.0.0.1:"), (name, port)
+    assert services["frontend"]["ports"] == ["127.0.0.1:3000:3000"]
 
 
 def test_make_up_does_not_name_the_scheduler_profile_and_up_scheduler_does() -> None:
@@ -53,9 +72,29 @@ def test_the_compose_frontend_is_built_to_proxy_to_the_api_service() -> None:
 
 
 def test_make_down_also_stops_the_services_in_profiles() -> None:
-    # Without --profile '*', `docker compose down` leaves beat and the frontend running.
+    # Without --profile '*', `docker compose down` leaves beat running.
     down = re.search(r"^down:\n((?:\t.*\n)+)", (ROOT / "Makefile").read_text(), re.M)
     assert down and "--profile '*'" in down.group(1)
+
+
+def test_every_make_line_that_builds_skips_the_default_attestations() -> None:
+    # BuildKit's default attestation is new on every build, so even a fully cached build gets
+    # a new image ID and `make up` recreates the container (and kills the worker's task).
+    # Compose's Bake build ignores `provenance: false` in the compose file, hence the variable.
+    makefile = (ROOT / "Makefile").read_text()
+    recipes = [line.strip() for line in makefile.splitlines() if line.startswith("\t")]
+    building = [r for r in recipes if "docker compose" in r and re.search(r"--build|\bbuild\b", r)]
+    assert len(building) == 2  # make up and make up-scheduler
+    for line in building:
+        assert line.startswith("BUILDX_NO_DEFAULT_ATTESTATIONS=1 docker compose "), line
+
+
+def test_redis_keeps_its_data_in_a_tmpfs_not_a_volume() -> None:
+    # The redis image declares VOLUME /data: without a mount there, every container gets an
+    # anonymous volume that `make down` leaves behind. The queue is not meant to persist.
+    redis = _yaml("docker-compose.yml")["services"]["redis"]
+    assert redis["tmpfs"] == ["/data"]
+    assert "volumes" not in redis
 
 
 # --- ci.yml: the browser tests run on main only ------------------------------------------

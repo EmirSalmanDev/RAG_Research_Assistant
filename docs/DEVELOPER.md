@@ -45,22 +45,31 @@ app's own budget cap.
 
 ### Start, migrate, stop
 ```sh
-make up        # docker compose up -d --build --wait
+make up        # BUILDX_NO_DEFAULT_ATTESTATIONS=1 docker compose up -d --build --wait
 make migrate   # cd backend && uv run alembic upgrade head
 make down      # docker compose --profile '*' down
 ```
 
-- `make up` builds the backend image and starts **postgres, qdrant, redis, api and worker**.
-  It waits until every healthcheck passes. It does **not** start **beat** (the scheduler) or
-  the **frontend**: both are in compose profiles. The first build downloads the Python
-  packages and the store images.
-- Every port is bound to `127.0.0.1` only: the API on 8000, Postgres on 5432, Qdrant on
-  6333, Redis on 6379 (and the compose frontend on 3000).
+- `make up` builds the backend and frontend images and starts **postgres, qdrant, redis, api,
+  worker and frontend** (http://localhost:3000; it starts once the api is healthy). It waits
+  until every healthcheck passes. It does **not** start **beat** (the scheduler): beat is in
+  the compose profile `scheduler`. The first build downloads the Python and Node packages, the
+  Node base image and the store images.
+- `make up` rebuilds the images every time (from the build cache when nothing changed), but
+  recreates a container only when its image or its configuration changed. So a second
+  `make up` leaves the running containers alone, and a running worker task keeps running;
+  after a code change, only the services built from that code are recreated. This needs
+  `BUILDX_NO_DEFAULT_ATTESTATIONS=1`, which the Makefile sets: without it BuildKit adds a new
+  provenance attestation, and so a new image ID, to every build, and a plain
+  `docker compose up --build` recreates the api, the worker and the frontend every time.
+- Every port is bound to `127.0.0.1` only: the API on 8000, the frontend on 3000, Postgres on
+  5432, Qdrant on 6333, Redis on 6379.
 - `make migrate` creates or updates the schema in the Postgres from `make up`. Until it has
   run, `GET /status` shows `database: null` and the reason under `errors`.
-- `make down` stops and removes the containers of every profile (beat and frontend included).
-  The named volumes `postgres_data` and `qdrant_data` stay. Redis has no named volume, so
-  count queued tasks as lost once its container is removed.
+- `make down` stops and removes the containers of every profile (beat included).
+  The named volumes `postgres_data` and `qdrant_data` stay. Redis keeps its data in memory
+  (a tmpfs at `/data`, no volume), so count queued tasks as lost once its container stops or
+  is removed.
 - **`docker compose down -v` deletes the volumes, and with them the whole corpus**: papers,
   text, chunks, the search index, your library, the usage log and the evaluation runs. Do not
   use `-v` unless that is what you want.
@@ -68,7 +77,7 @@ make down      # docker compose --profile '*' down
 
 ### The scheduler (Beat)
 ```sh
-make up-scheduler   # docker compose --profile scheduler up -d --build --wait
+make up-scheduler   # BUILDX_NO_DEFAULT_ATTESTATIONS=1 docker compose --profile scheduler up -d --build --wait
 ```
 Beat sends these jobs (`app/worker/schedule.py`; times are Europe/Istanbul):
 
@@ -109,13 +118,17 @@ working.
 Two ways, both on http://localhost:3000. The browser calls `/api/*` on the same origin, and
 Next rewrites it to `API_ORIGIN` (`frontend/next.config.ts`), so the API needs no CORS.
 
-- **Native (development):** `cd frontend && pnpm install && pnpm dev`. `API_ORIGIN` is read
-  when the dev server starts. The default is `http://127.0.0.1:8000`, the API from `make up`.
-  For another address, start it with `API_ORIGIN=http://host:port pnpm dev`.
-- **In compose:** `docker compose --profile frontend up -d --wait frontend`. Next fixes
-  `API_ORIGIN` **when the image is built**. The compose build uses
-  `FRONTEND_API_ORIGIN` from `.env`, default `http://api:8000`. Setting it when the container
-  starts has no effect. After a change, rebuild: `docker compose --profile frontend build frontend`.
+- **In compose (default):** `make up` builds and starts it. Next fixes `API_ORIGIN` **when the
+  image is built**. The compose build uses `FRONTEND_API_ORIGIN` from `.env`, default
+  `http://api:8000`. Setting it when the container starts has no effect. After a change,
+  rebuild: `docker compose build frontend` (or `make up`, which builds).
+- **Native (development):** both use port 3000, so first stop the compose frontend with
+  `docker compose stop frontend` (or start only the backend:
+  `docker compose up -d --wait postgres qdrant redis api worker`). Then
+  `cd frontend && pnpm install && pnpm dev`. `API_ORIGIN` is read when the dev server starts.
+  The default is `http://127.0.0.1:8000`, the API from `make up`. For another address, start
+  it with `API_ORIGIN=http://host:port pnpm dev`. The next `make up` starts the compose
+  frontend again.
 
 ### Getting data in
 All of these call outside services, and most also call OpenAI, which costs money. **Set a
@@ -164,8 +177,10 @@ Evaluation commands (run natively against the stores; details in the README's "E
   `MAX_USD=...`, a hard cap enforced before every request.
 
 ### Memory on a small machine
-- The worker runs with `--concurrency=1`. The frontend is left out of `make up` to save
-  memory.
+- The worker runs with `--concurrency=1`. The frontend is part of `make up`: it was left out
+  for memory on an 8 GB Mac, which no longer applies on the 24 GB development Mac
+  (`docs/adr/0017`). On a small machine, stop it with `docker compose stop frontend` while
+  you do not need the web app.
 - The cross-encoder reranker is **off by default** (`RERANK_ENABLED=false`). The API loads
   it on the first reranked search (`GET /search?rerank=true`) and keeps it in memory. That
   can take well over 1 GB in that process (`docs/adr/0005`, `docs/adr/0015`). Load it in

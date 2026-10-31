@@ -10,6 +10,7 @@ Running all of them in containers plus a dev server is tight on memory.
   `packageManager`). The repo root holds compose, Makefile, CI and docs.
 - `make up` starts the stores, api, worker and beat, and waits for every healthcheck.
   The frontend is in the Compose profile `frontend`; day to day it runs natively with `pnpm dev`.
+  Superseded in part by ADR 0017: the frontend has no profile and `make up` starts it.
 - The worker runs with concurrency 1. Celery healthchecks poll every 30 s.
 - Qdrant's image has no curl, so its healthcheck uses bash `/dev/tcp` against `/readyz`.
 

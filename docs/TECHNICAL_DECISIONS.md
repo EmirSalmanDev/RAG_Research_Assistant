@@ -6,11 +6,11 @@ follows the title where one covers the decision.
 
 ## Architecture
 
-- **Services** (Docker Compose): `postgres` 16, `qdrant` v1.19.1, `redis` 7, `api` (FastAPI) and `worker` (Celery, concurrency 1); `beat` (Celery Beat) is in the `scheduler` profile and `frontend` in the `frontend` profile, so `make up` starts neither. Published ports are bound to 127.0.0.1.
+- **Services** (Docker Compose): `postgres` 16, `qdrant` v1.19.1, `redis` 7, `api` (FastAPI), `worker` (Celery, concurrency 1) and `frontend` (Next.js), all started by `make up`; `beat` (Celery Beat) is in the `scheduler` profile, so `make up` does not start it. Published ports are bound to 127.0.0.1.
 - **Ingest path**: Beat sends tasks through Redis to the worker, in Europe/Istanbul time: the daily ingest chain at 07:00, the digest at 08:00, the paper-analysis submission at 09:00 (only when `analysis_auto_submit` is on), the analysis collector every 30 minutes and a catch-up at 13:00 and 19:00. The worker reads arXiv, Hugging Face, Semantic Scholar and GitHub and writes Postgres (the source of truth) and Qdrant (derived from it).
 - **Query path**: FastAPI reads Postgres and Qdrant. A chat turn (`POST /chat`) passes six stages, `condense`, `plan`, `search`, `rerank`, `generate` and `verify`, and streams the answer as server-sent events.
 - **External services**: the public sources above, OpenAI (embeddings, chat, Batch API) and, optionally, Langfuse Cloud.
-- **Frontend**: Next.js (App Router), run natively with `pnpm dev` or in the `frontend` profile; the browser calls `/api/*` and Next rewrites it to the API.
+- **Frontend**: Next.js (App Router), started in compose by `make up` (native `pnpm dev` for development); the browser calls `/api/*` and Next rewrites it to the API.
 - **Traced** (only when the Langfuse keys are set): every chat turn (trace `chat-turn`, one span per stage), compare, timeline and the literature review. Celery tasks, `GET /search`, the PDF upload and evaluation runs are not traced.
 
 ## Architecture and data
@@ -190,14 +190,14 @@ Why this decision was taken: Every trace has the same shape, and a private trace
 ## Infrastructure
 
 ### Beat behind a profile, one worker process (ADR 0013, ADR 0003)
-Decision made: Beat is a compose profile (`scheduler`): `make up` starts the stores, the API and the worker, and `make up-scheduler` adds Beat. The worker runs one process, takes one task at a time and acknowledges a task only after it finishes.
+Decision made: Beat is a compose profile (`scheduler`): `make up` starts the stores, the API, the worker and the frontend, and `make up-scheduler` adds Beat. The worker runs one process, takes one task at a time and acknowledges a task only after it finishes.
 Trade-offs / other options: Whoever wants the nightly pipeline runs `make up-scheduler` and should know that Beat sends an overdue run on start.
 Why this decision was taken: Beat found the 07:00 run overdue after restarts and sent it at once, so the worker called arXiv, Hugging Face and OpenAI without anyone asking; a task killed mid-run is run again, which is safe since every task is idempotent.
 
-### The frontend runs natively or in a profile (ADR 0001, ADR 0007)
-Decision made: The frontend sits in the compose profile `frontend` and day to day runs natively with `pnpm dev`. The browser calls `/api/*` and `next.config.ts` rewrites it to the API; the compose image sets `API_ORIGIN` as a build argument defaulting to `http://api:8000`.
-Trade-offs / other options: The frontend needs a separate command, in exchange for lower memory use; setting `API_ORIGIN` at runtime was tested and did not help.
-Why this decision was taken: Running all services in containers plus a dev server is tight on memory, the chat stream then needs no CORS, and `API_ORIGIN` is read at build time.
+### The frontend starts with `make up` (ADR 0017, ADR 0001, ADR 0007)
+Decision made: The frontend has no compose profile: `make up` builds it and starts it once the API is healthy, on 127.0.0.1:3000. Native `pnpm dev` stays for development, after `docker compose stop frontend` (both use port 3000). The browser calls `/api/*` and `next.config.ts` rewrites it to the API; the compose image sets `API_ORIGIN` as a build argument defaulting to `http://api:8000`. `make up` and `make up-scheduler` build with `BUILDX_NO_DEFAULT_ATTESTATIONS=1`, so a run with nothing changed keeps the same image IDs and recreates no container.
+Trade-offs / other options: The running stack uses about 41-44 MiB more memory and the first `make up` also builds the frontend image; a different `FRONTEND_API_ORIGIN` needs a rebuild, because setting `API_ORIGIN` at runtime was tested and did not help. Until ADR 0017 the frontend sat in a `frontend` profile and ran natively day to day, to save memory.
+Why this decision was taken: The profile existed only because of memory on an 8 GB Mac; the development Mac now has 24 GB (Docker VM 7.65 GiB) and the idle stack measured about 1.5 GiB with the frontend. The same-origin proxy means the chat stream needs no CORS, and `API_ORIGIN` is read at build time.
 
 ### Pinned images and local-only ports
 Decision made: The Python base image and the uv image are pinned by digest, both stages of the frontend Dockerfile pin `node:24-slim` by digest, Qdrant is pinned to v1.19.1, and every published port is bound to 127.0.0.1.

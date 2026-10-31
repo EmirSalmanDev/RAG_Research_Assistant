@@ -37,7 +37,7 @@ flowchart LR
     web --> worker
     worker -->|embeddings, Batch API| openai[OpenAI]
     api -->|embeddings, chat| openai
-    ui["Next.js app<br/>(pnpm dev, or the frontend profile)"] -->|/api proxy| api
+    ui["Next.js app<br/>(compose, or pnpm dev)"] -->|/api proxy| api
     api -.->|optional traces| lf[Langfuse Cloud]
 ```
 
@@ -71,18 +71,18 @@ design target is an Apple Silicon Mac; the release workflow builds arm64 and amd
 1. `git clone` the repository and `cd` into it. Copy `.env.example` to `.env` and set
    `OPENAI_API_KEY`. In your OpenAI account, set a monthly spending limit: it is the hard
    backstop behind the app's own budget cap.
-2. `make up` builds the backend image and starts Postgres, Qdrant, Redis, the API and the
-   Celery worker, and waits until each one's healthcheck passes. The first build downloads
-   the Python packages (a few hundred MB) and the three store images.
+2. `make up` builds the backend and frontend images and starts Postgres, Qdrant, Redis, the
+   API, the Celery worker and the web app, and waits until each one's healthcheck passes. The
+   first build downloads the Python and Node packages (several hundred MB), the Node base image
+   and the three store images.
 3. `make migrate` creates the database schema. It runs on the host through uv and installs
    the backend dependencies on its first run.
 4. Ingest a paper to have something to ask about:
    `make ingest-one ID=1706.03762`. It downloads the paper's text from public sources and
    embeds it (a fraction of a cent).
-5. Start the web app: `cd frontend && pnpm install && pnpm dev`, then open
-   http://localhost:3000. Ask a question on `/chat`. Or, without Node on the host, build and
-   start it in compose: `docker compose --profile frontend up -d --wait frontend` (same
-   address).
+5. Open the web app at http://localhost:3000 (started by `make up`) and ask a question on
+   `/chat`. For frontend development, run it natively instead: `docker compose stop frontend`,
+   then `cd frontend && pnpm install && pnpm dev` (same address; both use port 3000).
 
 The daily runs (new papers and the digest) also need the scheduler (next section).
 To seed the corpus before that, `make backfill DAYS=7` indexes the last week of abstracts.
@@ -96,7 +96,7 @@ The technical decisions in short, each with its trade-offs and reasons: [`docs/T
 | api (FastAPI, port 8000) | yes | |
 | worker (Celery, concurrency 1) | yes | runs ingestion and analysis tasks |
 | beat (the scheduler) | **no** | `make up-scheduler` starts it |
-| frontend | no | `docker compose --profile frontend up -d --wait frontend` builds and starts it in compose (port 3000; its `/api` proxy goes to `http://api:8000`), or run it natively with `pnpm dev` |
+| frontend (Next.js, port 3000) | yes | starts once the API is healthy; its `/api` proxy goes to `http://api:8000`. For development, `docker compose stop frontend` and run `pnpm dev` instead |
 
 **Why Beat is separate.** Beat sends a daily run that came due while it was stopped as soon as
 it starts. Starting it after a night off therefore fetches from arXiv and Hugging Face and
@@ -219,15 +219,15 @@ a fixed refusal instead of a guess. A turn makes up to four chat requests (`gpt-
 and up to three small embedding requests; each one is logged in `llm_usage`.
 
 ## Frontend
-The web app is Next.js (App Router). Run it natively with `cd frontend && pnpm dev`, or in
-compose with `docker compose --profile frontend up -d --wait frontend`; either way open
-http://localhost:3000. It talks to the API through a same-origin proxy (`/api/*` is
-rewritten to `API_ORIGIN`), so the API needs no CORS setup. `pnpm dev` reads `API_ORIGIN`
-when it starts (default `http://127.0.0.1:8000`); a build (`pnpm build`, and so the
-container image) fixes it when it builds. The container is built with `http://api:8000`;
-`FRONTEND_API_ORIGIN` in `.env` changes that, followed by
-`docker compose --profile frontend build frontend` (setting it when the container starts has
-no effect). Pages:
+The web app is Next.js (App Router). `make up` builds it and starts it in compose; open
+http://localhost:3000. For development, stop that container (`docker compose stop frontend`;
+both use port 3000) and run it natively with `cd frontend && pnpm dev`. It talks to the API
+through a same-origin proxy (`/api/*` is rewritten to `API_ORIGIN`), so the API needs no CORS
+setup. `pnpm dev` reads `API_ORIGIN` when it starts (default `http://127.0.0.1:8000`); a build
+(`pnpm build`, and so the container image) fixes it when it builds. The container is built
+with `http://api:8000`; `FRONTEND_API_ORIGIN` in `.env` changes that, followed by a rebuild
+(`docker compose build frontend`, or `make up`, which builds; setting it when the container
+starts has no effect). Pages:
 
 - `/`: the daily digest. The day's papers ranked against your interests, with a trending
   badge, the best-matching interest, a one-line summary, links to the paper page and to
@@ -283,9 +283,10 @@ Answers are shown as pre-wrapped text, not rendered markdown, so a `**bold**` or
 list in an answer appears as the characters the model wrote. Plan filters (category, dates)
 are shown above each answer. Decisions: `docs/adr/0007`.
 
-To look at the real data in a browser, start the stack (`make up`), then `pnpm dev` in
-`frontend/` (or `pnpm build && pnpm start`). The chat page asks the real model: each turn
-makes about six small OpenAI requests (about $0.001), and each search one embedding request.
+To look at the real data in a browser, start the stack (`make up`) and open
+http://localhost:3000 (or stop the compose frontend and run `pnpm dev` in `frontend/`). The
+chat page asks the real model: each turn makes about six small OpenAI requests (about
+$0.001), and each search one embedding request.
 
 ### Browser test
 `make e2e` runs the Playwright tests. `frontend/e2e/chat-citation.spec.ts`: ask a question,
