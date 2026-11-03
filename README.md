@@ -364,8 +364,8 @@ succeeds only on its last retry can finish after 08:00; the digest is then built
 papers already stored. On the health page such a step is listed as "waiting to retry", and
 only the last attempt's failure as failed.
 
-If the 07:00 run did not get past arXiv (on both mornings observed, arXiv refused it with
-HTTP 429 "Rate exceeded" and read timeouts, while runs started later in the day were
+If the 07:00 run did not get past arXiv (on two of the three mornings watched, arXiv refused
+it with HTTP 429 "Rate exceeded" and read timeouts, while runs started later in the day were
 answered), Beat tries the same chain again at
 **13:00** and **19:00** (`DAILY_CATCHUP_TIMES`, HH:MM Istanbul, comma-separated, each later
 than 07:00; empty switches it off). A catch-up starts the chain only if no `arxiv-daily` run
@@ -385,25 +385,29 @@ Postgres is the source of truth; the Qdrant collection is derived from it and ca
 rebuilt. Design decisions are recorded in `docs/adr/`.
 
 ## Known limitations
-The daily pipeline has been checked in parts, not yet as one unattended run:
+The daily pipeline has been watched running unattended under Beat for one day (2-3 November
+2026). Longer runs have not been watched yet.
 
-- **Beat sends the 07:00 run, but arXiv refused it both times it was watched.** On the two
-  mornings observed (28 and 29 October 2026), Beat sent the daily chain at 07:00 Istanbul,
-  and arXiv refused it from the first request on (HTTP 429 and read timeouts). The chain
-  stopped at its first step, the arXiv fetch, after its retries. On the first morning the
-  retries were still seconds apart; on the second, with the retries after about 2, 6 and 18
-  minutes, arXiv kept refusing for all 29 minutes. Runs started by hand later in the day
-  were answered, and one of them (29 October, 15:23 Istanbul) ran the whole chain to the end
-  in the compose worker, full texts included.
-- **The same-day catch-up has been seen only when it skips.** Because of those refusals, a
-  catch-up runs at 13:00 and 19:00 (`DAILY_CATCHUP_TIMES`): it starts the chain only if no
-  `arxiv-daily` run has succeeded since 07:00 and none is running or waiting to retry;
-  otherwise it records a skipped run. The skip path has been observed under Beat (19:00 on 29 October 2026, after
-  that day's successful run). The start path is covered by tests only.
-- **A Beat-triggered 07:00 chain has not yet been observed finishing end to end.** So it is
-  not shown that the daily ingest runs unattended. The health page tells you what happened:
-  an `arxiv-daily` line "last attempt (4 of 4), no retry" means the run gave up, and the
-  `daily-catchup` line says whether a catch-up started the chain again.
+- **One unattended day was seen end to end.** The 19:00 catch-up on 2 November found no
+  successful arXiv fetch for that day and started the daily chain. The next morning Beat
+  sent the 07:00 chain itself. Both chains ran every step without an error or a retry: the
+  arXiv and Hugging Face fetches, abstract indexing, enrichment, relevance scoring, and full
+  text for 15 and 6 papers. The 08:00 digest listed 16 papers from those two chains among
+  its 20. The 13:00 catch-up skipped, because the 07:00 run had succeeded. Together the two
+  chains spent about $0.025, all on embeddings.
+- **arXiv may refuse the 07:00 run.** On two of the three mornings watched (28 and 29
+  October 2026), arXiv refused the 07:00 fetch from the first request on (HTTP 429 and read
+  timeouts). It kept refusing through the retries after about 2, 6 and 18 minutes, and the
+  chain stopped at its first step. On 3 November it answered at once. A retry that then
+  succeeds has not yet been seen under Beat.
+- **The catch-up has been seen starting the chain only after a day with no run at all.** On
+  2 November it started the chain because nothing had run that morning. Starting it after a
+  07:00 run that gave up, the case the catch-up was added for, is covered by tests only. The
+  skip path has been seen twice (29 October and 3 November).
+
+The health page tells you what happened: an `arxiv-daily` line "last attempt (4 of 4), no
+retry" means the run gave up, and the `daily-catchup` line says whether a catch-up started
+the chain again.
 
 ## Evaluation
 Two kinds of numbers, both stored in `eval_runs` with the configuration and the git commit
