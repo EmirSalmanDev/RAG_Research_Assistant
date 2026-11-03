@@ -7,10 +7,6 @@ you care about) for hybrid search, and ranks them against your interests in a da
 and get answers whose every sentence cites a passage you can open. It also compares papers,
 draws topic timelines, keeps a library with BibTeX export and drafts related-work sections.
 
-<!-- Demo GIF: record a short screen capture of a chat answer with a citation chip opening
-     its passage, save it as docs/demo.gif and replace the line below with
-     ![A chat answer and its citation](docs/demo.gif) -->
-*Demo GIF: to be added (`docs/demo.gif`).*
 
 Everything runs on your machine with Docker Compose. The only outside services are the
 public APIs it reads (arXiv, Hugging Face, Semantic Scholar, GitHub) and OpenAI, for
