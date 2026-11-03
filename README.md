@@ -285,44 +285,7 @@ chat page asks the real model: each turn makes about six small OpenAI requests (
 $0.001), and each search one embedding request.
 
 ### Browser test
-`make e2e` runs the Playwright tests. `frontend/e2e/chat-citation.spec.ts`: ask a question,
-watch the answer stream in, open a citation, read the cited passage.
-`frontend/e2e/digest-flow.spec.ts`: open the digest, save one card, dismiss one, undo, then
-add, edit and delete an interest on `/settings` and save the settings.
-`frontend/e2e/paper-page.spec.ts`: a paper page shows its analysis, code, Hugging Face
-models and datasets, and the three related-paper tabs (keyboard included).
-`frontend/e2e/explore-flow.spec.ts`: pick three papers, Compare, open a citation, export the
-markdown; run a timeline (and that typing on either page sends nothing paid).
-`frontend/e2e/library-flow.spec.ts`: create a collection, add papers, change a status, edit a
-note, download the `.bib`, generate a review, open a chip, export the markdown; upload a PDF
-(one request, a repeat changes nothing, a 12 MB body reaches the API whole through the proxy).
-`frontend/e2e/evals-flow.spec.ts`: the `/evals` page. `frontend/e2e/health-flow.spec.ts`: the
-`/health` page for a healthy system, a store down, a failed step and a paused budget; the
-budget banner; the loading state while the API is slow, the API's own message on an error,
-"Try again", an API that cannot be reached, and an address with no page.
-It starts the Next
-dev server (with `--webpack`) and a small **mock API** with invented data
-(`frontend/e2e/mock-api.ts`), and drives the Google Chrome that is already installed
-(Playwright `channel: "chrome"`, so no browser is downloaded). The mock API is reached
-through the real `/api` rewrite, so the test proves the UI and that the rewrite passes the
-stream through unbuffered. It proves nothing about the real backend. It makes no OpenAI
-call and costs nothing.
-
-Nothing can leave the machine, by four layers: (1) on macOS everything runs inside
-`sandbox-exec` with the profile `frontend/e2e/e2e.sb`, which allows TCP only to
-`localhost:3999` (Next) and `localhost:18000` (the mock API); (2) Chrome starts with a
-resolver rule under which no name except loopback resolves, and a dead proxy; (3) the test
-aborts every request that is not local; (4) the test makes one external request on purpose
-(to a `.invalid` name) and expects it to be blocked. The test never opens or clicks an
-external link: the arXiv link is checked by its `href` only. Chrome runs with
-`--no-sandbox` because Chrome's own sandbox cannot start inside `sandbox-exec`; the profile
-is what contains it, and the page loads only the local app.
-
-Without `sandbox-exec` (Linux, for instance) `make e2e` refuses to run. `E2E_UNSANDBOXED=1
-make e2e` runs it without the sandbox profile; layers 2 to 4 still apply, but layer 1 does
-not, so use it only on a machine where you are comfortable with that. It needs Google
-Chrome installed. CI runs the tests on `main` only (the `e2e` job), on Ubuntu without the
-sandbox profile.
+`make e2e` runs the Playwright browser tests against a mock API with invented data. It makes no OpenAI call, costs nothing and proves nothing about the real backend. On macOS it runs inside `sandbox-exec` so nothing can leave the machine; it needs Google Chrome installed. Details (what each spec covers, the four containment layers, running without the sandbox) are in `docs/DEVELOPER.md`.
 
 ## The daily pipeline
 Celery Beat starts it every day at **07:00 Europe/Istanbul**:
@@ -379,31 +342,6 @@ skip and say so in `ingest_runs`.
 
 Postgres is the source of truth; the Qdrant collection is derived from it and can be
 rebuilt. Design decisions are recorded in `docs/adr/`.
-
-## Known limitations
-The daily pipeline has been watched running unattended under Beat for one day (2-3 November
-2026). Longer runs have not been watched yet.
-
-- **One unattended day was seen end to end.** The 19:00 catch-up on 2 November found no
-  successful arXiv fetch for that day and started the daily chain. The next morning Beat
-  sent the 07:00 chain itself. Both chains ran every step without an error or a retry: the
-  arXiv and Hugging Face fetches, abstract indexing, enrichment, relevance scoring, and full
-  text for 15 and 6 papers. The 08:00 digest listed 16 papers from those two chains among
-  its 20. The 13:00 catch-up skipped, because the 07:00 run had succeeded. Together the two
-  chains spent about $0.025, all on embeddings.
-- **arXiv may refuse the 07:00 run.** On two of the three mornings watched (28 and 29
-  October 2026), arXiv refused the 07:00 fetch from the first request on (HTTP 429 and read
-  timeouts). It kept refusing through the retries after about 2, 6 and 18 minutes, and the
-  chain stopped at its first step. On 3 November it answered at once. A retry that then
-  succeeds has not yet been seen under Beat.
-- **The catch-up has been seen starting the chain only after a day with no run at all.** On
-  2 November it started the chain because nothing had run that morning. Starting it after a
-  07:00 run that gave up, the case the catch-up was added for, is covered by tests only. The
-  skip path has been seen twice (29 October and 3 November).
-
-The health page tells you what happened: an `arxiv-daily` line "last attempt (4 of 4), no
-retry" means the run gave up, and the `daily-catchup` line says whether a catch-up started
-the chain again.
 
 ## Evaluation
 Two kinds of numbers, both stored in `eval_runs` with the configuration and the git commit
